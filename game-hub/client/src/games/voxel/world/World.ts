@@ -100,6 +100,8 @@ export class World {
     e.set(idx, id);
     const c = this.chunks.get(key);
     if (c?.blocks) {
+      // Server echoes of our own optimistic edits are no-ops: skip the remesh.
+      if (c.blocks[idx] === id) return;
       c.blocks[idx] = id;
       this.markDirty(c, true);
     }

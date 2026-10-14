@@ -13,3 +13,5 @@ export * from './voxel/parkour';
 export * from './voxel/generator';
 export * from './voxel/physics';
 export * from './voxel/raycast';
+export * from './util/binary';
+export * from './voxel/protocol';

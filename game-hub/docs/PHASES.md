@@ -84,3 +84,49 @@ Tablet: left thumb on the joystick (push to the rim to sprint), drag elsewhere t
 - Water is static: it doesn't flow into holes you dig.
 - In headless Chromium (SwiftShader software GL) the game runs at ~25–40 FPS. Real tablet GPUs are far faster; the performance pass on hardware is Phase 6.
 - On first `npm run dev` start, Vite pre-bundles three.js and reloads the page once.
+
+---
+
+## Phase 3: Voxelvale multiplayer ✅
+
+### What was built
+
+**Server** (`server/src/rooms/VoxelRoom.ts`, `server/src/voxel/ServerVoxelWorld.ts`)
+- The room picks a seed. Everyone generates identical terrain, so **only edits travel over the network**.
+- **Server-authoritative block edits**: each 6-byte binary edit request is validated against the server's copy of the world:
+  - rate limit (token bucket, 24 burst / 12 per s)
+  - world bounds
+  - breakability (no bedrock)
+  - placeable block type
+  - target cell must be empty or water
+  - no overlap with any player
+  - reach (eye to block centre ≤ 6 + 2 blocks of latency slack)
+- Accepted edits are broadcast in one binary batch per 50 ms tick. Rejected edits go back to the sender with the authoritative block, so their optimistic change rolls back.
+- **Late joiners and reconnecting players** get the full edit list as one binary message. The server keeps generated chunks in a 256-chunk LRU, so validation anywhere in the world stays cheap.
+- Movement is client-simulated (co-op sandbox) but **sanity-checked**. Over-speed moves after the spawn grace period are snapped back with a teleport, and persistent offenders are kicked (close code 4100).
+- **Chat** is sanitised (control and invisible characters removed, 120 chars) and **rate limited** (burst 4, then one message every 2 s), with join and leave system messages.
+- **Parkour on the server clock**: checkpoints must be reached in order while standing near the pad, and a finish needs every checkpoint, the finish pad and a plausible time. Best times are replicated in the room state and announced in chat.
+- The day/night time of day is shared by all players through the room state.
+
+**Client** (`client/src/games/voxel/net/`, `client/src/games/common/`)
+- `VoxelNet`:
+  - **optimistic edits**: applied instantly, server echoes are no-ops (no remesh), rejects roll back
+  - binary position updates at 15 Hz (only when changed, plus a 1 s keep-alive)
+  - remote players rendered **120 ms in the past, interpolated** between schema snapshots
+  - server-corrected teleports
+  - synced day/night
+- `AvatarRenderer`: blocky avatars with walk cycle, crouch and head pitch. All players render in **5 instanced draw calls total**, with canvas nametags that show through walls up to 48 m. It will be reused by the arena.
+- `ChatBox`: fading log, input row (T / Enter on keyboard, chat button on tablets, which opens the on-screen keyboard; 16 px font to avoid iOS zoom).
+- Pause menu lists the players in the room; the parkour HUD shows the room's best time.
+
+### How to test
+```bash
+npm test            # 44 tests incl. VoxelRoom: edits, late join, rejects, spam limits, movement snap-back, chat, parkour
+npm run e2e         # 19 browser tests incl. a 3-player Voxelvale session (edits, late join, chat, avatars)
+npm run dev         # open two browser windows → Voxelvale → Private room in one, join with the code in the other
+```
+
+### Known issues / notes
+- Edits are kept in memory per room: a room's world resets when everyone leaves. A persistence layer (Redis or SQLite) would be the next step.
+- Player movement in Voxelvale is client-authoritative with server sanity checks (no full server physics). That is fine for a co-op sandbox; the competitive arena uses full server authority.
+- Nametags draw through walls by design (helps find friends while building).

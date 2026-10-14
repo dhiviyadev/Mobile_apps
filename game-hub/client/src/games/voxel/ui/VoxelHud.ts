@@ -17,6 +17,7 @@ export class VoxelHud {
   private readonly timerEl: HTMLElement;
   private readonly cpEl: HTMLElement;
   private readonly bestEl: HTMLElement;
+  private readonly roomBestEl: HTMLElement;
   private readonly centerMsg: HTMLElement;
   private readonly underwater: HTMLElement;
   private labelTimer = 0;
@@ -43,13 +44,14 @@ export class VoxelHud {
     this.timerEl = h('div', { class: 'pk-timer', 'data-testid': 'parkour-timer' }, '00:00.00');
     this.cpEl = h('div', { class: 'pk-cp' }, '');
     this.bestEl = h('div', { class: 'pk-best' }, '');
+    this.roomBestEl = h('div', { class: 'pk-best' }, '');
     this.centerMsg = h('div', { class: 'center-msg' });
     this.underwater = h('div', { class: 'underwater-tint' });
 
     this.el = h('div', { class: 'voxel-hud' },
       this.underwater,
       h('div', { class: 'crosshair' }),
-      parkour ? h('div', { class: 'pk-panel' }, this.timerEl, this.cpEl, this.bestEl) : null,
+      parkour ? h('div', { class: 'pk-panel' }, this.timerEl, this.cpEl, this.bestEl, this.roomBestEl) : null,
       this.centerMsg,
       this.blockLabel,
       parkour ? null : this.hotbar,
@@ -80,6 +82,13 @@ export class VoxelHud {
     this.cpEl.textContent = `Checkpoint ${checkpoint}/${total}`;
     this.bestEl.textContent = bestMs !== null ? `Best ${formatTime(bestMs)}` : '';
   }
+
+  setRoomBest(text: string): void {
+    if (this.roomBestEl.textContent !== text) this.roomBestEl.textContent = text;
+  }
+
+  /** Nothing to toggle yet in Voxelvale (Tab is the arena scoreboard). */
+  toggleHelp(): void {}
 
   /** Big centred message (e.g. "Checkpoint!"), fades after `ms`. */
   flash(text: string, ms = 1400, kind: 'good' | 'info' = 'info'): void {

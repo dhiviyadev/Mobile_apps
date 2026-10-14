@@ -9,7 +9,7 @@
  * colyseus.js is imported dynamically so the hub's first paint doesn't pay for it.
  */
 import type { Client, Room } from 'colyseus.js';
-import { type GameId, type JoinOptions, RECONNECT_WINDOW_SECONDS } from '@hub/shared';
+import { CLOSE_KICKED, type GameId, type JoinOptions, RECONNECT_WINDOW_SECONDS } from '@hub/shared';
 import { serverWsUrl } from './serverUrl';
 
 export type JoinRequest =
@@ -26,8 +26,6 @@ type MessageHandler = (message: any) => void;
 const RESUME_KEY = 'cobalt-hub.resume';
 const CLOSE_CONSENTED = 4000;
 const CLOSE_DEVMODE_RESTART = 4010;
-/** Custom close code the server uses when it removes a player on purpose. */
-export const CLOSE_KICKED = 4100;
 
 async function createClient(): Promise<Client> {
   const { Client } = await import('colyseus.js');

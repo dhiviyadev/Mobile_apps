@@ -56,3 +56,6 @@ export const CHAT_BURST = 4;
 export const CHAT_REFILL_PER_SECOND = 0.5;
 
 export const DEFAULT_SERVER_PORT = 2567;
+
+/** WebSocket close code the server uses when it removes a player on purpose (anti-cheat). */
+export const CLOSE_KICKED = 4100;

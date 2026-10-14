@@ -3,7 +3,7 @@
  * editor, room code (online), game-specific extras, and leave.
  */
 import { isTouchDevice } from '../../core/device';
-import { h, removeWithTransition } from '../../core/ui/dom';
+import { h, hexColor, removeWithTransition } from '../../core/ui/dom';
 import { toast } from '../../core/ui/overlays';
 import { openSettings } from '../../core/ui/settingsMenu';
 
@@ -14,6 +14,8 @@ export interface PauseMenuOptions {
   onLeave: () => void;
   onEditLayout?: () => void;
   extra?: { label: string; onClick: () => void; danger?: boolean }[];
+  /** Online: players in the room. */
+  players?: () => { name: string; color: number; you: boolean; connected: boolean }[];
 }
 
 export class PauseMenu {
@@ -50,6 +52,7 @@ export class PauseMenu {
               },
             }, h('span', null, 'Room code'), h('strong', null, o.roomCode))
           : h('p', { class: 'muted' }, 'Offline game'),
+        this.playerList(),
         h('button', { class: 'btn btn-primary btn-lg', 'data-testid': 'resume', onclick: () => { close(); o.onResume(); } }, 'Resume'),
         h('button', { class: 'btn btn-lg', onclick: () => openSettings({ onEditTouchLayout: o.onEditLayout && isTouchDevice() ? () => { close(); o.onEditLayout!(); } : undefined }) }, 'Settings'),
         o.onEditLayout && isTouchDevice() ? h('button', { class: 'btn btn-lg', onclick: () => { close(); o.onEditLayout!(); } }, 'Edit touch layout') : null,
@@ -59,6 +62,18 @@ export class PauseMenu {
     );
     this.parent.appendChild(this.el);
     requestAnimationFrame(() => this.el?.classList.remove('entering'));
+  }
+
+  private playerList(): HTMLElement | null {
+    const list = this.opts.players?.() ?? [];
+    if (list.length === 0) return null;
+    return h('ul', { class: 'pause-players' },
+      list.map((p) => h('li', { class: p.connected ? '' : 'dropped' },
+        h('span', { class: 'dot', style: `background:${hexColor(p.color)}` }),
+        p.name,
+        p.you ? h('span', { class: 'tag' }, 'you') : null,
+      )),
+    );
   }
 
   close(): void {

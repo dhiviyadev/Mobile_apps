@@ -31,7 +31,7 @@ import { ParkourRun } from './parkour/ParkourRun';
 import { BlockInteraction } from './player/BlockInteraction';
 import { LocalPlayer } from './player/LocalPlayer';
 import { Sky, SKY_RADIUS } from './sky/Sky';
-import { VoxelHud } from './ui/VoxelHud';
+import { formatTime, VoxelHud } from './ui/VoxelHud';
 import { createAtlasCanvas, createAtlasTexture } from './world/atlas';
 import { createBlockGeometry } from './world/blockGeometry';
 import { createCrackMaterial, createLiquidMaterial, createOpaqueMaterial, createVoxelUniforms } from './world/materials';
@@ -50,6 +50,9 @@ export interface VoxelNetHooks {
   update(dt: number, camera: THREE.Camera): void;
   isOccupied(x: number, y: number, z: number): boolean;
   openChat?(): void;
+  isChatOpen?(): boolean;
+  roomBest?(): { name: string; ms: number } | null;
+  players?(): { name: string; color: number; you: boolean; connected: boolean }[];
   parkourEvent?(e: { kind: string; index?: number; timeMs?: number }): void;
   serverTime?(): number | null;
   dispose(): void;
@@ -179,6 +182,7 @@ export class VoxelGame {
       onLeave: () => this.exit(),
       onEditLayout: this.touch ? () => this.editLayout() : undefined,
       extra: this.pauseExtras(),
+      players: () => this.net?.players?.() ?? [],
     });
     this.clickToPlay = this.touch
       ? null
@@ -270,11 +274,12 @@ export class VoxelGame {
     this.raf = requestAnimationFrame(this.frame);
     const dt = this.renderer.beginFrame();
     const input = this.input.consume();
-    const paused = this.pause.isOpen || isSettingsOpen() || this.touch?.isEditing() === true;
+    const paused = this.pause.isOpen || isSettingsOpen() || this.touch?.isEditing() === true || this.net?.isChatOpen?.() === true;
     this.input.setEnabled(!paused);
 
     if (input.pressed.has('menu')) this.togglePause();
     if (input.pressed.has('chat')) this.net?.openChat?.();
+    if (input.pressed.has('scoreboard')) this.hud.toggleHelp();
     this.handleHotbar(input);
 
     // Look + movement
@@ -418,6 +423,8 @@ export class VoxelGame {
       }
     }
     this.hud.setParkour(run.elapsedMs, run.checkpoint, run.totalCheckpoints, run.best, run.running);
+    const roomBest = this.net?.roomBest?.();
+    this.hud.setRoomBest(roomBest ? `Room best: ${roomBest.name} ${formatTime(roomBest.ms)}` : '');
   }
 
   private clampToWorld(): void {

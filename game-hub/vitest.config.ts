@@ -7,7 +7,7 @@ export default defineConfig({
     projects: [
       { test: { name: 'shared', root: './shared', include: ['test/**/*.test.ts'], environment: 'node' } },
       // Colyseus probes for pm2 when process.send exists, so run server tests in worker threads.
-      { test: { name: 'server', root: './server', include: ['test/**/*.test.ts'], environment: 'node', testTimeout: 20000, pool: 'threads' } },
+      { test: { name: 'server', root: './server', include: ['test/**/*.test.ts'], environment: 'node', testTimeout: 20000, pool: 'threads', env: { LOG_LEVEL: 'warn' } } },
       { test: { name: 'client', root: './client', include: ['test/**/*.test.ts'], environment: 'node' } },
     ],
   },
