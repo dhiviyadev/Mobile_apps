@@ -20,7 +20,7 @@ describe('lobby & room system', () => {
   it('serves a health check', async () => {
     const res = await fetch(`http://127.0.0.1:${ts.port}/health`);
     expect(res.status).toBe(200);
-    expect((await res.json()).ok).toBe(true);
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(true);
   });
 
   it('quick match puts players asking for the same mode in the same room', async () => {
