@@ -29,6 +29,8 @@ export interface Settings {
   mouseSensitivity: number;
   invertY: boolean;
   leftHanded: boolean;
+  /** Voxelvale: hop up single blocks automatically while walking. */
+  autoJump: boolean;
   aimAssist: boolean;
   touchButtonScale: number;
   touchOpacity: number;
@@ -56,6 +58,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mouseSensitivity: 1,
   invertY: false,
   leftHanded: false,
+  autoJump: true,
   aimAssist: true,
   touchButtonScale: 1,
   touchOpacity: 0.85,

@@ -55,6 +55,7 @@ export function openSettings(opts: SettingsMenuOptions = {}): void {
         sliderRow('Mouse sensitivity', 'mouseSensitivity', 0.2, 3, 0.05, (v) => v.toFixed(2)),
         toggleRow('Invert Y axis', 'invertY'),
         toggleRow('Left-handed layout', 'leftHanded', 'Joystick on the right, look and buttons on the left.'),
+        toggleRow('Auto-jump (Voxelvale)', 'autoJump', 'Hop up single blocks automatically while walking.'),
         toggleRow('Aim assist (touch only)', 'aimAssist', 'Slightly slows aiming when your crosshair is over an opponent.'),
         sliderRow('Button size', 'touchButtonScale', 0.7, 1.5, 0.05, (v) => `${Math.round(v * 100)}%`),
         sliderRow('Button opacity', 'touchOpacity', 0.3, 1, 0.05, (v) => `${Math.round(v * 100)}%`),
