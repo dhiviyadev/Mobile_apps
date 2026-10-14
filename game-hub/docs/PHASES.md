@@ -190,3 +190,56 @@ npm run dev  # Arcfire Arena → pick a mode → Practice vs bots
 - Bots are deliberately modest (reaction 0.4–0.55 s, imperfect tracking) for touch players. There's no difficulty selector yet.
 - Hitboxes are two boxes (head and body) and don't animate with limbs.
 - Dead players disappear instead of ragdolling.
+
+---
+
+## Phase 5: Arcfire Arena multiplayer netcode ✅
+
+### What was built
+
+**Server** (`server/src/rooms/ArenaRoom.ts`)
+- Runs the shared `ArenaSimulation` at **30 Hz**, with an accumulator so the average rate holds even when Node timers drift. Each tick, every client gets a **binary snapshot** (≈220 bytes):
+  - `tick`
+  - `ack`: the last input command applied for that client
+  - the client's own full simulation state (position, velocity, ammo, timers, bloom), used for reconciliation
+  - everyone's quantised pose (cm positions, 16-bit angles, flags, HP, weapon)
+- Discrete events (shots with tracer end points, hits, kills, round results) are batched per tick with rounded coordinates.
+- Low-frequency data rides on the Colyseus schema at 10 Hz: roster, teams, K/D/damage/accuracy, phase, phase end tick, score, map, winners, warmup countdown and rematch votes.
+- **Anti-cheat**, by never trusting client state:
+  - Movement is simulated from inputs, and a per-player command budget stops speed hacks.
+  - Fire rate, ammo, reloads and weapon switching all run on the server.
+  - Shots are ray-cast against the map (line of sight) and against hitboxes **rewound to the shooter's view tick**, capped at 220 ms.
+  - Input batches are size- and rate-limited (150 commands/s), and buttons are masked.
+  - Malformed or flooding clients are kicked (close code 4100).
+- Lobby flow:
+  - Warmup: free-for-all damage with quick respawns, so you can practise while waiting.
+  - **Auto-start** after a 5 s countdown once enough humans are in (2 for 1v1, 4 for 2v2, 3 for FFA).
+  - The host can **start with bots** at any time; lonely public rooms fill with bots after 40 s.
+  - A bot is retired when a human joins a full room, and teams are back-filled with bots when someone leaves mid-match.
+  - Rematch votes; maps rotate after every match.
+- Reconnects keep the player in the match; their command sequence restarts cleanly after a page reload.
+- Chat (sanitised, rate-limited, join/leave notices) moved into `HubRoom`, so both games share it.
+
+**Client** (`client/src/games/arena/net/`)
+- `NetBackend` implements the same `ArenaBackend` interface as offline play, so `ArenaGame` is unchanged:
+  - **Input**: 60 Hz commands sent as compact binary batches every frame; each one carries the tick the client is rendering, for lag compensation.
+  - **Clock sync**: estimated from snapshot arrivals and biased toward the fastest packets, so `serverTick()` advances smoothly.
+  - **Adaptive interpolation delay**: 2 ticks (66 ms) on clean Wi-Fi, up to 6 when jitter rises.
+  - **Prediction and reconciliation**: the local player moves, shoots, spends ammo and reloads instantly. On every snapshot the client rewinds to the server state at `ack` and replays the unacknowledged commands. Small corrections are smoothed over ~100 ms; large ones snap.
+  - Deterministic spread means locally predicted tracers match the server's.
+- Warmup panel with the room code (tap to copy), roster with bots, auto-start countdown, and host buttons (**Start with bots / Start now**). Chat, rematch, and the reconnect banner come from Phase 1.
+
+### How to test
+```bash
+npm test     # 70 tests incl. ArenaRoom: 30 Hz snapshots + acks, speed-hack budget, server-side fire rate,
+             # ammo and lag-compensated hits over real WebSockets, start with bots, rematch, flood kick
+npm run e2e  # incl. a two-browser online match: warmup lobby, prediction matching the server,
+             # auto-start, live combat with predicted ammo confirmed by the server
+npm run dev  # two windows → Arcfire Arena → Private room → join with the code → play
+```
+To feel the netcode under bad conditions, use Chrome DevTools → Network → throttling ("Fast 4G", "Slow 4G") in one window. Your own movement stays instant; others stay smooth but further in the past.
+
+### Known issues / notes
+- The server trusts the client's view angles (inherent to any FPS), so a client-side aimbot can't be detected; we only validate what physics and rules allow.
+- WebSockets are TCP, so a lost packet stalls the stream briefly (head-of-line blocking). WebTransport/UDP would be the upgrade path.
+- In headless CI the browser tests render through SwiftShader. The Playwright config passes `--disable-gpu-vsync` and anti-backgrounding flags and allows one retry, because software GL occasionally stalls frames.

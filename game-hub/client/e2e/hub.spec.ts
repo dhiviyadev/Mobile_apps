@@ -16,29 +16,40 @@ test.describe('hub & lobby', () => {
     await expect(page.locator('.toast-error')).toBeVisible();
   });
 
-  test('create a private room and have a friend join with the code', async ({ browser }) => {
-    const host = await browser.newPage();
-    await host.goto('/');
-    await host.getByTestId('nickname').fill('HostPlayer');
+  test('create a private room and have a friend join with the code', async ({ browser }, info) => {
+    const touch = !!info.project.use.hasTouch;
+    const open = async (name: string) => {
+      const ctx = await browser.newContext(info.project.use);
+      const page = await ctx.newPage();
+      await page.addInitScript((n) => localStorage.setItem('cobalt-hub.settings.v1', JSON.stringify({ nickname: n, detectedQuality: 'low' })), name);
+      await page.goto('/');
+      return page;
+    };
+    const host = await open('HostPlayer');
     await host.getByTestId('card-arena').click();
+    await host.getByRole('tab', { name: 'Free-for-all' }).click();
     await host.getByTestId('create-private').click();
-    const codeEl = host.getByTestId('lobby-code');
-    await expect(codeEl).toHaveText(/^[A-Z2-9]{6}$/);
-    const code = (await codeEl.textContent())!;
+    const codeEl = host.locator('.wu-code');
+    await expect(codeEl).toHaveText(/^[A-Z2-9]{6}$/, { timeout: 30_000 });
+    const code = (await codeEl.textContent())!.trim();
 
-    const friend = await browser.newPage();
-    await friend.goto('/');
-    await friend.getByTestId('nickname').fill('Friend');
+    const friend = await open('Friend');
     await friend.getByTestId('room-code').fill(code.toLowerCase());
     await friend.getByTestId('join-code').click();
-    await expect(friend.getByTestId('lobby-code')).toHaveText(code);
-    await expect(host.getByTestId('lobby-players').locator('li')).toHaveCount(2);
+    await expect(friend.locator('.wu-code')).toHaveText(code, { timeout: 30_000 });
+    await host.bringToFront();
+    await expect(host.locator('.wu-chip')).toHaveCount(2, { timeout: 10_000 });
 
-    await friend.getByTestId('leave-room').click();
+    // Leave through the pause menu: back to the hub, and the host sees one player again.
+    await friend.bringToFront();
+    if (touch) await friend.locator('.touch-btn[data-id="menu"]').tap();
+    else await friend.keyboard.press('Escape');
+    await friend.getByTestId('leave-game').click();
     await expect(friend.getByTestId('card-arena')).toBeVisible();
-    await expect(host.getByTestId('lobby-players').locator('li')).toHaveCount(1);
-    await host.close();
-    await friend.close();
+    await host.bringToFront();
+    await expect(host.locator('.wu-chip')).toHaveCount(1, { timeout: 10_000 });
+    await host.context().close();
+    await friend.context().close();
   });
 
   test('bad room code shows a friendly error', async ({ page }) => {

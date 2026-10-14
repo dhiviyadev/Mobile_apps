@@ -258,3 +258,8 @@ input[type='text']:focus {
     transition-duration: 0.01ms !important;
   }
 }
+
+.muted {
+  color: var(--muted);
+  margin: 0;
+}

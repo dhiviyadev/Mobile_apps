@@ -1,0 +1,13 @@
+# Netlify: set "Base directory" to game-hub in the site settings (or deploy with
+# `netlify deploy` from this folder). Set VITE_SERVER_URL in the site's environment.
+[build]
+  command = "npm ci --no-audit --no-fund && npm run build -w client"
+  publish = "client/dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

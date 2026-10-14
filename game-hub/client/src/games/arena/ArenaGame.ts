@@ -51,6 +51,8 @@ import { Viewmodel } from './render/Viewmodel';
 import { ArenaHud } from './ui/ArenaHud';
 import { LoadoutPicker } from './ui/LoadoutPicker';
 import { MatchEndScreen, Scoreboard, TEAM_COLORS, TEAM_NAMES } from './ui/Scoreboard';
+import { WarmupPanel } from './ui/WarmupPanel';
+import type { NetMatchInfo } from './net/NetBackend';
 
 const BASE_FOV = 78;
 const MAX_CMDS_PER_FRAME = 6;
@@ -102,6 +104,7 @@ export class ArenaGame {
   private readonly aimAssist = new AimAssist();
   private readonly chat: ArenaChat | null;
   private readonly clickToPlay: HTMLElement | null;
+  private readonly warmup: WarmupPanel | null;
 
   // prediction
   predicted: PlayerSim | null = null;
@@ -181,6 +184,8 @@ export class ArenaGame {
       () => this.exit(),
     );
     this.stats = new StatsOverlay(container, this.renderer, () => this.backend.ping());
+    const code = this.backend.roomCode();
+    this.warmup = this.backend.online && code ? new WarmupPanel(container, code, (bots) => this.backend.startMatch(bots)) : null;
     this.pause = new PauseMenu(container, {
       title: 'Arcfire Arena',
       roomCode: this.backend.roomCode(),
@@ -229,6 +234,7 @@ export class ArenaGame {
     this.kbm.dispose();
     this.touch?.dispose();
     this.chat?.dispose();
+    this.warmup?.dispose();
     this.hud.dispose();
     this.matchEnd.dispose();
     this.loadout.el.remove();
@@ -344,6 +350,7 @@ export class ArenaGame {
     this.updateCamera(dt, remotes);
     this.updateAvatars(dt, remotes);
     this.updateHud();
+    this.warmup?.update(this.match as NetMatchInfo, this.backend.localId, phase === 'warmup' && !this.pause.isOpen);
     this.effects.update(dt);
     this.updateViewmodel(dt);
     if (this.clickToPlay) this.clickToPlay.classList.toggle('hidden', paused || this.kbm.isLocked() || this.loadout.isOpen || this.matchEnd.isVisible);
@@ -588,7 +595,7 @@ export class ArenaGame {
       case 'matchEnd':
         this.loadout.hide();
         this.kbm.unlock();
-        this.matchEnd.show(this.match, this.backend.localId, this.backend.online ? 'Rematch' : 'Next map');
+        this.matchEnd.show(this.match, this.backend.localId, this.backend.online ? 'Rematch (next map)' : 'Next map');
         break;
       case 'roundEnd':
         break;

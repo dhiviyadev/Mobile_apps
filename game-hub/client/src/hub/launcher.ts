@@ -11,6 +11,7 @@ import { LoadingScreen, ReconnectBanner, toast } from '../core/ui/overlays';
 import { audio } from '../core/audio/audio';
 import { type JoinRequest, NetSession } from '../net/session';
 import { gameLoaders } from '../games/registry';
+import { runBenchmark } from '../core/render/benchmark';
 import type { GameInstance } from '../games/types';
 
 export type LaunchRequest =
@@ -64,6 +65,14 @@ export async function launchGame(req: LaunchRequest, hooks: LaunchHooks): Promis
   };
 
   try {
+    // First run on this device with "Auto" quality: measure the GPU once.
+    if (settings.get().quality === 'auto' && !settings.get().detectedQuality) {
+      loading.set(0.04, 'Tuning graphics for this device');
+      await new Promise((r) => requestAnimationFrame(r));
+      const result = runBenchmark();
+      settings.update({ detectedQuality: result.preset });
+      console.info(`[quality] ${result.gpu}: ${result.msPerFrame.toFixed(2)} ms → ${result.preset}`);
+    }
     // Join and download in parallel; the room tells us which game a code belongs to.
     const sessionPromise = req.online ? NetSession.connect(req.join) : Promise.resolve(null);
     let game = knownGame;

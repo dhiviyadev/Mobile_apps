@@ -17,7 +17,10 @@ async function openPlayer(browser: Browser, name: string): Promise<Page> {
   return page;
 }
 
-const v = (page: Page) => page.evaluate.bind(page);
+const v = (page: Page) => {
+  void page.bringToFront();
+  return page.evaluate.bind(page);
+};
 
 test('two players share a Voxelvale world: edits, chat and avatars replicate', async ({ browser }, info) => {
   test.skip(info.project.name !== 'desktop', 'desktop project only');

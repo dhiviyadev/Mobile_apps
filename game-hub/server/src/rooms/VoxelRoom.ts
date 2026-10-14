@@ -19,10 +19,7 @@ import {
   type BlockEdit,
   blockDef,
   blockInWorld,
-  CHAT_BURST,
-  CHAT_REFILL_PER_SECOND,
   CLOSE_KICKED,
-  type ChatMessage,
   DAY_LENGTH_SECONDS,
   decodeEdit,
   decodeMove,
@@ -38,7 +35,6 @@ import {
   PLAYER_HEIGHT,
   PLAYER_WIDTH,
   REACH,
-  sanitizeChat,
   TokenBucket,
   VOXEL_MAX_PLAYERS,
   VoxelMsg,
@@ -59,7 +55,6 @@ const VIOLATION_KICK = 25;
 
 interface PlayerRuntime {
   editBucket: TokenBucket;
-  chatBucket: TokenBucket;
   lastMoveAt: number;
   hasPosition: boolean;
   violations: number;
@@ -84,6 +79,7 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
 
   protected setup(options: JoinOptions & { seed?: number }): void {
     this.state = new VoxelState();
+    this.chatEnabled = true;
     // Tests may pin the seed; real clients never send one.
     const seed = typeof options.seed === 'number' && process.env.NODE_ENV === 'test' ? options.seed >>> 0 : (Math.random() * 0xffffffff) >>> 0;
     this.state.seed = this.mode === 'parkour' ? 20251 + Math.floor(Math.random() * 1000) : seed;
@@ -93,7 +89,6 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
 
     this.onMessage(VoxelMsg.Edit, (client, data) => this.handleEdit(client, data));
     this.onMessage(VoxelMsg.Move, (client, data) => this.handleMove(client, data));
-    this.onMessage(VoxelMsg.Chat, (client, data: { text?: unknown }) => this.handleChat(client, data));
     this.onMessage(VoxelMsg.Parkour, (client, data: ParkourEventMsg) => this.handleParkour(client, data));
   }
 
@@ -111,7 +106,6 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     const now = Date.now();
     this.runtime.set(client.sessionId, {
       editBucket: new TokenBucket(EDIT_BURST, EDIT_REFILL, now),
-      chatBucket: new TokenBucket(CHAT_BURST, CHAT_REFILL_PER_SECOND, now),
       lastMoveAt: now,
       hasPosition: false,
       violations: 0,
@@ -120,7 +114,7 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
       runCheckpoint: 0,
     });
     this.sendWorld(client);
-    this.systemChat(`${player.name} joined`);
+    void player;
   }
 
   protected override onPlayerReconnected(client: Client, _player: VoxelPlayer): void {
@@ -129,9 +123,8 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     this.sendWorld(client); // catch up on edits made while away
   }
 
-  protected override onPlayerRemoved(sessionId: string, player: VoxelPlayer): void {
+  protected override onPlayerRemoved(sessionId: string): void {
     this.runtime.delete(sessionId);
-    this.systemChat(`${player.name} left`);
   }
 
   protected override describeStatus(): string {
@@ -251,25 +244,6 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     player.yaw = m.yaw;
     player.pitch = m.pitch;
     player.flags = m.flags;
-  }
-
-  // ---- chat ------------------------------------------------------------------------------
-
-  private handleChat(client: Client, data: { text?: unknown }): void {
-    const player = this.state.players.get(client.sessionId);
-    const rt = this.runtime.get(client.sessionId);
-    if (!player || !rt) return;
-    const text = sanitizeChat(data?.text);
-    if (!text) return;
-    if (!rt.chatBucket.take()) {
-      client.send(VoxelMsg.Chat, { id: '', name: '', color: 0, text: 'Slow down: you are sending messages too fast.', system: true } satisfies ChatMessage);
-      return;
-    }
-    this.broadcast(VoxelMsg.Chat, { id: client.sessionId, name: player.name, color: player.color, text } satisfies ChatMessage);
-  }
-
-  private systemChat(text: string): void {
-    this.broadcast(VoxelMsg.Chat, { id: '', name: '', color: 0, text, system: true } satisfies ChatMessage);
   }
 
   // ---- parkour ----------------------------------------------------------------------------

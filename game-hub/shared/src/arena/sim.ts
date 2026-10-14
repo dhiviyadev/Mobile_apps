@@ -93,8 +93,8 @@ interface HistoryEntry {
 }
 
 export class ArenaSimulation {
-  readonly world: BoxWorld;
-  readonly nav: NavGraph;
+  world: BoxWorld;
+  nav: NavGraph;
   readonly teams: number;
   tick = 0;
   /** Simulation time in seconds. */
@@ -115,7 +115,7 @@ export class ArenaSimulation {
   private freeIndices: number[] = [];
 
   constructor(
-    readonly map: ArenaMap,
+    public map: ArenaMap,
     readonly mode: ArenaMode,
     private readonly opts: SimOptions = {},
   ) {
@@ -123,6 +123,30 @@ export class ArenaSimulation {
     this.nav = new NavGraph(map, this.world);
     this.teams = ARENA_MODE_INFO[mode].teams;
     this.rnd = mulberry32(opts.seed ?? 1234);
+  }
+
+  /** Switches to another map (between matches). Everyone respawns there. */
+  changeMap(map: ArenaMap): void {
+    this.map = map;
+    this.world = new BoxWorld(map.boxes);
+    this.nav = new NavGraph(map, this.world);
+    this.history.length = 0;
+    for (const [id, brain] of this.brains) {
+      brain.path = [];
+      brain.lastSeen = null;
+      void id;
+    }
+    if (this.phase === 'warmup') for (const p of this.players.values()) this.spawn(p);
+  }
+
+  /** Back to warmup (players stay, stats reset at the next startMatch). */
+  resetToWarmup(): void {
+    this.matchWinner = null;
+    this.lastRoundWinner = null;
+    this.teamWins = [0, 0];
+    this.round = 0;
+    this.setPhase('warmup', 0);
+    for (const p of this.players.values()) this.spawn(p);
   }
 
   get maxPlayers(): number {
@@ -323,10 +347,7 @@ export class ArenaSimulation {
         break;
       case 'matchEnd':
         this.phaseTimer -= TICK_DT;
-        if (this.phaseTimer <= 0 && this.opts.loopMatches) {
-          this.setPhase('warmup', 0);
-          for (const p of this.players.values()) this.spawn(p);
-        }
+        if (this.phaseTimer <= 0 && this.opts.loopMatches) this.resetToWarmup();
         break;
     }
   }

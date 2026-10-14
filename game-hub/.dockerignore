@@ -1,0 +1,6 @@
+**/node_modules
+**/dist
+client/test-results
+client/playwright-report
+.git
+*.log

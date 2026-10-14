@@ -67,10 +67,11 @@ test.describe('Voxelvale offline', () => {
     const breakBtn = page.locator('.touch-btn[data-id="break"]');
     const box = (await breakBtn.boundingBox())!;
     await touch.start(3, box.x + box.width / 2, box.y + box.height / 2);
-    await page.waitForTimeout(1500);
+    // Hold until the block breaks (frame rate in headless CI varies a lot).
+    await expect
+      .poll(() => page.evaluate((b) => (window as unknown as { __voxel: V }).__voxel.world.getBlock(...b), below), { timeout: 15_000 })
+      .not.toBe(blockBefore);
     await touch.end(3);
-    const blockAfter = await page.evaluate((b) => (window as unknown as { __voxel: V }).__voxel.world.getBlock(...b), below);
-    expect(blockAfter).not.toBe(blockBefore);
 
     // Pick slot 3 (stone) on the hotbar and place a block.
     const slot = page.locator('.slot').nth(2);
