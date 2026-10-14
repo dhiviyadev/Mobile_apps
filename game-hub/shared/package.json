@@ -1,0 +1,14 @@
+{
+  "name": "@hub/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Types, constants and deterministic game logic shared by client and server.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  }
+}

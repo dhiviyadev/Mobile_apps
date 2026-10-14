@@ -1,0 +1,22 @@
+{
+  "name": "@hub/client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Tablet-first browser client for the Cobalt Game Hub.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit -p . && vite build",
+    "preview": "vite preview --host",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@hub/shared": "0.1.0",
+    "colyseus.js": "0.16.22",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.180.0",
+    "vite": "^7.3.0"
+  }
+}
