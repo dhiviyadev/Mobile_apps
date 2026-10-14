@@ -22,6 +22,8 @@ export interface AvatarPose {
   alpha?: number;
   /** Optional arm pose: point both arms forward (holding a weapon). */
   aiming?: boolean;
+  /** Draw a weapon in the hands (arena). */
+  gun?: boolean;
 }
 
 const SKIN = [0xf1c7a5, 0xd9a07a, 0xa86b45, 0x6e4529];
@@ -38,6 +40,7 @@ export class AvatarRenderer {
   private readonly bodies: Part;
   private readonly arms: Part;
   private readonly legs: Part;
+  private readonly guns: Part;
   private readonly walk = new Map<string, number>();
   private readonly tags = new Map<string, { sprite: THREE.Sprite; text: string }>();
   private readonly m = new THREE.Matrix4();
@@ -65,6 +68,11 @@ export class AvatarRenderer {
     this.bodies = part(new THREE.BoxGeometry(0.48, 0.66, 0.26).translate(0, 0.33, 0), 1);
     this.arms = part(new THREE.BoxGeometry(0.18, 0.64, 0.2).translate(0, -0.28, 0), 2);
     this.legs = part(new THREE.BoxGeometry(0.22, 0.72, 0.24).translate(0, -0.36, 0), 2);
+    this.guns = part(new THREE.BoxGeometry(0.09, 0.12, 0.62).translate(0, 0, -0.31), 1);
+  }
+
+  private get parts(): Part[] {
+    return [this.heads, this.eyes, this.bodies, this.arms, this.legs, this.guns];
   }
 
   /** Updates every avatar for this frame. */
@@ -111,15 +119,22 @@ export class AvatarRenderer {
         this.eyes.mesh.setColorAt(i * 2 + k, this.c.setHex(0x1a1f33));
       }
 
+      // Weapon held at chest height, following the view pitch.
+      const gunScale = a.gun ? 1 : 0;
+      this.local.compose(this.p.set(0.12, 1.2 - crouch, -0.2), this.q.setFromEuler(this.e.set(a.pitch * 0.8, 0, 0)), this.s.set(gunScale, gunScale, gunScale));
+      this.m.multiplyMatrices(this.base, this.local);
+      this.guns.mesh.setMatrixAt(i, this.m);
+      this.guns.mesh.setColorAt(i, this.c.setHex(0x2b2f3a));
+
       if (showNames && a.name) this.updateTag(a, camera);
     }
-    for (const part of [this.heads, this.eyes, this.bodies, this.arms, this.legs]) {
+    for (const part of this.parts) {
       part.mesh.count = n * part.perAvatar;
       part.mesh.instanceMatrix.needsUpdate = true;
       if (part.mesh.instanceColor) part.mesh.instanceColor.needsUpdate = true;
     }
     for (const [id, tag] of this.tags) {
-      if (!seen.has(id) || !showNames) {
+      if (!seen.has(id) || !showNames || !poses.some((p) => p.id === id && p.name)) {
         tag.sprite.visible = false;
         if (!seen.has(id)) {
           this.group.remove(tag.sprite);
@@ -134,13 +149,13 @@ export class AvatarRenderer {
 
   /** Applies daylight to the avatar materials (voxel day/night). */
   setBrightness(k: number): void {
-    for (const part of [this.heads, this.eyes, this.bodies, this.arms, this.legs]) {
+    for (const part of this.parts) {
       (part.mesh.material as THREE.MeshLambertMaterial).color.setScalar(k);
     }
   }
 
   dispose(): void {
-    for (const part of [this.heads, this.eyes, this.bodies, this.arms, this.legs]) {
+    for (const part of this.parts) {
       part.mesh.geometry.dispose();
       (part.mesh.material as THREE.Material).dispose();
       part.mesh.dispose();

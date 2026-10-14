@@ -130,3 +130,63 @@ npm run dev         # open two browser windows → Voxelvale → Private room in
 - Edits are kept in memory per room: a room's world resets when everyone leaves. A persistence layer (Redis or SQLite) would be the next step.
 - Player movement in Voxelvale is client-authoritative with server sanity checks (no full server physics). That is fine for a co-op sandbox; the competitive arena uses full server authority.
 - Nametags draw through walls by design (helps find friends while building).
+
+---
+
+## Phase 4: Arcfire Arena vs bots ✅
+
+### What was built
+
+**Shared simulation** (`shared/src/arena/`, used by offline play now and the server in Phase 5)
+- `maps.ts`: **3 original maps** built from axis-aligned boxes, point-mirrored so both sides are identical, each with spawns, a bot waypoint graph and a colour theme:
+  - **Foundry Yard**: raised central deck with stairs, container lanes, corner gantries.
+  - **Sunken Courts**: terraces overlooking a pillared court.
+  - **Skybridge**: two towers linked by an exposed bridge over close-quarters cover.
+- `geometry.ts`: slab ray tests and a grid-accelerated `BoxWorld` (raycast, overlap, line of sight).
+- `movement.ts`: acceleration, friction, jump, crouch, gravity, **step-up for stairs** and snap-down.
+- `weapons.ts`: Rifle (auto), Scattergun (9 pellets, falloff), Longshot (scoped sniper, one-shot headshot), Sidearm (semi-auto), Blade (melee). Each has damage, head multiplier, fire rate, magazine/reserve, reload time, spread (hip/ADS/moving/air), bloom, recoil, range falloff and zoom FOV.
+- `player.ts`: `applyCommand`, **the single per-input step** for movement, weapon switching, reloads, fire rate, ammo, bloom and **deterministic spread** (seeded by player and command, so client tracers match the server).
+- `hitscan.ts`: head and body hitboxes; walls block shots (line of sight); summed pellet damage.
+- `sim.ts` (`ArenaSimulation`):
+  - 30 Hz ticks
+  - **command budget** (a client can't simulate faster than real time)
+  - **lag-compensated hits** against a 16-tick hitbox history (capped at 220 ms)
+  - teams or FFA, no friendly fire
+  - round state machine: warmup → loadout (6 s) → live (90 s) → round end → **first to 5** → match end
+  - elimination and time-out rules, plus stats (K/D, damage, accuracy, headshots)
+- `bots.ts`: view-cone perception, reaction time, rate-limited aim with shrinking error, preferred range per weapon, strafing, ADS for snipers, reload and weapon fallback, and BFS over the waypoint graph with stuck detection. **Bots send the same commands as players**, so they follow the same rules.
+- `protocol.ts`: binary input commands (16-bit seq with wrap-around) and per-client snapshots (cm-quantised poses), ready for Phase 5.
+
+**Client** (`client/src/games/arena/`)
+- `ArenaGame` uses the **same prediction, reconciliation and interpolation code offline and online**. Offline, `LocalBackend` runs the authoritative simulation in the browser and feeds it snapshots each tick.
+- Rendering:
+  - whole map as **one merged mesh** with baked shading, contact shadows and a world-space grid shader
+  - gradient sky
+  - instanced avatars with team colours and weapons
+  - pooled instanced tracers, sparks and muzzle flashes
+  - first-person weapon models drawn in an overlay pass, with sway, bob, kick, reload, draw, ADS and slash animations
+- HUD:
+  - dynamic crosshair (gap follows real spread), hit markers (headshot and kill variants), directional damage arcs, low-HP vignette
+  - HP and ammo with reload bar, team scores or FFA leader, round timer, kill feed, round banners
+  - sniper scope overlay, spectator camera after death
+- Loadout picker between rounds, scoreboard (hold Tab or tap the button), end-of-match screen (MVP, stats table, next map or rematch).
+- Touch layout:
+  - Fire is a look-through button, so you shoot and aim with one thumb
+  - Aim is a toggle; Jump, Crouch, Reload, Swap and Blade buttons
+  - scoreboard and menu
+- **Touch-only aim assist**: sensitivity slows near a visible enemy and never moves the camera on its own.
+- Recoil kick with partial recovery; FOV zoom scales look sensitivity.
+
+### How to test
+```bash
+npm test     # 51 shared tests incl. map validity (spawns, waypoints, nav connectivity), stairs, fire rate,
+             # semi-auto, deterministic spread, headshots/LOS, lag compensation, speed-hack budget,
+             # protocol round-trips, and complete bot-vs-bot matches in 1v1/2v2/FFA on all 3 maps
+npm run e2e  # arena e2e: loadout pick, touch fire + reload, weapon keys + scoreboard, match end → next map
+npm run dev  # Arcfire Arena → pick a mode → Practice vs bots
+```
+
+### Known issues / notes
+- Bots are deliberately modest (reaction 0.4–0.55 s, imperfect tracking) for touch players. There's no difficulty selector yet.
+- Hitboxes are two boxes (head and body) and don't animate with limbs.
+- Dead players disappear instead of ragdolling.
