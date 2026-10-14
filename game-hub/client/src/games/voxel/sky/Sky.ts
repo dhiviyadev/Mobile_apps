@@ -31,6 +31,10 @@ export class Sky {
   private readonly stars: THREE.Points;
   private readonly clouds: THREE.InstancedMesh;
   private cloudOffset = 0;
+  private lastDomeTime = -1;
+  private readonly tmpColor = new THREE.Color();
+  private readonly tmpMatrix = new THREE.Matrix4();
+  private readonly tmpDir = new THREE.Vector3();
   private readonly cloudBase: { x: number; z: number; sx: number; sz: number }[] = [];
 
   constructor(cloudCount = 40) {
@@ -84,18 +88,21 @@ export class Sky {
     this.zenith.copy(NIGHT_TOP).lerp(DAY_TOP, this.daylight).lerp(DUSK_TOP, dusk * 0.4);
     this.horizon.copy(NIGHT_HORIZON).lerp(DAY_HORIZON, this.daylight).lerp(DUSK_HORIZON, dusk * 0.7);
 
-    // Dome gradient: vertex colour by height.
-    const pos = this.dome.geometry.attributes.position as THREE.BufferAttribute;
-    const c = new THREE.Color();
-    for (let i = 0; i < pos.count; i++) {
-      const t = THREE.MathUtils.clamp(pos.getY(i) / SKY_RADIUS, -0.2, 1);
-      c.copy(this.horizon).lerp(this.zenith, Math.pow(Math.max(0, t), 0.6));
-      this.domeColors.setXYZ(i, c.r, c.g, c.b);
+    // Dome gradient: vertex colour by height (only recomputed when the sky visibly changes).
+    if (Math.abs(this.time - this.lastDomeTime) > 0.0008) {
+      this.lastDomeTime = this.time;
+      const pos = this.dome.geometry.attributes.position as THREE.BufferAttribute;
+      const c = this.tmpColor;
+      for (let i = 0; i < pos.count; i++) {
+        const t = THREE.MathUtils.clamp(pos.getY(i) / SKY_RADIUS, -0.2, 1);
+        c.copy(this.horizon).lerp(this.zenith, Math.pow(Math.max(0, t), 0.6));
+        this.domeColors.setXYZ(i, c.r, c.g, c.b);
+      }
+      this.domeColors.needsUpdate = true;
     }
-    this.domeColors.needsUpdate = true;
 
     this.group.position.copy(cameraPos);
-    const dir = new THREE.Vector3(Math.cos(sunAngle), Math.sin(sunAngle), 0.25).normalize();
+    const dir = this.tmpDir.set(Math.cos(sunAngle), Math.sin(sunAngle), 0.25).normalize();
     this.sun.position.copy(dir).multiplyScalar(SKY_RADIUS * 0.85);
     this.sun.lookAt(0, 0, 0);
     this.moon.position.copy(dir).multiplyScalar(-SKY_RADIUS * 0.85);
@@ -105,7 +112,7 @@ export class Sky {
 
     // Clouds drift along +X and stay put in world space, wrapping in a 360 m tile around the camera.
     this.cloudOffset += dtDays * 2400;
-    const m = new THREE.Matrix4();
+    const m = this.tmpMatrix;
     const cloudTint = 0.35 + this.daylight * 0.65;
     (this.clouds.material as THREE.MeshBasicMaterial).color.setRGB(cloudTint, cloudTint, cloudTint * 1.04);
     for (let i = 0; i < this.cloudBase.length; i++) {

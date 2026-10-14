@@ -225,6 +225,7 @@ export class HubApp {
     onGameEnd: (message) => {
       this.root.classList.remove('hidden');
       this.poller.start();
+      audio.playMusic('menu');
       if (message) toast(message, 'info', 4000);
     },
   };

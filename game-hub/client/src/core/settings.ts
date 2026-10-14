@@ -23,6 +23,8 @@ export interface Settings {
   /** Voxel render distance in chunks. */
   renderDistance: number;
   dynamicResolution: boolean;
+  /** 0 = follow the display, 30 = battery saver. */
+  fpsCap: number;
   showStats: boolean;
   // Controls
   lookSensitivity: number;
@@ -53,6 +55,7 @@ export const DEFAULT_SETTINGS: Settings = {
   detectedQuality: null,
   renderDistance: 4,
   dynamicResolution: true,
+  fpsCap: 0,
   showStats: false,
   lookSensitivity: 1,
   mouseSensitivity: 1,

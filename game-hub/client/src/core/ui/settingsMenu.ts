@@ -4,6 +4,8 @@
  * running game, so changes apply live.
  */
 import { audio } from '../audio/audio';
+import { runBenchmark } from '../render/benchmark';
+import { toast } from './overlays';
 import { isTouchDevice } from '../device';
 import { type QualitySetting, type Settings, settings } from '../settings';
 import { clear, h, removeWithTransition, svg } from './dom';
@@ -47,7 +49,20 @@ export function openSettings(opts: SettingsMenuOptions = {}): void {
         ]),
         sliderRow('Render distance (Voxelvale)', 'renderDistance', 2, 8, 1, (v) => `${v} chunks`),
         toggleRow('Dynamic resolution', 'dynamicResolution', 'Lowers resolution automatically when the frame rate drops.'),
+        batteryRow(),
         toggleRow('Show FPS & ping', 'showStats'),
+        h('div', { class: 'setting-row' },
+          h('div', { class: 'setting-label' }, 'Re-test this device', h('small', null, 'Runs the quick graphics benchmark again for "Auto".')),
+          h('button', {
+            class: 'btn btn-sm',
+            onclick: () => {
+              const r = runBenchmark();
+              settings.update({ detectedQuality: r.preset });
+              toast(`Auto quality: ${r.preset}`, 'success');
+              renderBody();
+            },
+          }, 'Run'),
+        ),
       );
     } else if (tab === 'controls') {
       body.append(
@@ -81,6 +96,17 @@ export function openSettings(opts: SettingsMenuOptions = {}): void {
         sliderRow('Master volume', 'masterVolume', 0, 1, 0.05, pct),
         sliderRow('Music', 'musicVolume', 0, 1, 0.05, pct),
         sliderRow('Sound effects', 'sfxVolume', 0, 1, 0.05, pct, () => audio.play('click')),
+        h('div', { class: 'setting-row' },
+          h('div', { class: 'setting-label' }, 'Reset all settings', h('small', null, 'Keeps your nickname and colour.')),
+          h('button', {
+            class: 'btn btn-sm btn-danger',
+            onclick: () => {
+              settings.reset(['quality', 'detectedQuality', 'renderDistance', 'dynamicResolution', 'fpsCap', 'showStats', 'lookSensitivity', 'mouseSensitivity', 'invertY', 'leftHanded', 'autoJump', 'aimAssist', 'touchButtonScale', 'touchOpacity', 'touchLayout', 'masterVolume', 'musicVolume', 'sfxVolume']);
+              toast('Settings reset', 'success');
+              renderBody();
+            },
+          }, 'Reset'),
+        ),
       );
     }
   };
@@ -142,6 +168,15 @@ function toggleRow(label: string, key: BoolKey, hint?: string): HTMLElement {
   input.addEventListener('change', () => settings.update({ [key]: input.checked } as Partial<Settings>));
   return h('label', { class: 'setting-row' },
     h('div', { class: 'setting-label' }, label, hint ? h('small', null, hint) : null),
+    input,
+  );
+}
+
+function batteryRow(): HTMLElement {
+  const input = h('input', { type: 'checkbox', class: 'toggle', checked: settings.get().fpsCap === 30 });
+  input.addEventListener('change', () => settings.update({ fpsCap: input.checked ? 30 : 0 }));
+  return h('label', { class: 'setting-row' },
+    h('div', { class: 'setting-label' }, 'Battery saver', h('small', null, 'Caps games at 30 FPS: cooler tablet, longer battery.')),
     input,
   );
 }

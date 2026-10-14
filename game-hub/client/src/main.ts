@@ -17,6 +17,8 @@ document.documentElement.classList.toggle('ios', isIOS());
 // Unlock WebAudio on the very first interaction (iOS requirement).
 const unlock = () => {
   audio.unlock();
+  // Gentle menu music in the hub (games switch to their own track).
+  if (!document.body.classList.contains('in-game')) audio.playMusic('menu');
   window.removeEventListener('pointerdown', unlock);
   window.removeEventListener('keydown', unlock);
 };

@@ -19,6 +19,7 @@ export class DynamicResolution {
   ) {}
 
   configure(targetFps: number, minScale: number): void {
+    if (targetFps === this.targetFps && minScale === this.minScale) return;
     this.targetFps = targetFps;
     this.minScale = minScale;
     if (this.scale < minScale) this.set(minScale);

@@ -36,6 +36,7 @@ export class StatsOverlay {
     const parts = [`${Math.round(this.renderer.fps)} fps`];
     if (p !== null) parts.push(`${Math.round(p)} ms`);
     parts.push(`${this.renderer.profile.preset} ${res}%`);
+    parts.push(`${this.renderer.drawCalls} dc · ${(this.renderer.triangles / 1000).toFixed(0)}k tri`);
     const extra = this.extra();
     if (extra) parts.push(extra);
     this.el.textContent = parts.join(' · ');

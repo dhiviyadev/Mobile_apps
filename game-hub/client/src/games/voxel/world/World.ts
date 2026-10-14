@@ -58,6 +58,8 @@ export class World {
   private readonly edits = new Map<string, Map<number, number>>();
   private centerCx = 0;
   private centerCz = 0;
+  private wanted: { cx: number; cz: number; d: number }[] = [];
+  private wantedKey = '';
   private disposed = false;
   renderDistance = 4;
 
@@ -141,24 +143,31 @@ export class World {
     const r = this.renderDistance;
 
     // Wanted chunks: data for radius r+1 (neighbours of the visible ring), meshes for r.
-    const wanted: { cx: number; cz: number; d: number }[] = [];
-    for (let dz = -r - 1; dz <= r + 1; dz++) {
-      for (let dx = -r - 1; dx <= r + 1; dx++) {
-        const cx = this.centerCx + dx;
-        const cz = this.centerCz + dz;
-        if (!chunkInWorld(cx, cz)) continue;
-        wanted.push({ cx, cz, d: dx * dx + dz * dz });
+    // Rebuilt only when the player crosses a chunk border or the radius changes.
+    const key = `${this.centerCx},${this.centerCz},${r}`;
+    if (key !== this.wantedKey) {
+      this.wantedKey = key;
+      this.wanted = [];
+      for (let dz = -r - 1; dz <= r + 1; dz++) {
+        for (let dx = -r - 1; dx <= r + 1; dx++) {
+          const cx = this.centerCx + dx;
+          const cz = this.centerCz + dz;
+          if (!chunkInWorld(cx, cz)) continue;
+          this.wanted.push({ cx, cz, d: dx * dx + dz * dz });
+        }
       }
+      this.wanted.sort((a, b) => a.d - b.d);
     }
-    wanted.sort((a, b) => a.d - b.d);
+    const wanted = this.wanted;
+    const busy = this.pool.capacity <= 0;
 
     // 1. Urgent remeshes (player edits) first.
-    for (const c of this.chunks.values()) {
+    if (!busy) for (const c of this.chunks.values()) {
       if (this.pool.capacity <= 0) break;
       if (c.urgent && c.dirty && !c.meshing && this.neighboursReady(c)) this.mesh(c);
     }
     // 2. Generate / mesh nearest-first.
-    for (const w of wanted) {
+    if (!busy) for (const w of wanted) {
       if (this.pool.capacity <= 0) break;
       const key = chunkKey(w.cx, w.cz);
       let c = this.chunks.get(key);

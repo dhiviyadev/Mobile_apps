@@ -277,6 +277,7 @@ export class ArenaGame {
   private frame = (): void => {
     if (!this.running) return;
     this.raf = requestAnimationFrame(this.frame);
+    if (!this.renderer.frameAllowed()) return;
     const dt = this.renderer.beginFrame();
     const paused = this.pause.isOpen || isSettingsOpen() || this.touch?.isEditing() === true || this.chat?.isOpen === true;
     this.input.setEnabled(!paused && !this.matchEnd.isVisible);

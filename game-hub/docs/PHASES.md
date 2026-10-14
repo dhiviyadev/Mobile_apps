@@ -243,3 +243,49 @@ To feel the netcode under bad conditions, use Chrome DevTools → Network → th
 - The server trusts the client's view angles (inherent to any FPS), so a client-side aimbot can't be detected; we only validate what physics and rules allow.
 - WebSockets are TCP, so a lost packet stalls the stream briefly (head-of-line blocking). WebTransport/UDP would be the upgrade path.
 - In headless CI the browser tests render through SwiftShader. The Playwright config passes `--disable-gpu-vsync` and anti-backgrounding flags and allows one retry, because software GL occasionally stalls frames.
+
+---
+
+## Phase 6: Performance, settings, polish and deployment ✅
+
+### What was built
+- **Auto quality**: a ≤0.15 s first-run GPU benchmark (offscreen WebGL2 fill-rate and ALU workload, forced to completion with a 1-pixel readback) combined with device hints (cores, memory, known entry-level GPUs) picks Low, Medium or High. It can be re-run from Settings.
+- **Battery saver** (30 FPS cap). The dynamic-resolution budget follows the cap.
+- **Render-distance caps per preset** (Low 3, Medium 5, High 8 chunks).
+- **Stats overlay** now shows FPS, ping, preset and resolution scale, plus draw calls and triangles summed over all render passes.
+- **Hot-path trims**:
+  - The voxel chunk wish-list is rebuilt only when you cross a chunk border.
+  - Scheduling is skipped while workers are saturated.
+  - The sky gradient is recoloured only when the sky visibly changes, and its per-frame allocations were removed.
+- **Settings**:
+  - Battery saver and "Re-test this device" in Graphics.
+  - "Reset all settings" (keeps nickname and colour).
+  - Everything from earlier phases: quality, render distance, dynamic resolution, FPS/ping, look and mouse sensitivity, invert-Y, left-handed layout, auto-jump, aim assist, button size and opacity, touch layout editor, master/music/effects volume.
+- **Menu music** in the hub (generative; games switch to their own track).
+- Arena viewmodel resized so it doesn't crowd the touch buttons.
+- **Deployment**:
+  - `server/Dockerfile`: multi-stage, esbuild bundle, production deps only, non-root user, health check, overridable base image. **Built and run successfully**: `/health`, `/api/rooms` and matchmaking verified inside the container.
+  - `fly.toml` (one always-on machine, since rooms are in memory), `../render.yaml` (Docker server + static client), `netlify.toml`, Cloudflare Pages steps in the README, and `_headers` for immutable asset caching.
+- **README** rewritten: architecture, local run (including playing on a tablet over LAN), controls, settings, performance budget, deployment for Fly.io, Render, Docker, Cloudflare Pages and Netlify, configuration and known issues. Screenshots in `docs/screenshots/`.
+
+### Measured render budget (Chromium; CPU-side cost per frame)
+| Scene | Draw calls | Triangles | CPU per frame (median) |
+| --- | --- | --- | --- |
+| Voxelvale, Low (3 chunks) | 44 | 49 k | 0.9 ms |
+| Voxelvale, Medium (5 chunks) | 61 | 126 k | 1.6 ms |
+| Voxelvale, High (8 chunks) | 117 | 181 k | 3.1 ms |
+| Arcfire Arena, FFA | 9 | 1.5 k | 1.1 ms |
+
+### How to test
+```bash
+npm test && npm run e2e            # 70 + 26 automated tests
+npm run build                      # client bundle sizes are printed by Vite
+docker build -f server/Dockerfile -t cobalt-hub-server . && docker run -p 2567:2567 cobalt-hub-server
+```
+On a tablet: Settings → Show FPS & ping, then play both games on Auto quality. Try Battery saver and the render-distance slider, and edit the touch layout from the pause menu.
+
+### Known issues / what to verify next
+- **Real-device performance is not yet verified.** This environment has no GPU (tests use SwiftShader), so the 60 FPS target on a base iPad and 30 FPS on low-end Android still need checking on hardware. The benchmark thresholds in `client/src/core/render/benchmark.ts` may need tuning after that.
+- Voxel worlds aren't persisted server-side; rooms reset when empty.
+- No service worker / offline cache yet (the PWA manifest is in place).
+- The FPS-cap and dynamic-resolution heuristics use frame intervals, so a browser that throttles `requestAnimationFrame` (e.g. Low Power Mode on iOS) will look like a slow GPU and drop resolution.

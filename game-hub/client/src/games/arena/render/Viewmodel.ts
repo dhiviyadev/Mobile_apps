@@ -8,8 +8,8 @@ import { WeaponId } from '@hub/shared';
 import { buildWeaponGeometry, MUZZLE } from './weaponModels';
 
 /** Models are authored at real-world size; the viewmodel draws them smaller and closer. */
-const MODEL_SCALE = 0.55;
-const HIP = new THREE.Vector3(0.15, -0.15, -0.42);
+const MODEL_SCALE = 0.45;
+const HIP = new THREE.Vector3(0.14, -0.14, -0.42);
 const ADS: Record<WeaponId, THREE.Vector3> = {
   [WeaponId.Rifle]: new THREE.Vector3(0, -0.07, -0.34),
   [WeaponId.Shotgun]: new THREE.Vector3(0, -0.075, -0.34),

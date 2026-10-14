@@ -24,6 +24,10 @@ export class GameRenderer {
   private resizeListeners = new Set<(w: number, h: number) => void>();
   /** Smoothed frames per second for the stats overlay. */
   fps = 60;
+  /** Draw calls and triangles of the last completed frame (all passes). */
+  drawCalls = 0;
+  triangles = 0;
+  private lastRendered = 0;
 
   constructor(private readonly container: HTMLElement) {
     this.profile = QUALITY_PROFILES[settings.effectiveQuality()];
@@ -35,6 +39,8 @@ export class GameRenderer {
       preserveDrawingBuffer: false,
     });
     this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+    // Several render passes per frame (world + first-person overlay): count them together.
+    this.renderer.info.autoReset = false;
     this.canvas = this.renderer.domElement;
     this.canvas.setAttribute('tabindex', '0');
     container.prepend(this.canvas);
@@ -67,12 +73,31 @@ export class GameRenderer {
     return () => this.resizeListeners.delete(fn);
   }
 
+  /**
+   * Battery saver: returns false when this animation frame should be skipped
+   * to honour the FPS cap. Call before beginFrame().
+   */
+  frameAllowed(): boolean {
+    const cap = settings.get().fpsCap;
+    if (!cap) return true;
+    const now = performance.now();
+    if (now - this.lastRendered < 1000 / cap - 3) return false;
+    this.lastRendered = now;
+    return true;
+  }
+
   /** Call once per animation frame before rendering; returns dt in seconds. */
   beginFrame(): number {
+    const info = this.renderer.info;
+    this.drawCalls = info.render.calls;
+    this.triangles = info.render.triangles;
+    info.reset();
     const now = performance.now();
     const ms = now - this.lastFrame;
     this.lastFrame = now;
     if (ms > 0 && ms < 1000) this.fps += (1000 / ms - this.fps) * 0.05;
+    // With a 30 FPS cap the frame budget is 33 ms; don't let dynamic resolution fight the cap.
+    this.dynres.configure(settings.get().fpsCap ? Math.min(settings.get().fpsCap, this.profile.targetFps) : this.profile.targetFps, this.profile.minRenderScale);
     this.dynres.update(ms, settings.get().dynamicResolution);
     return Math.min(0.1, ms / 1000);
   }

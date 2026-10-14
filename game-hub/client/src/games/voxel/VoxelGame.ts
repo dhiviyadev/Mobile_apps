@@ -272,6 +272,7 @@ export class VoxelGame {
   private frame = (): void => {
     if (!this.running) return;
     this.raf = requestAnimationFrame(this.frame);
+    if (!this.renderer.frameAllowed()) return;
     const dt = this.renderer.beginFrame();
     const input = this.input.consume();
     const paused = this.pause.isOpen || isSettingsOpen() || this.touch?.isEditing() === true || this.net?.isChatOpen?.() === true;
@@ -437,7 +438,7 @@ export class VoxelGame {
   private applyRenderDistance(): void {
     const s = settings.get();
     // The slider wins; low-quality devices are capped to keep frame time sane.
-    const cap = this.renderer.profile.preset === 'low' ? 4 : this.renderer.profile.preset === 'medium' ? 6 : 8;
+    const cap = this.renderer.profile.preset === 'low' ? 3 : this.renderer.profile.preset === 'medium' ? 5 : 8;
     this.world.renderDistance = Math.min(cap, s.renderDistance);
     const far = this.world.renderDistance * 16 + 32;
     this.camera.far = Math.max(SKY_RADIUS * 1.2, far);
