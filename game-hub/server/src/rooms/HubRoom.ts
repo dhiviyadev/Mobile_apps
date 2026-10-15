@@ -28,7 +28,8 @@ import { logger } from '../log';
 import { getWorldStore } from '../voxel/WorldStore';
 import type { HubPlayer, HubState } from './schema/HubState';
 
-const CODE_SET = 'hub:room-codes';
+/** Presence set of the codes held by open rooms (every game). */
+export const ROOM_CODE_SET = 'hub:room-codes';
 
 /**
  * Claims in progress in this process ("set|member"). Checking a presence set
@@ -150,13 +151,13 @@ export abstract class HubRoom<S extends HubState<P>, P extends HubPlayer> extend
 
   /** A code is free when no open room uses it and no saved world is stored under it. */
   protected async isCodeAvailable(code: string): Promise<boolean> {
-    if (await this.presence.sismember(CODE_SET, code)) return false;
+    if (await this.presence.sismember(ROOM_CODE_SET, code)) return false;
     return !(await getWorldStore().exists(code));
   }
 
   /** Claims code for this room if isFree() agrees (default: no open room has it). */
   protected claimRoomCode(code: string, isFree?: () => Promise<boolean>): Promise<boolean> {
-    return this.claimInSet(CODE_SET, code, isFree);
+    return this.claimInSet(ROOM_CODE_SET, code, isFree);
   }
 
   /**
@@ -189,7 +190,7 @@ export abstract class HubRoom<S extends HubState<P>, P extends HubPlayer> extend
   protected async releaseClaims(): Promise<void> {
     if (!this.codeClaimed) return;
     this.codeClaimed = false;
-    await this.releaseFromSet(CODE_SET, this.roomId);
+    await this.releaseFromSet(ROOM_CODE_SET, this.roomId);
   }
 
   // ---- helpers ------------------------------------------------------------------

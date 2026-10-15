@@ -2,10 +2,10 @@
 import path from 'node:path';
 import { DEFAULT_SERVER_PORT } from '@hub/shared';
 
-/** Positive number from the environment, or the fallback when unset / invalid. */
-function positive(value: string | undefined, fallback: number): number {
+/** Number of at least 1 from the environment, or the fallback when unset / invalid / smaller. */
+function atLeastOne(value: string | undefined, fallback: number): number {
   const n = Number(value);
-  return value !== undefined && value.trim() !== '' && Number.isFinite(n) && n > 0 ? n : fallback;
+  return value !== undefined && value.trim() !== '' && Number.isFinite(n) && n >= 1 ? n : fallback;
 }
 
 export const config = {
@@ -21,8 +21,8 @@ export const config = {
   dataDir: path.resolve(process.env.DATA_DIR || './data'),
   /** Save sandbox worlds to disk. "false" or "0" keeps them in memory only (lost on restart). */
   persistWorlds: !/^(false|0)$/i.test((process.env.PERSIST_WORLDS ?? '').trim()),
-  /** Saved worlds not visited for this many days are deleted. */
-  worldTtlDays: positive(process.env.WORLD_TTL_DAYS, 30),
-  /** Upper bound on saved worlds; the least recently saved go first. */
-  maxSavedWorlds: Math.floor(positive(process.env.MAX_SAVED_WORLDS, 500)),
+  /** Saved worlds not visited for this many days are deleted (at least 1; players are told whole days). */
+  worldTtlDays: atLeastOne(process.env.WORLD_TTL_DAYS, 30),
+  /** Upper bound on saved worlds (at least 1); the least recently saved go first. */
+  maxSavedWorlds: Math.floor(atLeastOne(process.env.MAX_SAVED_WORLDS, 500)),
 };

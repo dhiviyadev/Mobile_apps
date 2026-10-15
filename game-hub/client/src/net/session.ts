@@ -249,8 +249,9 @@ function errorMessage(err: unknown): string {
 /**
  * Joins the open room with this code. When none is open the code may belong
  * to a saved Voxelvale world, so ask the server to reopen it.
+ * Exported for tests.
  */
-async function joinByCode(client: Client, req: CodeRequest): Promise<Room> {
+export async function joinByCode(client: Pick<Client, 'joinById' | 'create'>, req: CodeRequest): Promise<Room> {
   const canRevive = req.game === undefined || req.game === 'voxel';
   for (let attempt = 0; ; attempt++) {
     try {
@@ -258,19 +259,28 @@ async function joinByCode(client: Client, req: CodeRequest): Promise<Room> {
     } catch (err) {
       if (!canRevive || !NOT_FOUND.test(errorMessage(err))) throw err;
     }
+    let room: Room;
     try {
-      return await client.create('voxel', { ...req.options, reviveCode: req.code } satisfies JoinOptions);
+      // private: a server too old to know reviveCode at least makes a hidden room (left again below).
+      room = await client.create('voxel', { ...req.options, private: true, reviveCode: req.code } satisfies JoinOptions);
     } catch (err) {
       // Someone reopened it a moment ago (or its last room is still closing): join that room instead.
       if (attempt > 0 || !errorMessage(err).includes(REVIVE_ERRORS.alreadyOpen)) throw err;
       await sleep(300);
+      continue;
     }
+    if (room.roomId === req.code.trim().toUpperCase()) return room;
+    // The server ignored reviveCode and opened a brand-new world instead.
+    await room.leave(true).catch(() => undefined);
+    throw new Error(`${REVIVE_ERRORS.noSavedWorld}: the server cannot reopen saved worlds`);
   }
 }
 
-function describeJoinError(err: unknown, req: JoinRequest): string {
+/** Turns a join failure into a message for players. Exported for tests. */
+export function describeJoinError(err: unknown, req: JoinRequest): string {
   const msg = errorMessage(err);
   if (msg.includes(REVIVE_ERRORS.alreadyOpen)) return 'That world is just reopening. Try joining again in a moment.';
+  if (msg.includes(REVIVE_ERRORS.tooManyAttempts)) return 'Too many tries with room codes. Wait a minute and try again.';
   if (msg.includes(REVIVE_ERRORS.noSavedWorld) || NOT_FOUND.test(msg)) {
     return req.kind === 'code' ? `No room with code ${req.code}. Check the code and try again.` : 'That room no longer exists.';
   }

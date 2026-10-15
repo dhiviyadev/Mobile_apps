@@ -34,6 +34,8 @@ export const REVIVE_ERRORS = {
   noSavedWorld: 'NO_SAVED_WORLD',
   /** A room with that code is already open (or still closing): join it instead. */
   alreadyOpen: 'ROOM_ALREADY_OPEN',
+  /** Too many reopen attempts from this address (or overall) just now: wait and retry. */
+  tooManyAttempts: 'TOO_MANY_REVIVES',
 } as const;
 
 /** Metadata each room publishes for listings. */

@@ -20,9 +20,11 @@
  *    room takes the free slot saved most recently (all busy: temporary world).
  *  - Dirty worlds autosave every 30 s; every saved world is written once more
  *    on dispose (which also covers graceful shutdown) before its code or slot
- *    is released.
+ *    is released. A world nobody built in is never written.
+ *  - Reopening by code is rate limited (per address and overall), so saved
+ *    private worlds cannot be found by guessing codes at speed.
  */
-import type { Client } from '@colyseus/core';
+import { type AuthContext, type Client, matchMaker } from '@colyseus/core';
 import {
   Block,
   type BlockEdit,
@@ -58,7 +60,7 @@ import {
 import { config } from '../config';
 import { ServerVoxelWorld } from '../voxel/ServerVoxelWorld';
 import { getWorldStore, PUBLIC_WORLD_SLOTS, publicWorldId, type SavedWorld } from '../voxel/WorldStore';
-import { HubRoom } from './HubRoom';
+import { HubRoom, ROOM_CODE_SET } from './HubRoom';
 import { VoxelPlayer, VoxelState } from './schema/VoxelState';
 
 const TICK_MS = 50;
@@ -67,9 +69,42 @@ const EDIT_REFILL = 12;
 const MOVE_SLACK = 1.5;
 const MAX_FALL_SPEED = 55;
 const VIOLATION_KICK = 25;
-const AUTOSAVE_MS = 30_000;
 /** Presence set of public world slots held by open rooms. */
 const PUBLIC_SLOT_SET = 'voxel:public-worlds';
+/** Reopen attempts allowed per client address (burst, then per second)... */
+const REVIVE_BURST_PER_IP = 20;
+const REVIVE_REFILL_PER_IP = 0.2;
+/** ...and from everyone together, since forwarded addresses can be spoofed. */
+const REVIVE_BURST_TOTAL = 120;
+const REVIVE_REFILL_TOTAL = 2;
+/** Addresses tracked before the per-address buckets start over (bounds memory). */
+const MAX_REVIVE_ADDRESSES = 10_000;
+
+const reviveBuckets = new Map<string, TokenBucket>();
+const reviveTotal = new TokenBucket(REVIVE_BURST_TOTAL, REVIVE_REFILL_TOTAL);
+
+/** Takes one reopen attempt from the address's bucket and from the overall one. */
+function allowRevive(context: AuthContext | undefined): boolean {
+  const fly = context?.headers?.['fly-client-ip'];
+  const raw = (typeof fly === 'string' && fly) || context?.ip || '';
+  const address = (Array.isArray(raw) ? (raw[0] ?? '') : raw).split(',')[0].trim() || 'unknown';
+  let bucket = reviveBuckets.get(address);
+  if (!bucket) {
+    if (reviveBuckets.size >= MAX_REVIVE_ADDRESSES) reviveBuckets.clear();
+    reviveBuckets.set(address, (bucket = new TokenBucket(REVIVE_BURST_PER_IP, REVIVE_REFILL_PER_IP)));
+  }
+  return bucket.take() && reviveTotal.take();
+}
+
+/**
+ * True while an open room holds the world saved under id (its room code or
+ * public slot). prune() keeps those; the room saves them again when it closes.
+ */
+export async function isWorldOpen(id: string): Promise<boolean> {
+  const presence = matchMaker.presence;
+  if (!presence) return false; // no server yet, so no open rooms
+  return !!(await presence.sismember(id.startsWith('public-') ? PUBLIC_SLOT_SET : ROOM_CODE_SET, id));
+}
 
 interface PlayerRuntime {
   editBucket: TokenBucket;
@@ -84,6 +119,8 @@ interface PlayerRuntime {
 }
 
 export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
+  /** How often a changed world is saved (tests shorten it). */
+  static autosaveMs = 30_000;
   protected readonly gameId = 'voxel' as const;
   override maxClients = VOXEL_MAX_PLAYERS;
   world!: ServerVoxelWorld;
@@ -96,11 +133,25 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
   private publicSlot: string | null = null;
   /** savedAt of the save this world was restored from (0 = new world). */
   private restoredAt = 0;
+  /** True once the store holds a copy of this world (restored from it, or saved since). */
+  private hasSave = false;
+  /** Edit section (encodeEdits(list, true)) of the save this world was restored from. */
+  private restoredBytes: Uint8Array | null = null;
+  /** The decoded list, only kept while onWorldRestored() runs. */
+  private restoredList: readonly BlockEdit[] | null = null;
+
   /**
-   * Edits as read from the save this world was restored from (empty for new
-   * worlds). Kept so later systems can resume from them in onWorldRestored().
+   * Gate for every matchmaking request (Colyseus calls it before a room is
+   * created or joined): limits how fast one address, and everyone together,
+   * may try codes to reopen saved worlds. Server code calling
+   * matchMaker.create()/joinOrCreate() for voxel must pass an auth context.
    */
-  protected restoredEdits: readonly BlockEdit[] = [];
+  static override async onAuth(_token: string, options: Partial<JoinOptions> | undefined, context: AuthContext): Promise<unknown> {
+    if (options?.reviveCode !== undefined && !allowRevive(context)) {
+      throw new Error(`${REVIVE_ERRORS.tooManyAttempts}: too many attempts to reopen saved worlds`);
+    }
+    return true;
+  }
 
   protected resolveMode(requested: unknown): string {
     return isVoxelMode(requested) ? requested : 'sandbox';
@@ -137,22 +188,18 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
       try {
         this.restore(saved);
       } catch (err) {
-        // One public world that fails to restore must not block public play: use a temporary world.
+        // One public world that fails to restore must not block public play.
         if (!this.publicSlot) throw err;
-        this.log.error(`could not restore ${saved.id}; ${this.roomId} gets a temporary world`, err);
-        await this.releasePublicSlot();
-        this.restoredEdits = [];
-        this.restoredAt = 0;
-        this.state.seed = seed;
-        this.world = new ServerVoxelWorld(seed, 'sandbox');
+        await this.replaceBrokenSave(saved.id, seed, err);
       }
     }
     this.state.worldKind = this.saveId ? 'saved' : 'temporary';
-    this.state.saveDays = this.saveId ? Math.min(65535, Math.max(1, Math.round(config.worldTtlDays))) : 0;
+    // 0 days on a saved world: kept only until the server restarts (in-memory store).
+    this.state.saveDays = this.saveId && getWorldStore().durable ? Math.min(65535, Math.floor(config.worldTtlDays)) : 0;
     this.state.privateRoom = this.isPrivate;
     this.patchRate = TICK_MS;
     this.setSimulationInterval((dt) => this.tick(dt), TICK_MS);
-    if (this.saveId) this.clock.setInterval(() => void this.saveWorld(false), AUTOSAVE_MS);
+    if (this.saveId) this.clock.setInterval(() => void this.saveWorld(false), VoxelRoom.autosaveMs);
 
     this.onMessage(VoxelMsg.Edit, (client, data) => this.handleEdit(client, data));
     this.onMessage(VoxelMsg.Move, (client, data) => this.handleMove(client, data));
@@ -214,6 +261,16 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
 
   /** Called once a saved world's edits are restored (restoredEdits holds them). */
   protected onWorldRestored(): void {}
+
+  /**
+   * Edits as read from the save this world was restored from (empty for new
+   * worlds), so later systems can resume from them. Held as the compact save
+   * bytes and decoded on each access (free inside onWorldRestored()).
+   */
+  protected get restoredEdits(): readonly BlockEdit[] {
+    if (this.restoredList) return this.restoredList;
+    return this.restoredBytes ? decodeEdits(this.restoredBytes, true) : [];
+  }
 
   // ---- persistence ------------------------------------------------------------------
 
@@ -278,17 +335,46 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
   private restore(saved: SavedWorld): void {
     const edits = decodeEdits(saved.edits, true);
     const applied = this.world.loadEdits(edits);
-    this.restoredEdits = edits;
+    this.restoredBytes = saved.edits;
     this.restoredAt = saved.savedAt;
+    this.hasSave = true;
     this.state.timeOfDay = saved.timeOfDay;
     this.log.info(`restored world ${saved.id}: ${applied} edits, saved ${new Date(saved.savedAt).toISOString()}`);
-    this.onWorldRestored();
+    // The hook sees the list decoded above; afterwards only the compact bytes are kept.
+    this.restoredList = edits;
+    try {
+      this.onWorldRestored();
+    } finally {
+      this.restoredList = null;
+    }
+  }
+
+  /**
+   * A public slot's save could not be restored: move it aside (so later public
+   * rooms do not keep picking it) and start a fresh world in the slot. If it
+   * cannot be moved, give the slot back and run a temporary world.
+   */
+  private async replaceBrokenSave(id: string, seed: number, err: unknown): Promise<void> {
+    this.restoredBytes = null;
+    this.restoredAt = 0;
+    this.hasSave = false;
+    this.state.seed = seed;
+    this.world = new ServerVoxelWorld(seed, 'sandbox');
+    try {
+      await getWorldStore().quarantine(id);
+      this.log.error(`could not restore ${id}; moved it aside, ${this.roomId} starts a fresh world there`, err);
+    } catch (moveErr) {
+      this.log.error(`could not restore ${id} or move it aside (${(moveErr as Error).message}); ${this.roomId} gets a temporary world`, err);
+      await this.releasePublicSlot();
+    }
   }
 
   /** Writes the world to the store; unless forced only when it changed. Never throws. */
   private async saveWorld(force: boolean): Promise<void> {
     const id = this.saveId;
     if (!id || !this.world || (!force && !this.world.dirty)) return;
+    // Nothing built and never saved: write no file, so empty rooms cannot push real builds out of the store.
+    if (!this.hasSave && this.world.editCount === 0) return;
     try {
       const world: SavedWorld = {
         id,
@@ -297,10 +383,11 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
         private: this.isPrivate,
         timeOfDay: this.state.timeOfDay,
         savedAt: Date.now(),
-        edits: encodeEdits(this.world.allEdits(), true),
+        edits: this.world.encodedEdits(),
       };
       this.world.markClean();
       await getWorldStore().save(world);
+      this.hasSave = true;
       this.log.debug(`saved world ${id} (${this.world.editCount} edits)`);
     } catch (err) {
       this.world.markDirty();
@@ -384,7 +471,7 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
   }
 
   private sendWorld(client: Client): void {
-    client.sendBytes(VoxelMsg.World, encodeEdits(this.world.allEdits(), true));
+    client.sendBytes(VoxelMsg.World, this.world.encodedEdits());
   }
 
   // ---- movement --------------------------------------------------------------------------

@@ -11,7 +11,8 @@
  *   magic "CVW1", u8 version, u8 mode, u8 private, u32 seed, f32 timeOfDay,
  *   f64 savedAt, u32 editCount, editCount × (i16 x, u8 y, i16 z, u8 id)
  * all little-endian. The edit section is exactly encodeEdits(list, true).
- * MemoryWorldStore is used by tests and when persistence is disabled.
+ * MemoryWorldStore is used by tests and when persistence is disabled; its
+ * worlds last until the server restarts (durable = false).
  */
 import { constants as fsConstants } from 'node:fs';
 import fs, { type FileHandle } from 'node:fs/promises';
@@ -39,7 +40,12 @@ export interface SavedWorld {
   edits: Uint8Array;
 }
 
+/** Tells prune() that an open room holds this world, so it must stay. */
+export type WorldInUse = (id: string) => Promise<boolean>;
+
 export interface WorldStore {
+  /** True when saved worlds survive a server restart (false for the in-memory store). */
+  readonly durable: boolean;
   /** The saved world, or null if there is none (or it could not be read). */
   load(id: string): Promise<SavedWorld | null>;
   save(world: SavedWorld): Promise<void>;
@@ -48,8 +54,18 @@ export interface WorldStore {
   savedAt(id: string): Promise<number | null>;
   /** Returns true if a world was deleted. */
   delete(id: string): Promise<boolean>;
-  /** Deletes worlds older than maxAgeMs, then the oldest beyond maxCount. Returns how many went. */
-  prune(maxAgeMs: number, maxCount: number): Promise<number>;
+  /**
+   * Moves a save that cannot be used out of the way (the file store keeps it as
+   * <id>.cvw.corrupt) so the id can start afresh. Resolves once nothing is
+   * stored under id.
+   */
+  quarantine(id: string): Promise<void>;
+  /**
+   * Deletes worlds older than maxAgeMs, then the oldest beyond maxCount. Worlds
+   * saved again while pruning runs, and worlds inUse() reports as open, are
+   * kept. Returns how many went.
+   */
+  prune(maxAgeMs: number, maxCount: number, inUse?: WorldInUse): Promise<number>;
   /** Resolves once every save and delete started so far has finished (used at shutdown). */
   flush(): Promise<void>;
 }
@@ -123,6 +139,7 @@ export function decodeWorld(id: string, data: Uint8Array): SavedWorld {
 const copyWorld = (w: SavedWorld): SavedWorld => ({ ...w, edits: w.edits.slice() });
 
 export class MemoryWorldStore implements WorldStore {
+  readonly durable = false;
   private readonly worlds = new Map<string, SavedWorld>();
 
   async load(id: string): Promise<SavedWorld | null> {
@@ -148,11 +165,23 @@ export class MemoryWorldStore implements WorldStore {
     return isValidWorldId(id) && this.worlds.delete(id);
   }
 
-  async prune(maxAgeMs: number, maxCount: number): Promise<number> {
+  async quarantine(id: string): Promise<void> {
+    await this.delete(id);
+  }
+
+  async prune(maxAgeMs: number, maxCount: number, inUse?: WorldInUse): Promise<number> {
     const entries = [...this.worlds.values()].map((w) => ({ id: w.id, savedAt: w.savedAt }));
-    const doomed = pickPruned(entries, maxAgeMs, maxCount, Date.now());
-    for (const id of doomed) this.worlds.delete(id);
-    return doomed.length;
+    const scanned = new Map(entries.map((e) => [e.id, e.savedAt]));
+    let removed = 0;
+    for (const id of pickPruned(entries, maxAgeMs, maxCount, Date.now())) {
+      if (inUse && (await inUse(id))) continue;
+      // Saved again while inUse() was answering: keep it.
+      const world = this.worlds.get(id);
+      if (!world || world.savedAt > scanned.get(id)!) continue;
+      this.worlds.delete(id);
+      removed++;
+    }
+    return removed;
   }
 
   async flush(): Promise<void> {}
@@ -167,6 +196,7 @@ const STALE_TMP_MS = 60 * 60 * 1000;
 const isNotFound = (err: unknown) => (err as NodeJS.ErrnoException)?.code === 'ENOENT';
 
 export class FileWorldStore implements WorldStore {
+  readonly durable = true;
   readonly worldsDir: string;
   /** Per-id queue: loads, saves and deletes of one world run strictly in order. */
   private readonly queues = new Map<string, Promise<unknown>>();
@@ -192,7 +222,7 @@ export class FileWorldStore implements WorldStore {
         return decodeWorld(id, data);
       } catch (err) {
         log.warn(`saved world ${id} is unreadable (${(err as Error).message}); moving it to ${id}${EXT}.corrupt`);
-        await fs.rename(file, `${file}.corrupt`).catch((e) => log.warn(`could not move ${file} aside`, e));
+        await this.moveAside(file).catch((e) => log.warn(`could not move ${file} aside`, e));
         return null;
       }
     });
@@ -224,18 +254,21 @@ export class FileWorldStore implements WorldStore {
 
   delete(id: string): Promise<boolean> {
     if (!isValidWorldId(id)) return Promise.resolve(false);
+    return this.enqueue(id, () => this.unlink(this.file(id)));
+  }
+
+  quarantine(id: string): Promise<void> {
+    if (!isValidWorldId(id)) return Promise.resolve();
     return this.enqueue(id, async () => {
       try {
-        await fs.unlink(this.file(id));
-        return true;
+        await this.moveAside(this.file(id));
       } catch (err) {
-        if (isNotFound(err)) return false;
-        throw err;
+        if (!isNotFound(err)) throw err;
       }
     });
   }
 
-  async prune(maxAgeMs: number, maxCount: number): Promise<number> {
+  async prune(maxAgeMs: number, maxCount: number, inUse?: WorldInUse): Promise<number> {
     let names: string[];
     try {
       names = await fs.readdir(this.worldsDir);
@@ -259,9 +292,10 @@ export class FileWorldStore implements WorldStore {
         if (mtime !== null && now - mtime > limit) await fs.unlink(full).catch(() => undefined);
       }
     }
+    const scanned = new Map(entries.map((e) => [e.id, e.savedAt]));
     let removed = 0;
     for (const id of pickPruned(entries, maxAgeMs, maxCount, now)) {
-      if (await this.delete(id)) removed++;
+      if (await this.pruneOne(id, scanned.get(id)!, inUse)) removed++;
     }
     return removed;
   }
@@ -274,6 +308,40 @@ export class FileWorldStore implements WorldStore {
 
   private file(id: string): string {
     return path.join(this.worldsDir, id + EXT);
+  }
+
+  /**
+   * Deletes a world prune() picked, unless an open room holds it or it was
+   * saved again after the scan read scannedAt. Queued like a save, so a save
+   * that started first (e.g. a closing room's final save) is seen here.
+   */
+  private pruneOne(id: string, scannedAt: number, inUse?: WorldInUse): Promise<boolean> {
+    return this.enqueue(id, async () => {
+      if (inUse && (await inUse(id))) return false;
+      const file = this.file(id);
+      const savedAt = (await this.readSavedAt(file)) ?? (await this.mtime(file));
+      if (savedAt === null || savedAt > scannedAt) return false;
+      return this.unlink(file);
+    });
+  }
+
+  private async unlink(file: string): Promise<boolean> {
+    try {
+      await fs.unlink(file);
+      return true;
+    } catch (err) {
+      if (isNotFound(err)) return false;
+      throw err;
+    }
+  }
+
+  /** Renames file to <file>.corrupt (replacing an older one), where prune() expires it. */
+  private async moveAside(file: string): Promise<void> {
+    const target = `${file}.corrupt`;
+    await fs.rename(file, target);
+    // rename keeps the old mtime: restart the expiry clock for the quarantined copy.
+    const now = new Date();
+    await fs.utimes(target, now, now).catch(() => undefined);
   }
 
   /** Runs task after every operation already queued for the same id. */

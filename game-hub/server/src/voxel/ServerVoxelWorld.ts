@@ -27,6 +27,8 @@ export class ServerVoxelWorld {
   private readonly edits = new Map<number, number>();
   private readonly cache = new Map<string, Uint8Array>();
   private _dirty = false;
+  /** encodedEdits() result, dropped whenever the edit list changes. */
+  private encoded: Uint8Array | null = null;
 
   constructor(
     readonly seed: number,
@@ -69,10 +71,10 @@ export class ServerVoxelWorld {
     // An edit that restores the generated block can be forgotten entirely.
     const generated = this.chunk(toChunkCoord(x), toChunkCoord(z))[blockIndex(toLocal(x), y, toLocal(z))];
     if (generated === id) {
-      if (this.edits.delete(key)) this._dirty = true;
+      if (this.edits.delete(key)) this.changed();
     } else if (this.edits.get(key) !== id) {
       this.edits.set(key, id);
-      this._dirty = true;
+      this.changed();
     }
     return true;
   }
@@ -91,6 +93,7 @@ export class ServerVoxelWorld {
       this.edits.set(key, e.id);
       applied++;
     }
+    this.encoded = null;
     return applied;
   }
 
@@ -101,6 +104,34 @@ export class ServerVoxelWorld {
       out.push({ x, y, z, id });
     }
     return out;
+  }
+
+  /**
+   * The edit list exactly as encodeEdits(allEdits(), true) would encode it
+   * (u32 count, then 6-byte edits), written straight from the edit map without
+   * intermediate objects. Cached until the next change, so late-join snapshots
+   * and saves share one copy: callers must not modify it.
+   */
+  encodedEdits(): Uint8Array {
+    if (this.encoded) return this.encoded;
+    const out = new Uint8Array(4 + this.edits.size * 6);
+    const view = new DataView(out.buffer);
+    view.setUint32(0, this.edits.size, true);
+    let o = 4;
+    for (const [key, id] of this.edits) {
+      const [x, y, z] = unpackPos(key);
+      view.setInt16(o, x, true);
+      view.setUint8(o + 2, y);
+      view.setInt16(o + 3, z, true);
+      view.setUint8(o + 5, id);
+      o += 6;
+    }
+    return (this.encoded = out);
+  }
+
+  private changed(): void {
+    this._dirty = true;
+    this.encoded = null;
   }
 
   private chunk(cx: number, cz: number): Uint8Array {

@@ -15,8 +15,9 @@ import {
   TerrainGenerator,
   VoxelMsg,
 } from '@hub/shared';
+import { isWorldOpen, VoxelRoom } from '../src/rooms/VoxelRoom';
 import { ServerVoxelWorld } from '../src/voxel/ServerVoxelWorld';
-import { FileWorldStore, isValidWorldId, MemoryWorldStore, type SavedWorld, type WorldStore } from '../src/voxel/WorldStore';
+import { FileWorldStore, isValidWorldId, MemoryWorldStore, type SavedWorld, setWorldStore, type WorldStore } from '../src/voxel/WorldStore';
 import { startTestServer, type TestServer, until, wait } from './helpers';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -142,6 +143,56 @@ describe('FileWorldStore', () => {
     await file.prune(30 * DAY, 3);
     expect((await fs.readdir(file.worldsDir)).sort()).toEqual(['CCCCCC.cvw', 'DDDDDD.cvw', 'public-1.cvw']);
   });
+
+  it('prune keeps worlds saved again during the scan and worlds held by open rooms', async () => {
+    const old = Date.now() - 31 * DAY;
+    const inUse = async (id: string) => id === 'BBBBBB';
+    const file = new FileWorldStore(await tempDir());
+    const memory = new MemoryWorldStore();
+    for (const store of [file, memory]) {
+      for (const id of ['AAAAAA', 'BBBBBB', 'CCCCCC']) await store.save(savedWorld(id, { savedAt: old }));
+    }
+
+    // A closing room saves AAAAAA right after prune read its old header, before the delete runs.
+    const internals = FileWorldStore.prototype as unknown as { readSavedAt(file: string): Promise<number | null> };
+    const readSavedAt = internals.readSavedAt;
+    const spy = vi.spyOn(internals, 'readSavedAt').mockImplementation(async function (this: FileWorldStore, target: string) {
+      const savedAt = await readSavedAt.call(this, target);
+      if (target.endsWith('AAAAAA.cvw') && savedAt === old) await file.save(savedWorld('AAAAAA', { savedAt: Date.now() }));
+      return savedAt;
+    });
+    try {
+      expect(await file.prune(30 * DAY, 500, inUse)).toBe(1);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await file.exists('AAAAAA')).toBe(true);
+    expect(await file.exists('BBBBBB')).toBe(true);
+    expect(await file.exists('CCCCCC')).toBe(false);
+
+    expect(await memory.prune(30 * DAY, 500, inUse)).toBe(2);
+    expect(await memory.exists('BBBBBB')).toBe(true);
+    // Once the room is gone, the old world goes too.
+    expect(await file.prune(30 * DAY, 500)).toBe(1);
+    expect(await file.exists('BBBBBB')).toBe(false);
+  });
+
+  it('quarantines a save so its id starts afresh, and reports which stores are durable', async () => {
+    const store = new FileWorldStore(await tempDir());
+    expect(store.durable).toBe(true);
+    await store.save(savedWorld('public-3', { private: false }));
+    await store.quarantine('public-3');
+    expect(await store.exists('public-3')).toBe(false);
+    expect(await fs.readdir(store.worldsDir)).toEqual(['public-3.cvw.corrupt']);
+    await store.quarantine('public-3'); // nothing left to move
+    await store.quarantine('../x'); // invalid ids never reach the filesystem
+
+    const memory = new MemoryWorldStore();
+    expect(memory.durable).toBe(false);
+    await memory.save(savedWorld('public-3'));
+    await memory.quarantine('public-3');
+    expect(await memory.exists('public-3')).toBe(false);
+  });
 });
 
 describe('ServerVoxelWorld persistence hooks', () => {
@@ -172,6 +223,25 @@ describe('ServerVoxelWorld persistence hooks', () => {
     expect(restored.dirty).toBe(false);
     expect(restored.getBlock(3, 5, 1)).toBe(Block.Brick);
     expect(restored.allEdits()).toEqual([edits[0], edits[2], edits[3]]);
+  });
+
+  it('encodes its edit list like encodeEdits() and reuses it until the next change', () => {
+    const world = new ServerVoxelWorld(99, 'sandbox');
+    expect(world.encodedEdits()).toEqual(encodeEdits([], true));
+    world.loadEdits(makeEdits(3000));
+    const first = world.encodedEdits();
+    expect(first).toEqual(encodeEdits(world.allEdits(), true));
+    expect(decodeEdits(first, true)).toHaveLength(3000);
+    world.markClean();
+    expect(world.encodedEdits()).toBe(first);
+
+    const other = world.getBlock(0, 10, 0) === Block.Stone ? Block.Dirt : Block.Stone;
+    world.setBlock(0, 10, 0, other);
+    const second = world.encodedEdits();
+    expect(second).not.toBe(first);
+    expect(second).toEqual(encodeEdits(world.allEdits(), true));
+    world.setBlock(0, 10, 0, other); // no change
+    expect(world.encodedEdits()).toBe(second);
   });
 });
 
@@ -241,9 +311,16 @@ describe('persistent Voxelvale rooms', () => {
     expect(saved).toMatchObject({ id: code, seed: SEED, mode: 'sandbox', private: true });
     expect(decodeEdits(saved!.edits, true)).toEqual([broken]);
 
-    // Codes are case-insensitive when reviving.
+    // Codes are case-insensitive when reviving. The restore hook sees the saved edits.
+    let seen: readonly BlockEdit[] = [];
+    vi.spyOn(VoxelRoom.prototype as unknown as { onWorldRestored(): void }, 'onWorldRestored').mockImplementationOnce(function (this: { restoredEdits: readonly BlockEdit[] }) {
+      seen = this.restoredEdits;
+    });
     const b = await track(await ts.client().create('voxel', { nickname: 'Returner', reviveCode: code.toLowerCase() }));
     expect(b.room.roomId).toBe(code);
+    expect(seen).toEqual([broken]);
+    // ...and later systems can still read them (decoded from the compact save bytes).
+    expect((matchMaker.getLocalRoomById(code) as unknown as { restoredEdits: readonly BlockEdit[] }).restoredEdits).toEqual([broken]);
     expect(b.room.state.seed).toBe(SEED);
     expect(b.room.state.mode).toBe('sandbox');
     expect(b.room.state.privateRoom).toBe(true);
@@ -325,6 +402,150 @@ describe('persistent Voxelvale rooms', () => {
     await eventually(async () => !(await held('hub:room-codes', code)));
     expect(await store.exists(code)).toBe(false);
     await expect(ts.client().create('voxel', { nickname: 'Runner', reviveCode: code })).rejects.toThrow(/NO_SAVED_WORLD/);
+  });
+
+  it('writes no file for worlds nobody built in, but re-saves restored ones', async () => {
+    // Joined and left without building.
+    const room = await ts.client().create('voxel', { nickname: 'Looker', mode: 'sandbox', private: true });
+    await until(() => room.state.players?.size === 1);
+    const code = room.roomId;
+    await room.leave();
+    await eventually(async () => !(await held('hub:room-codes', code)));
+    expect(await store.exists(code)).toBe(false);
+
+    // Created but never joined (disposed when its seat reservation runs out).
+    const reserved = await matchMaker.createRoom('voxel', { nickname: 'Nobody', mode: 'sandbox', private: true });
+    await matchMaker.getLocalRoomById(reserved.roomId).disconnect();
+    await eventually(async () => !(await held('hub:room-codes', reserved.roomId)));
+    expect(await store.exists(reserved.roomId)).toBe(false);
+
+    // A restored world is written again on close even without new edits, so its age starts over.
+    const old = Date.now() - 5 * DAY;
+    await store.save(savedWorld('EEEEEE', { savedAt: old }));
+    const back = await track(await ts.client().create('voxel', { nickname: 'Returner', reviveCode: 'EEEEEE' }));
+    await back.room.leave();
+    await eventually(async () => !(await held('hub:room-codes', 'EEEEEE')));
+    expect(await store.savedAt('EEEEEE')).toBeGreaterThan(old);
+  });
+
+  it('autosaves changed worlds while players are still in the room', async () => {
+    VoxelRoom.autosaveMs = 100;
+    try {
+      const a = await track(await ts.client().create('voxel', { nickname: 'Builder', mode: 'sandbox', private: true, seed: SEED }));
+      const code = a.room.roomId;
+      const live = matchMaker.getLocalRoomById(code) as unknown as VoxelRoom;
+      expect(await isWorldOpen(code)).toBe(true);
+      const saves = vi.spyOn(store, 'save');
+
+      const broken = { ...surface, id: Block.Air };
+      await a.edit(broken);
+      await eventually(() => store.exists(code));
+      expect(decodeEdits((await store.load(code))!.edits, true)).toEqual([broken]);
+      expect(live.world.dirty).toBe(false);
+
+      // Nothing changed since: no more saves.
+      const count = saves.mock.calls.length;
+      await wait(400);
+      expect(saves.mock.calls.length).toBe(count);
+
+      const pillar = { ...surface, y: surface.y + 2, id: Block.Stone };
+      await a.edit(pillar);
+      await eventually(async () => decodeEdits((await store.load(code))!.edits, true).length === 2);
+      expect(saves.mock.calls.length).toBe(count + 1);
+
+      await a.room.leave();
+      await closedAndSaved(code);
+      expect(await isWorldOpen(code)).toBe(false);
+    } finally {
+      VoxelRoom.autosaveMs = 30_000;
+    }
+  });
+
+  it('finishes the final save before giving the code or slot back', async () => {
+    const events: string[] = [];
+    const save = store.save.bind(store);
+    vi.spyOn(store, 'save').mockImplementation(async (world) => {
+      await wait(150);
+      await save(world);
+      events.push(`saved ${world.id}`);
+    });
+    const srem = matchMaker.presence.srem.bind(matchMaker.presence);
+    vi.spyOn(matchMaker.presence, 'srem').mockImplementation((set: string, member: string) => {
+      events.push(`released ${member}`);
+      return srem(set, member);
+    });
+
+    const priv = await track(await ts.client().create('voxel', { nickname: 'Closer', mode: 'sandbox', private: true, seed: SEED }));
+    const pub = await track(await ts.client().create('voxel', { nickname: 'Closer2', mode: 'sandbox', seed: SEED }));
+    const code = priv.room.roomId;
+    const [slot] = await matchMaker.presence.smembers(PUBLIC_SLOT_SET);
+    await priv.edit({ ...surface, id: Block.Air });
+    await pub.edit({ ...surface, id: Block.Air });
+    await Promise.all([priv.room.leave(), pub.room.leave()]);
+    await eventually(async () => !(await held('hub:room-codes', code)) && !(await held(PUBLIC_SLOT_SET, slot)));
+    expect(events.filter((e) => e.endsWith(` ${code}`))).toEqual([`saved ${code}`, `released ${code}`]);
+    expect(events.filter((e) => e.endsWith(` ${slot}`))).toEqual([`saved ${slot}`, `released ${slot}`]);
+  });
+
+  it('moves a public save that fails to restore aside and starts afresh in its slot', async () => {
+    // The newest public save, so the next public room picks it.
+    await store.save(savedWorld('public-5', { private: false, seed: 99, savedAt: Date.now() + 60_000, edits: encodeEdits(makeEdits(10), true) }));
+    const hook = vi.spyOn(VoxelRoom.prototype as unknown as { onWorldRestored(): void }, 'onWorldRestored').mockImplementationOnce(() => {
+      throw new Error('restore hook failed');
+    });
+    const a = await track(await ts.client().create('voxel', { nickname: 'Unlucky', mode: 'sandbox', seed: SEED }));
+    expect(hook).toHaveBeenCalledTimes(1);
+    expect(a.room.state.worldKind).toBe('saved');
+    expect(a.room.state.seed).toBe(SEED);
+    expect(a.snapshot()).toEqual([]);
+    expect(await isWorldOpen('public-5')).toBe(true);
+    expect(await store.exists('public-5')).toBe(false);
+    expect(await fs.readdir(store.worldsDir)).toContain('public-5.cvw.corrupt');
+
+    const pillar = { ...surface, y: surface.y + 2, id: Block.Stone };
+    await a.edit(pillar);
+    await a.room.leave();
+    await closedAndSaved('public-5', PUBLIC_SLOT_SET);
+
+    // The slot now holds the fresh world, and the next public room restores it as usual.
+    const b = await track(await ts.client().create('voxel', { nickname: 'Next', mode: 'sandbox' }));
+    expect(await held(PUBLIC_SLOT_SET, 'public-5')).toBe(true);
+    expect(b.room.state.seed).toBe(SEED);
+    expect(b.snapshot()).toEqual([pillar]);
+    await b.room.leave();
+    await closedAndSaved('public-5', PUBLIC_SLOT_SET);
+  });
+
+  it('tells players that worlds in a memory store last only until a restart', async () => {
+    setWorldStore(new MemoryWorldStore());
+    try {
+      const room = await ts.client().create('voxel', { nickname: 'Brief', mode: 'sandbox', private: true });
+      await until(() => room.state.players?.size === 1);
+      expect(room.state.worldKind).toBe('saved');
+      expect(room.state.saveDays).toBe(0);
+      await room.leave();
+      await eventually(async () => !(await held('hub:room-codes', room.roomId)));
+    } finally {
+      setWorldStore(store);
+    }
+  });
+
+  it('rate limits attempts to reopen worlds by code', async () => {
+    const attempt = async (ip: string): Promise<string> => {
+      const res = await fetch(`http://127.0.0.1:${ts.port}/matchmake/create/voxel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Real-IP': ip },
+        body: JSON.stringify({ nickname: 'Guesser', reviveCode: 'ZZZZZZ' }),
+      });
+      return ((await res.json()) as { error?: string }).error ?? '';
+    };
+    vi.spyOn(console, 'error').mockImplementation(() => undefined); // the matchmaker logs every refused create
+    const errors: string[] = [];
+    for (let i = 0; i < 21; i++) errors.push(await attempt('198.51.100.7'));
+    expect(errors.slice(0, 20).every((e) => e.includes('NO_SAVED_WORLD'))).toBe(true);
+    expect(errors[20]).toMatch(/TOO_MANY_REVIVES/);
+    // Other addresses still get an answer.
+    expect(await attempt('198.51.100.8')).toMatch(/NO_SAVED_WORLD/);
   });
 
   it('saves open worlds on graceful shutdown so they survive a restart', async () => {

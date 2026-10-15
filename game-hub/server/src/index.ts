@@ -2,6 +2,7 @@
 import { config } from './config';
 import { createGameServer } from './app';
 import { logger } from './log';
+import { isWorldOpen } from './rooms/VoxelRoom';
 import { openWorldStore, setWorldStore } from './voxel/WorldStore';
 
 const log = logger('server');
@@ -14,7 +15,8 @@ setWorldStore(store);
 
 async function pruneWorlds(): Promise<void> {
   try {
-    const removed = await store.prune(config.worldTtlDays * DAY_MS, config.maxSavedWorlds);
+    // Worlds held by open rooms stay: they are saved again when their room closes.
+    const removed = await store.prune(config.worldTtlDays * DAY_MS, config.maxSavedWorlds, isWorldOpen);
     if (removed > 0) log.info(`pruned ${removed} saved world(s)`);
   } catch (err) {
     log.warn('pruning saved worlds failed', err);
