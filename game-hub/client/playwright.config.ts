@@ -53,7 +53,8 @@ export default defineConfig({
       cwd: '../server',
       port: 2567,
       reuseExistingServer: true,
-      env: { LOG_LEVEL: 'warn' },
+      // Keep saved worlds in memory: e2e runs must not write into the repo or see earlier runs' worlds.
+      env: { LOG_LEVEL: 'warn', PERSIST_WORLDS: '0' },
     },
     {
       command: 'npx vite --port 5173 --strictPort --host 127.0.0.1',

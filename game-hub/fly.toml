@@ -1,5 +1,6 @@
 # Fly.io config for the game server. Deploy from game-hub/:
 #   fly launch --no-deploy --copy-config   (first time; pick an app name)
+#   fly volumes create hub_data --size 1   (once, before the first deploy; see [mounts])
 #   fly deploy
 app = "cobalt-game-hub"
 primary_region = "iad"
@@ -11,6 +12,13 @@ primary_region = "iad"
   PORT = "2567"
   # Set to your client origin(s) in production, e.g. "https://cobalt-hub.pages.dev"
   ALLOWED_ORIGINS = "*"
+
+# Saved Voxelvale worlds (DATA_DIR=/data, set in the Dockerfile) live on this volume so they
+# survive deploys and restarts. Create it once with: fly volumes create hub_data --size 1
+# A volume belongs to one machine, which suits this single-machine setup.
+[mounts]
+  source = "hub_data"
+  destination = "/data"
 
 [http_service]
   internal_port = 2567

@@ -4,3 +4,5 @@ client/test-results
 client/playwright-report
 .git
 *.log
+data
+server/data

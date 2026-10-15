@@ -173,6 +173,21 @@ export class VoxelNet implements VoxelNetHooks {
     return best;
   }
 
+  /**
+   * Pause menu line saying whether the server keeps this world (from the
+   * replicated worldKind / saveDays / privateRoom), or null for temporary worlds.
+   * saveDays 0 means the server keeps saved worlds only until it restarts.
+   */
+  saveNote(): string | null {
+    const s = this.session.state as { worldKind?: string; saveDays?: number; privateRoom?: boolean; code?: string } | undefined;
+    if (s?.worldKind !== 'saved') return null;
+    const days = s.saveDays ?? 0;
+    if (!s.privateRoom) return days > 0 ? 'This public world is saved automatically.' : 'This public world is kept until the server restarts.';
+    const code = s.code || this.roomCode;
+    if (days <= 0) return `Saved world: code ${code} reopens it until the server restarts.`;
+    return `Saved world: code ${code} reopens it for ${days} day${days === 1 ? '' : 's'} after the last visit.`;
+  }
+
   /** Names and colours for the pause menu player list. */
   players(): { name: string; color: number; you: boolean; connected: boolean }[] {
     const out: { name: string; color: number; you: boolean; connected: boolean }[] = [];

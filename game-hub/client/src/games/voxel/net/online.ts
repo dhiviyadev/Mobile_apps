@@ -1,5 +1,6 @@
 /** Online Voxelvale: build the game from the room's seed and attach the network layer. */
 import type { VoxelMode } from '@hub/shared';
+import { setPauseNote } from '../../common/PauseMenu';
 import type { GameInstance, GameLaunchContext } from '../../types';
 import { VoxelGame } from '../VoxelGame';
 import { VoxelNet } from './VoxelNet';
@@ -33,6 +34,13 @@ export async function launchOnline(ctx: GameLaunchContext, fallbackMode: VoxelMo
   });
   const net = new VoxelNet(session, game, ctx.container);
   game.setNet(net);
+  // Tell players whether the server keeps this world (read when the menu opens).
+  setPauseNote(ctx.container, () => net.saveNote());
   await game.start();
-  return { dispose: () => game.dispose() };
+  return {
+    dispose: () => {
+      setPauseNote(ctx.container, null);
+      game.dispose();
+    },
+  };
 }
