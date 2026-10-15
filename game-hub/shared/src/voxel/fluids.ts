@@ -18,13 +18,18 @@
  * the queue drains once the water has settled.
  */
 import { Block, flowingWater, IS_SOLID, isWater, waterLevel } from './blocks';
-import { packPos, unpackPos } from './chunk';
-import { CHUNK_HEIGHT } from './constants';
+import { chunkInWorld, chunkKey, packPos, toChunkCoord, unpackPos } from './chunk';
+import { CHUNK_HEIGHT, CHUNK_SIZE } from './constants';
 
 export interface FluidAccess {
   get(x: number, y: number, z: number): number;
   /** Applies a change; returning false means it was refused and did not happen. */
   set(x: number, y: number, z: number, id: number): boolean | void;
+  /**
+   * Optional: false skips a queued cell for now, when the blocks around it are
+   * not known yet. The access then has to schedule it again once they are.
+   */
+  ready?(x: number, y: number, z: number): boolean;
 }
 
 export interface FluidOptions {
@@ -105,6 +110,7 @@ export class FluidSimulator {
       const key = this.queue[this.head++];
       this.queued.delete(key);
       const [x, y, z] = unpackPos(key);
+      if (this.access.ready?.(x, y, z) === false) continue;
       const current = this.access.get(x, y, z);
       const id = this.settle(x, y, z, current);
       if (id === current || this.access.set(x, y, z, id) === false) continue;
@@ -151,5 +157,136 @@ export class FluidSimulator {
     }
     this.queued.add(key);
     this.queue.push(key);
+  }
+}
+
+// ---- worlds that stream chunks (offline play) ---------------------------------------
+
+/** What StreamedFluids needs from a world that only holds the chunks around the player. */
+export interface StreamedWorld {
+  /** Block id; columns whose chunk is not loaded read as solid. */
+  getBlock(x: number, y: number, z: number): number;
+  setBlock(x: number, y: number, z: number, id: number): void;
+  /** True when the chunk holding column (x, z) has its blocks. */
+  isLoaded(x: number, z: number): boolean;
+}
+
+/** An edit as [x, y, z, id]. */
+type EditTuple = [number, number, number, number];
+
+/**
+ * Flowing water over a world that streams chunks in and out (offline play on
+ * the client; online, the server runs the water).
+ *
+ * Unloaded chunks read as solid, so a cell in or beside one could dry up or
+ * spread wrongly (or be skipped for good): it is not checked but waits,
+ * grouped by chunk, until that chunk and its 4 side neighbours have loaded.
+ * Saved water waits the same way. Waiting costs one check per chunk per
+ * step, not one per cell.
+ *
+ * It also remembers which cells hold a player's edit (made this session or
+ * loaded from the save). Every other edited cell was only ever written by the
+ * simulation over generated air, so saves leave it out; saved sources flow
+ * again after loading.
+ */
+export class StreamedFluids {
+  private readonly sim: FluidSimulator;
+  /** chunkKey -> packed cells waiting for that chunk and its side neighbours to load. */
+  private readonly waiting = new Map<string, { cx: number; cz: number; cells: Set<number> }>();
+  /** Packed positions of player edits. */
+  private readonly edited = new Set<number>();
+
+  constructor(
+    private readonly world: StreamedWorld,
+    opts: FluidOptions = {},
+  ) {
+    this.sim = new FluidSimulator(
+      {
+        get: (x, y, z) => world.getBlock(x, y, z),
+        set: (x, y, z, id) => world.setBlock(x, y, z, id),
+        ready: (x, y, z) => this.cellReady(x, y, z),
+      },
+      opts,
+    );
+  }
+
+  /** Cells queued for the next steps. */
+  get pending(): number {
+    return this.sim.pending;
+  }
+
+  /** Cells waiting for their chunks to load. */
+  get waitingCells(): number {
+    let n = 0;
+    for (const w of this.waiting.values()) n += w.cells.size;
+    return n;
+  }
+
+  /** Takes note of saved edits already applied to the world; saved water is re-checked once its chunk loads. */
+  restore(edits: Iterable<EditTuple>): void {
+    for (const [x, y, z, id] of edits) {
+      this.edited.add(packPos(x, y, z));
+      if (isWater(id)) this.wait(x, y, z);
+    }
+  }
+
+  /** Call after every player edit, once it is applied to the world. */
+  notifyEdit(x: number, y: number, z: number): void {
+    this.edited.add(packPos(x, y, z));
+    this.sim.notifyEdit(x, y, z);
+  }
+
+  /** Queues the waiting cells whose chunks have loaded, then runs one simulation step. */
+  step(maxUpdates?: number): FluidChange[] {
+    for (const [key, w] of this.waiting) {
+      if (!this.ready(w.cx * CHUNK_SIZE, w.cz * CHUNK_SIZE, CHUNK_SIZE)) continue;
+      this.waiting.delete(key);
+      for (const cell of w.cells) this.sim.schedule(...unpackPos(cell));
+    }
+    return this.sim.step(maxUpdates);
+  }
+
+  /** Forgets all queued and waiting work. */
+  clear(): void {
+    this.sim.clear();
+    this.waiting.clear();
+  }
+
+  /**
+   * The edits a save should keep, from the world's full edit list: cells only
+   * the simulation wrote are left out, and simulated water over a player's
+   * edit is kept as the air under it.
+   */
+  *saveEdits(edits: Iterable<EditTuple>): Generator<EditTuple> {
+    for (const [x, y, z, id] of edits) {
+      if (!this.edited.has(packPos(x, y, z))) continue;
+      yield [x, y, z, isWater(id) && id !== Block.Water ? Block.Air : id];
+    }
+  }
+
+  private cellReady(x: number, y: number, z: number): boolean {
+    if (this.ready(x, z, 1)) return true;
+    this.wait(x, y, z);
+    return false;
+  }
+
+  private wait(x: number, y: number, z: number): void {
+    const cx = toChunkCoord(x);
+    const cz = toChunkCoord(z);
+    const key = chunkKey(cx, cz);
+    let w = this.waiting.get(key);
+    if (!w) this.waiting.set(key, (w = { cx, cz, cells: new Set() }));
+    w.cells.add(packPos(x, y, z));
+  }
+
+  /**
+   * True when column (x, z) is loaded and so are the columns `d` blocks away
+   * on each side (columns outside the world read as solid anyway, so they
+   * count as loaded). With d = 1 the rules see real blocks around the column;
+   * with d = CHUNK_SIZE from a chunk's corner, that holds for the whole chunk.
+   */
+  private ready(x: number, z: number, d: number): boolean {
+    const loaded = (bx: number, bz: number) => this.world.isLoaded(bx, bz) || !chunkInWorld(toChunkCoord(bx), toChunkCoord(bz));
+    return loaded(x, z) && loaded(x - d, z) && loaded(x + d, z) && loaded(x, z - d) && loaded(x, z + d);
   }
 }

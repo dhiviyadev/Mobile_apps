@@ -16,6 +16,9 @@ import {
   packPos,
   PLAYER_EYE,
   stepBody,
+  StreamedFluids,
+  type StreamedWorld,
+  toChunkCoord,
   unpackPos,
   waterLevel,
 } from '../src';
@@ -80,6 +83,56 @@ function edit(g: Grid, sim: FluidSimulator, x: number, y: number, z: number, id:
   g.put(x, y, z, id);
   sim.notifyEdit(x, y, z);
 }
+
+type Edit = [number, number, number, number];
+
+/**
+ * A Grid streamed like the client World: chunks from cx = unloadFrom on are
+ * not loaded and read as bedrock, and every write stays an edit, even one
+ * that puts back what was there.
+ */
+class StreamedGrid implements StreamedWorld {
+  readonly edits = new Map<number, number>();
+  unloadFrom = Infinity;
+  /** isLoaded() calls so far. */
+  loadChecks = 0;
+
+  constructor(readonly grid: Grid) {}
+
+  isLoaded(x: number): boolean {
+    this.loadChecks++;
+    return toChunkCoord(x) < this.unloadFrom;
+  }
+
+  getBlock(x: number, y: number, z: number): number {
+    return toChunkCoord(x) < this.unloadFrom ? this.grid.get(x, y, z) : Block.Bedrock;
+  }
+
+  setBlock(x: number, y: number, z: number, id: number): void {
+    this.grid.put(x, y, z, id);
+    this.edits.set(packPos(x, y, z), id);
+  }
+
+  allEdits(): Edit[] {
+    return [...this.edits].map(([key, id]): Edit => [...unpackPos(key), id]);
+  }
+}
+
+/** A player edit in a streamed world: applied, then reported. */
+function playerEdit(w: StreamedGrid, fluids: StreamedFluids, x: number, y: number, z: number, id: number): void {
+  w.setBlock(x, y, z, id);
+  fluids.notifyEdit(x, y, z);
+}
+
+function settleStreamed(fluids: StreamedFluids, maxSteps = 500): void {
+  for (let i = 0; i < maxSteps; i++) {
+    fluids.step();
+    if (fluids.pending === 0) return;
+  }
+  throw new Error(`fluids did not settle in ${maxSteps} steps`);
+}
+
+const byPos = (a: readonly number[], b: readonly number[]) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
 
 describe('water blocks', () => {
   it('describes sources, flowing and falling water', () => {
@@ -341,5 +394,126 @@ describe('fluid simulation', () => {
       settle(sim2);
       expect(sorted(g), `seed ${seed}`).toEqual(sorted(fresh));
     }
+  });
+});
+
+describe('fluids in a streamed world', () => {
+  it('holds changes beside unloaded chunks and makes them once the chunks load', () => {
+    // Floor over chunks cx = 0 and 1 (x = 0..31), z = 0..15.
+    const g = new Grid();
+    g.fill(0, 0, 0, 31, 0, 15, Block.Stone);
+    const w = new StreamedGrid(g);
+    const fluids = new StreamedFluids(w);
+    playerEdit(w, fluids, 12, 1, 8, Block.Water);
+    settleStreamed(fluids);
+    expect(g.water()).toHaveLength(113);
+
+    // Chunks from x = 16 on unload, then the source is removed.
+    w.unloadFrom = 1;
+    playerEdit(w, fluids, 12, 1, 8, Block.Air);
+    settleStreamed(fluids);
+    // Water beside the unloaded chunk cannot see what feeds it, so it waits (and still feeds its neighbours).
+    const loadedWater = () => [...g.blocks].filter(([key, id]) => isWater(id) && unpackPos(key)[0] < 16).length;
+    const left = loadedWater();
+    expect(left).toBeGreaterThan(0);
+    expect(fluids.waitingCells).toBeGreaterThan(0);
+    for (let i = 0; i < 10; i++) fluids.step();
+    expect(loadedWater()).toBe(left);
+
+    // Once the chunks are back, the waiting cells are checked again and everything dries.
+    w.unloadFrom = Infinity;
+    settleStreamed(fluids);
+    expect(g.water()).toEqual([]);
+    expect(fluids.waitingCells).toBe(0);
+  });
+
+  it('picks up cells whose chunk unloaded while they were queued', () => {
+    // A one-wide channel along x at z = 8 that crosses from chunk cx = 0 into cx = 1.
+    const g = new Grid();
+    g.fill(0, 0, 0, 31, 1, 15, Block.Stone);
+    g.fill(8, 1, 8, 31, 1, 8, Block.Air);
+    const w = new StreamedGrid(g);
+    const fluids = new StreamedFluids(w);
+    playerEdit(w, fluids, 12, 1, 8, Block.Water);
+    for (let i = 0; i < 4; i++) fluids.step();
+    expect(g.get(16, 1, 8)).toBe(flowingWater(4));
+    expect(g.get(17, 1, 8)).toBe(Block.Air);
+    expect(fluids.pending).toBeGreaterThan(0);
+
+    // The front unloads before its next step: it waits rather than being dropped.
+    w.unloadFrom = 1;
+    settleStreamed(fluids);
+    expect(fluids.waitingCells).toBeGreaterThan(0);
+    w.unloadFrom = Infinity;
+    settleStreamed(fluids);
+    for (let x = 13; x <= 19; x++) expect(g.get(x, 1, 8), `x = ${x}`).toBe(flowingWater(20 - x));
+    expect(g.get(20, 1, 8)).toBe(Block.Air);
+    expect(fluids.waitingCells).toBe(0);
+  });
+
+  it('checks waiting cells once per chunk, however many there are', () => {
+    const w = new StreamedGrid(flatGrid());
+    w.unloadFrom = 3;
+    const fluids = new StreamedFluids(w);
+    // Saved water in chunk cx = 2 (loaded, but its neighbour is not) and cx = 3 (not loaded).
+    const saved: Edit[] = [];
+    for (let x = 32; x < 64; x++) for (let z = 0; z < 16; z++) for (let y = 1; y <= 40; y++) saved.push([x, y, z, Block.Water]);
+    fluids.restore(saved);
+    expect(fluids.waitingCells).toBe(saved.length);
+    w.loadChecks = 0;
+    fluids.step();
+    expect(w.loadChecks).toBeLessThanOrEqual(2 * 5);
+    expect(fluids.pending).toBe(0);
+    expect(fluids.waitingCells).toBe(saved.length);
+
+    w.unloadFrom = Infinity;
+    fluids.step();
+    expect(fluids.waitingCells).toBe(0);
+    expect(fluids.pending).toBeGreaterThan(0);
+  });
+
+  it('saves player edits only, and saved sources flow back after loading', () => {
+    // Ground at y = 1, with a trench dug next to a source on top of it.
+    const terrain = () => {
+      const g = flatGrid();
+      g.fill(-R, 1, -R, R, 1, R, Block.Stone);
+      return g;
+    };
+    const w = new StreamedGrid(terrain());
+    const fluids = new StreamedFluids(w);
+    const trench: Edit[] = [];
+    for (let x = 1; x <= 5; x++) {
+      playerEdit(w, fluids, x, 1, 0, Block.Air);
+      trench.push([x, 1, 0, Block.Air]);
+    }
+    playerEdit(w, fluids, 0, 2, 0, Block.Water);
+    settleStreamed(fluids);
+    // A block placed in the flow is a player edit too.
+    playerEdit(w, fluids, 0, 2, -3, Block.Glass);
+    settleStreamed(fluids);
+    expect(w.grid.get(3, 1, 0)).toBe(Block.WaterFalling);
+    expect(w.grid.get(2, 2, 2)).toBe(flowingWater(4));
+    expect(w.edits.size).toBeGreaterThan(100);
+
+    // Simulated water is left out; water poured into the trench is saved as the air under it.
+    const saved = [...fluids.saveEdits(w.allEdits())];
+    expect(saved.sort(byPos)).toEqual([...trench, [0, 2, 0, Block.Water], [0, 2, -3, Block.Glass]].sort(byPos));
+
+    // Loading the save flows the same water again.
+    const loaded = new StreamedGrid(terrain());
+    for (const [x, y, z, id] of saved) loaded.setBlock(x, y, z, id);
+    const again = new StreamedFluids(loaded);
+    again.restore(saved);
+    settleStreamed(again);
+    expect(loaded.grid.blocks).toEqual(w.grid.blocks);
+
+    // Trying water and taking it away again leaves nothing extra to save.
+    playerEdit(w, fluids, 0, 2, 0, Block.Stone);
+    playerEdit(w, fluids, 0, 2, 0, Block.Air);
+    settleStreamed(fluids);
+    expect(w.grid.water()).toEqual([]);
+    expect([...fluids.saveEdits(w.allEdits())].sort(byPos)).toEqual(
+      [...trench, [0, 2, 0, Block.Air], [0, 2, -3, Block.Glass]].sort(byPos),
+    );
   });
 });

@@ -92,13 +92,58 @@ describe('server fluids', () => {
     const world = new ServerVoxelWorld(SEED, 'sandbox', floorEdits + 1 + 5);
     const y = buildFloor(world, 40, 40);
     let reported = 0;
-    const fluids = new VoxelFluids(world, () => reported++);
+    const fluids = new VoxelFluids(world, () => reported++, { editShare: 1 });
     expect(world.setBlock(40, y, 40, Block.Water)).toBe(true);
     fluids.notifyEdit(40, y, 40);
     settle(fluids);
     expect(reported).toBe(5);
     expect(waterEdits(world)).toHaveLength(6);
     expect(world.editCount).toBe(world.maxEdits);
+  });
+
+  it('keeps the last quarter of the edit budget for players', () => {
+    const probe = new ServerVoxelWorld(SEED, 'sandbox');
+    buildFloor(probe, 40, 40);
+    const floorEdits = probe.editCount;
+
+    // Water's three quarters run out partway through the 112 cells the source would fill.
+    const world = new ServerVoxelWorld(SEED, 'sandbox', floorEdits + 240);
+    const waterLimit = Math.floor(world.maxEdits * 0.75);
+    expect(waterLimit - floorEdits - 1).toBeGreaterThan(10);
+    expect(waterLimit - floorEdits - 1).toBeLessThan(100);
+    const y = buildFloor(world, 40, 40);
+    const changes: BlockEdit[] = [];
+    const fluids = new VoxelFluids(world, (x, y, z, id) => changes.push({ x, y, z, id }));
+    world.setBlock(40, y, 40, Block.Water);
+    fluids.notifyEdit(40, y, 40);
+    settle(fluids);
+    expect(world.editCount).toBe(waterLimit);
+    expect(waterEdits(world)).toHaveLength(waterLimit - floorEdits);
+    // Refused changes were rolled back and never reported.
+    const replay = new Map<string, BlockEdit>();
+    for (const c of changes) replay.set(`${c.x},${c.y},${c.z}`, c);
+    expect(replay.size).toBe(waterLimit - floorEdits - 1);
+    for (const c of replay.values()) expect(world.getBlock(c.x, c.y, c.z)).toBe(c.id);
+
+    // More water can no longer claim new cells...
+    world.setBlock(40 + R, y, 40 + R, Block.Water);
+    fluids.notifyEdit(40 + R, y, 40 + R);
+    settle(fluids);
+    expect(world.editCount).toBe(waterLimit + 1);
+    expect(world.getBlock(40 + R - 1, y, 40 + R)).toBe(Block.Air);
+
+    // ...but players can still build with the rest of the budget.
+    let built = 0;
+    for (let x = 40 - R; x <= 40 + R; x++) for (let z = 40 - R; z <= 40 + R; z++) if (world.setBlock(x, y + 1, z, Block.Planks)) built++;
+    expect(built).toBe(world.maxEdits - waterLimit - 1);
+    expect(world.editCount).toBe(world.maxEdits);
+
+    // With the budget full, removing the source still dries all of its water.
+    world.setBlock(40, y, 40, Block.Stone);
+    fluids.notifyEdit(40, y, 40);
+    settle(fluids);
+    expect(waterEdits(world).filter((e) => Math.abs(e.x - 40) + Math.abs(e.z - 40) <= 7)).toEqual([]);
+    expect(world.editCount).toBe(world.maxEdits - replay.size);
   });
 
   it('keeps water inside the world', () => {
