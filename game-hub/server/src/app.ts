@@ -43,7 +43,7 @@ export function createGameServer(options: GameServerOptions = {}): GameServer {
     gameServer,
     httpServer,
     listen: (port, host) => gameServer.listen(port, host),
-    // Disposes every room first (voxel rooms save their world on dispose).
+    // Disposes every room first (voxel rooms save their world as it starts and on dispose).
     shutdown: () => gameServer.gracefullyShutdown(false),
   };
 }

@@ -13,6 +13,11 @@
  * all little-endian. The edit section is exactly encodeEdits(list, true).
  * MemoryWorldStore is used by tests and when persistence is disabled; its
  * worlds last until the server restarts (durable = false).
+ *
+ * Both stores can be bounded (WorldStoreLimits: number of worlds and bytes).
+ * A save that would go over a limit first evicts the least recently saved
+ * worlds that no open room holds, and is refused if that is not enough.
+ * prune() still runs on a timer for the age limit.
  */
 import { constants as fsConstants } from 'node:fs';
 import fs, { type FileHandle } from 'node:fs/promises';
@@ -40,8 +45,24 @@ export interface SavedWorld {
   edits: Uint8Array;
 }
 
-/** Tells prune() that an open room holds this world, so it must stay. */
+/** Tells prune() (and eviction) that an open room holds this world, so it must stay. */
 export type WorldInUse = (id: string) => Promise<boolean>;
+
+/**
+ * Bounds on what a store keeps (unset: unbounded). A save that would break
+ * one evicts the least recently saved worlds inUse() does not report as open;
+ * if that is not enough it rejects with WorldStoreFullError.
+ */
+export interface WorldStoreLimits {
+  /** Most worlds kept (checked when a save adds a new id). */
+  maxWorlds?: number;
+  /** Most bytes kept, counted as encoded (checked when a save adds bytes). */
+  maxBytes?: number;
+  inUse?: WorldInUse;
+}
+
+/** A save was refused: it does not fit within the limits and nothing more could be evicted. */
+export class WorldStoreFullError extends Error {}
 
 export interface WorldStore {
   /** True when saved worlds survive a server restart (false for the in-memory store). */
@@ -66,6 +87,8 @@ export interface WorldStore {
    * kept. Returns how many went.
    */
   prune(maxAgeMs: number, maxCount: number, inUse?: WorldInUse): Promise<number>;
+  /** Number of saved worlds and their total size in bytes (as encoded). */
+  usage(): Promise<{ worlds: number; bytes: number }>;
   /** Resolves once every save and delete started so far has finished (used at shutdown). */
   flush(): Promise<void>;
 }
@@ -86,6 +109,91 @@ function pickPruned(entries: { id: string; savedAt: number }[], maxAgeMs: number
   return doomed;
 }
 
+// ---- limits -----------------------------------------------------------------------------
+
+/** When and how big each stored world is, kept up to date by the store for its limits. */
+class Usage {
+  readonly worlds = new Map<string, { savedAt: number; bytes: number }>();
+  bytes = 0;
+
+  set(id: string, savedAt: number, bytes: number): void {
+    this.bytes += bytes - (this.worlds.get(id)?.bytes ?? 0);
+    this.worlds.set(id, { savedAt, bytes });
+  }
+
+  delete(id: string): void {
+    const entry = this.worlds.get(id);
+    if (!entry) return;
+    this.bytes -= entry.bytes;
+    this.worlds.delete(id);
+  }
+
+  clone(): Usage {
+    const copy = new Usage();
+    for (const [id, e] of this.worlds) copy.set(id, e.savedAt, e.bytes);
+    return copy;
+  }
+
+  /** True if storing bytes under id breaks a limit. A save that adds no world and no bytes never does. */
+  over(id: string, bytes: number, limits: WorldStoreLimits): boolean {
+    const old = this.worlds.get(id);
+    if (!old && this.worlds.size + 1 > (limits.maxWorlds ?? Infinity)) return true;
+    const growth = bytes - (old?.bytes ?? 0);
+    return growth > 0 && this.bytes + growth > (limits.maxBytes ?? Infinity);
+  }
+}
+
+/** How a store evicts: canEvict() says no to worlds that are open in a room (or busy); evict() checks again. */
+interface Evictor {
+  canEvict(id: string): Promise<boolean>;
+  evict(id: string): Promise<boolean>;
+}
+
+/**
+ * Makes room for a save of bytes under id: picks other worlds, least
+ * recently saved first and skipping those it cannot evict, until the save
+ * fits, then evicts them. If it would never fit, nothing is evicted: logs a
+ * warning and throws WorldStoreFullError.
+ */
+async function makeRoom(usage: Usage, id: string, bytes: number, limits: WorldStoreLimits, store: Evictor): Promise<void> {
+  if (!usage.over(id, bytes, limits)) return;
+  const after = usage.clone();
+  const doomed: string[] = [];
+  const oldestFirst = [...usage.worlds].filter(([other]) => other !== id).sort((a, b) => a[1].savedAt - b[1].savedAt);
+  for (const [other] of oldestFirst) {
+    if (!after.over(id, bytes, limits)) break;
+    if (!(await store.canEvict(other))) continue;
+    after.delete(other);
+    doomed.push(other);
+  }
+  if (!after.over(id, bytes, limits)) {
+    for (const other of doomed) {
+      if (await store.evict(other)) log.info(`evicted saved world ${other} to make room for ${id}`);
+    }
+    // Only short if a world was opened (or got busy) since it was picked.
+    if (!usage.over(id, bytes, limits)) return;
+  }
+  const mb = (usage.bytes / (1024 * 1024)).toFixed(1);
+  log.warn(`not saving world ${id}: the store is full (${usage.worlds.size} worlds, ${mb} MB) and evicting the worlds not open in rooms would not make enough room`);
+  throw new WorldStoreFullError(`no room to save world ${id}`);
+}
+
+/** Runs tasks one at a time, in the order they were handed in. */
+class Serial {
+  private tail: Promise<unknown> = Promise.resolve();
+
+  run<T>(task: () => Promise<T>): Promise<T> {
+    const next = this.tail.then(task);
+    this.tail = next.catch(() => undefined);
+    return next;
+  }
+
+  /** Resolves once every task handed in so far has finished. */
+  async idle(): Promise<void> {
+    await this.tail;
+  }
+}
+
 // ---- binary format ----------------------------------------------------------------
 
 const MAGIC = [0x43, 0x56, 0x57, 0x31]; // "CVW1"
@@ -93,6 +201,9 @@ const FORMAT_VERSION = 1;
 /** Bytes before the edit section (which starts with its u32 count). */
 const HEADER_BYTES = 23;
 const EDIT_BYTES = 6;
+
+/** Size of a world as encodeWorld() writes it. */
+const encodedSize = (world: SavedWorld): number => HEADER_BYTES + world.edits.byteLength;
 
 export function encodeWorld(world: SavedWorld): Uint8Array {
   const out = new Uint8Array(HEADER_BYTES + world.edits.byteLength);
@@ -141,6 +252,11 @@ const copyWorld = (w: SavedWorld): SavedWorld => ({ ...w, edits: w.edits.slice()
 export class MemoryWorldStore implements WorldStore {
   readonly durable = false;
   private readonly worlds = new Map<string, SavedWorld>();
+  private readonly sizes = new Usage();
+  /** Saves run one at a time (in call order), so each one's limit check sees the ones before. */
+  private readonly saves = new Serial();
+
+  constructor(private readonly limits: WorldStoreLimits = {}) {}
 
   async load(id: string): Promise<SavedWorld | null> {
     const w = isValidWorldId(id) ? this.worlds.get(id) : undefined;
@@ -149,7 +265,13 @@ export class MemoryWorldStore implements WorldStore {
 
   async save(world: SavedWorld): Promise<void> {
     if (!isValidWorldId(world.id)) throw new Error(`invalid world id ${JSON.stringify(world.id)}`);
-    this.worlds.set(world.id, copyWorld(world));
+    const copy = copyWorld(world);
+    const bytes = encodedSize(copy);
+    await this.saves.run(async () => {
+      await makeRoom(this.sizes, copy.id, bytes, this.limits, this.evictor);
+      this.worlds.set(copy.id, copy);
+      this.sizes.set(copy.id, copy.savedAt, bytes);
+    });
   }
 
   async exists(id: string): Promise<boolean> {
@@ -162,7 +284,7 @@ export class MemoryWorldStore implements WorldStore {
   }
 
   async delete(id: string): Promise<boolean> {
-    return isValidWorldId(id) && this.worlds.delete(id);
+    return isValidWorldId(id) && this.remove(id);
   }
 
   async quarantine(id: string): Promise<void> {
@@ -178,13 +300,30 @@ export class MemoryWorldStore implements WorldStore {
       // Saved again while inUse() was answering: keep it.
       const world = this.worlds.get(id);
       if (!world || world.savedAt > scanned.get(id)!) continue;
-      this.worlds.delete(id);
+      this.remove(id);
       removed++;
     }
     return removed;
   }
 
-  async flush(): Promise<void> {}
+  async usage(): Promise<{ worlds: number; bytes: number }> {
+    return { worlds: this.sizes.worlds.size, bytes: this.sizes.bytes };
+  }
+
+  async flush(): Promise<void> {
+    await this.saves.idle();
+  }
+
+  private remove(id: string): boolean {
+    this.sizes.delete(id);
+    return this.worlds.delete(id);
+  }
+
+  /** For makeRoom(): worlds open in a room stay; evicting checks that again. */
+  private readonly evictor: Evictor = {
+    canEvict: async (id) => !(this.limits.inUse && (await this.limits.inUse(id))),
+    evict: async (id) => (await this.evictor.canEvict(id)) && this.remove(id),
+  };
 }
 
 // ---- file store ---------------------------------------------------------------------------
@@ -201,8 +340,15 @@ export class FileWorldStore implements WorldStore {
   /** Per-id queue: loads, saves and deletes of one world run strictly in order. */
   private readonly queues = new Map<string, Promise<unknown>>();
   private dirReady: Promise<void> | null = null;
+  /** Size and age of every world file (read from the directory once, then kept up to date). */
+  private sizes: Promise<Usage> | null = null;
+  /** Saves check the limits (and reserve their room) one at a time. */
+  private readonly admissions = new Serial();
 
-  constructor(readonly dir: string) {
+  constructor(
+    readonly dir: string,
+    private readonly limits: WorldStoreLimits = {},
+  ) {
     this.worldsDir = path.join(dir, 'worlds');
   }
 
@@ -222,7 +368,12 @@ export class FileWorldStore implements WorldStore {
         return decodeWorld(id, data);
       } catch (err) {
         log.warn(`saved world ${id} is unreadable (${(err as Error).message}); moving it to ${id}${EXT}.corrupt`);
-        await this.moveAside(file).catch((e) => log.warn(`could not move ${file} aside`, e));
+        try {
+          await this.moveAside(file);
+          await this.forget(id);
+        } catch (e) {
+          log.warn(`could not move ${file} aside`, e);
+        }
         return null;
       }
     });
@@ -232,7 +383,23 @@ export class FileWorldStore implements WorldStore {
     if (!isValidWorldId(world.id)) return Promise.reject(new Error(`invalid world id ${JSON.stringify(world.id)}`));
     // Encode now so later changes to the caller's data cannot leak into this save.
     const bytes = encodeWorld(world);
-    return this.enqueue(world.id, () => this.writeAtomic(this.file(world.id), bytes));
+    return this.enqueue(world.id, async () => {
+      const sizes = await this.loadSizes();
+      const before = sizes.worlds.get(world.id);
+      // One at a time, so saves of different worlds cannot overrun the limits together.
+      await this.admissions.run(async () => {
+        await makeRoom(sizes, world.id, bytes.byteLength, this.limits, this.evictor);
+        sizes.set(world.id, world.savedAt, bytes.byteLength);
+      });
+      try {
+        await this.writeAtomic(this.file(world.id), bytes);
+      } catch (err) {
+        // The old file (if any) is untouched: count it again instead.
+        if (before) sizes.set(world.id, before.savedAt, before.bytes);
+        else sizes.delete(world.id);
+        throw err;
+      }
+    });
   }
 
   async exists(id: string): Promise<boolean> {
@@ -254,7 +421,11 @@ export class FileWorldStore implements WorldStore {
 
   delete(id: string): Promise<boolean> {
     if (!isValidWorldId(id)) return Promise.resolve(false);
-    return this.enqueue(id, () => this.unlink(this.file(id)));
+    return this.enqueue(id, async () => {
+      const removed = await this.unlink(this.file(id));
+      await this.forget(id);
+      return removed;
+    });
   }
 
   quarantine(id: string): Promise<void> {
@@ -265,6 +436,7 @@ export class FileWorldStore implements WorldStore {
       } catch (err) {
         if (!isNotFound(err)) throw err;
       }
+      await this.forget(id);
     });
   }
 
@@ -300,6 +472,11 @@ export class FileWorldStore implements WorldStore {
     return removed;
   }
 
+  async usage(): Promise<{ worlds: number; bytes: number }> {
+    const sizes = await this.loadSizes();
+    return { worlds: sizes.worlds.size, bytes: sizes.bytes };
+  }
+
   async flush(): Promise<void> {
     while (this.queues.size > 0) await Promise.all(this.queues.values());
   }
@@ -308,6 +485,73 @@ export class FileWorldStore implements WorldStore {
 
   private file(id: string): string {
     return path.join(this.worldsDir, id + EXT);
+  }
+
+  /** Sizes of the world files: read from the directory the first time they are needed, then kept up to date. */
+  private loadSizes(): Promise<Usage> {
+    if (!this.sizes) {
+      this.sizes = this.scanSizes();
+      // Read the directory again next time if it could not be read now.
+      this.sizes.catch(() => (this.sizes = null));
+    }
+    return this.sizes;
+  }
+
+  private async scanSizes(): Promise<Usage> {
+    const sizes = new Usage();
+    let names: string[];
+    try {
+      names = await fs.readdir(this.worldsDir);
+    } catch (err) {
+      if (isNotFound(err)) return sizes;
+      throw err;
+    }
+    for (const name of names) {
+      const id = name.endsWith(EXT) ? name.slice(0, -EXT.length) : '';
+      if (!isValidWorldId(id)) continue;
+      const full = path.join(this.worldsDir, name);
+      try {
+        const { size, mtimeMs } = await fs.stat(full);
+        sizes.set(id, (await this.readSavedAt(full)) ?? mtimeMs, size);
+      } catch {
+        // Deleted while scanning.
+      }
+    }
+    return sizes;
+  }
+
+  /**
+   * Drops id from the sizes once its file is gone. Waits for a scan that is
+   * still running, so the scan cannot add it back afterwards.
+   */
+  private async forget(id: string): Promise<void> {
+    try {
+      (await this.loadSizes()).delete(id);
+    } catch {
+      // Not read yet: the next scan will not find the file.
+    }
+  }
+
+  /** For makeRoom(): worlds open in a room, or with anything queued (e.g. being saved or opened), stay. */
+  private readonly evictor: Evictor = {
+    canEvict: async (id) => !this.queues.has(id) && !(this.limits.inUse && (await this.limits.inUse(id))),
+    evict: (id) => this.evict(id),
+  };
+
+  /** Deletes a world to make room for another, checking again that it is neither busy nor open. */
+  private evict(id: string): Promise<boolean> {
+    if (this.queues.has(id)) return Promise.resolve(false);
+    return this.enqueue(id, async () => {
+      if (this.limits.inUse && (await this.limits.inUse(id))) return false;
+      try {
+        await this.unlink(this.file(id));
+      } catch (err) {
+        log.warn(`could not evict saved world ${id}`, err);
+        return false;
+      }
+      await this.forget(id);
+      return true;
+    });
   }
 
   /**
@@ -321,7 +565,9 @@ export class FileWorldStore implements WorldStore {
       const file = this.file(id);
       const savedAt = (await this.readSavedAt(file)) ?? (await this.mtime(file));
       if (savedAt === null || savedAt > scannedAt) return false;
-      return this.unlink(file);
+      const removed = await this.unlink(file);
+      await this.forget(id);
+      return removed;
     });
   }
 
@@ -441,17 +687,31 @@ export function setWorldStore(store: WorldStore): void {
   current = store;
 }
 
+export interface WorldStoreOptions {
+  dir: string;
+  persist: boolean;
+  /** Most saved worlds kept (either store). */
+  maxWorlds?: number;
+  /** Byte budget of the in-memory store (also when falling back to it). */
+  maxMemoryBytes?: number;
+  /** Byte budget of the world files on disk. */
+  maxFileBytes?: number;
+  /** Worlds held by open rooms, which are never evicted to make room. */
+  inUse?: WorldInUse;
+}
+
 /**
  * Opens the store configured for this server. Falls back to memory (worlds then
  * last until the server restarts) if persistence is off or the directory is not
  * writable; never throws.
  */
-export async function openWorldStore(options: { dir: string; persist: boolean }): Promise<WorldStore> {
+export async function openWorldStore(options: WorldStoreOptions): Promise<WorldStore> {
+  const memory = () => new MemoryWorldStore({ maxWorlds: options.maxWorlds, maxBytes: options.maxMemoryBytes, inUse: options.inUse });
   if (!options.persist) {
     log.info('world persistence disabled (PERSIST_WORLDS); saved worlds last until the server restarts');
-    return new MemoryWorldStore();
+    return memory();
   }
-  const store = new FileWorldStore(options.dir);
+  const store = new FileWorldStore(options.dir, { maxWorlds: options.maxWorlds, maxBytes: options.maxFileBytes, inUse: options.inUse });
   const probe = path.join(store.worldsDir, `.probe-${process.pid}`);
   let timer: NodeJS.Timeout | undefined;
   try {
@@ -467,10 +727,16 @@ export async function openWorldStore(options: { dir: string; persist: boolean })
     await Promise.race([check(), timeout]);
   } catch (err) {
     log.warn(`cannot write to ${store.worldsDir} (${(err as Error).message}); saving worlds in memory only, they will be lost on restart`);
-    return new MemoryWorldStore();
+    return memory();
   } finally {
     clearTimeout(timer);
   }
-  log.info(`saving worlds to ${store.worldsDir}`);
+  try {
+    // Reads the size of every saved world now, for the limits.
+    const { worlds, bytes } = await store.usage();
+    log.info(`saving worlds to ${store.worldsDir} (${worlds} saved, ${(bytes / (1024 * 1024)).toFixed(1)} MB)`);
+  } catch (err) {
+    log.warn(`saving worlds to ${store.worldsDir}, but could not list the saved ones yet`, err);
+  }
   return store;
 }

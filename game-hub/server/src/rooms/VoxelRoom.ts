@@ -21,7 +21,7 @@
  *  - Public rooms save into one of the public-1..public-8 slots; a new public
  *    room takes the free slot saved most recently (all busy: temporary world).
  *  - Dirty worlds autosave every 30 s; every saved world is written once more
- *    on dispose (which also covers graceful shutdown) before its code or slot
+ *    when a graceful shutdown starts and on dispose, before its code or slot
  *    is released. A world nobody built in is never written.
  *  - Reopening by code is rate limited (per address and overall), so saved
  *    private worlds cannot be found by guessing codes at speed.
@@ -60,6 +60,7 @@ import {
   asBytes,
 } from '@hub/shared';
 import { config } from '../config';
+import { AddressBuckets, clientAddress } from '../http/clientAddress';
 import { ServerVoxelWorld } from '../voxel/ServerVoxelWorld';
 import { VoxelFluids } from '../voxel/VoxelFluids';
 import { getWorldStore, PUBLIC_WORLD_SLOTS, publicWorldId, type SavedWorld } from '../voxel/WorldStore';
@@ -79,26 +80,18 @@ const PUBLIC_SLOT_SET = 'voxel:public-worlds';
 /** Reopen attempts allowed per client address (burst, then per second)... */
 const REVIVE_BURST_PER_IP = 20;
 const REVIVE_REFILL_PER_IP = 0.2;
-/** ...and from everyone together, since forwarded addresses can be spoofed. */
+/** ...and from everyone together, so many addresses at once still cannot guess quickly. */
 const REVIVE_BURST_TOTAL = 120;
 const REVIVE_REFILL_TOTAL = 2;
-/** Addresses tracked before the per-address buckets start over (bounds memory). */
+/** Addresses tracked at once; beyond this the least recently seen are forgotten (bounds memory). */
 const MAX_REVIVE_ADDRESSES = 10_000;
 
-const reviveBuckets = new Map<string, TokenBucket>();
+const reviveBuckets = new AddressBuckets(MAX_REVIVE_ADDRESSES, () => new TokenBucket(REVIVE_BURST_PER_IP, REVIVE_REFILL_PER_IP));
 const reviveTotal = new TokenBucket(REVIVE_BURST_TOTAL, REVIVE_REFILL_TOTAL);
 
-/** Takes one reopen attempt from the address's bucket and from the overall one. */
+/** Takes one reopen attempt from the client address's bucket and from the overall one. */
 function allowRevive(context: AuthContext | undefined): boolean {
-  const fly = context?.headers?.['fly-client-ip'];
-  const raw = (typeof fly === 'string' && fly) || context?.ip || '';
-  const address = (Array.isArray(raw) ? (raw[0] ?? '') : raw).split(',')[0].trim() || 'unknown';
-  let bucket = reviveBuckets.get(address);
-  if (!bucket) {
-    if (reviveBuckets.size >= MAX_REVIVE_ADDRESSES) reviveBuckets.clear();
-    reviveBuckets.set(address, (bucket = new TokenBucket(REVIVE_BURST_PER_IP, REVIVE_REFILL_PER_IP)));
-  }
-  return bucket.take() && reviveTotal.take();
+  return reviveBuckets.take(clientAddress(context)) && reviveTotal.take();
 }
 
 /**
@@ -255,6 +248,17 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
 
   protected override describeStatus(): string {
     return this.mode === 'parkour' ? 'Parkour course' : `Building · ${this.world?.editCount ?? 0} edits`;
+  }
+
+  /**
+   * Graceful shutdown: save right away. A room still holding an unused seat
+   * reservation only disposes (and saves) once that reservation runs out,
+   * which can be after the platform has killed the process.
+   */
+  override onBeforeShutdown(): void {
+    // Not awaited: the store queues this before the save onDispose() makes later.
+    if (this.created) void this.saveWorld(true);
+    super.onBeforeShutdown();
   }
 
   override async onDispose(): Promise<void> {

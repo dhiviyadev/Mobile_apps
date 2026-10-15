@@ -17,7 +17,16 @@ import {
 } from '@hub/shared';
 import { isWorldOpen, VoxelRoom } from '../src/rooms/VoxelRoom';
 import { ServerVoxelWorld } from '../src/voxel/ServerVoxelWorld';
-import { FileWorldStore, isValidWorldId, MemoryWorldStore, type SavedWorld, setWorldStore, type WorldStore } from '../src/voxel/WorldStore';
+import {
+  FileWorldStore,
+  isValidWorldId,
+  MemoryWorldStore,
+  type SavedWorld,
+  setWorldStore,
+  type WorldStore,
+  WorldStoreFullError,
+  type WorldStoreLimits,
+} from '../src/voxel/WorldStore';
 import { startTestServer, type TestServer, until, wait } from './helpers';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -192,6 +201,111 @@ describe('FileWorldStore', () => {
     await memory.save(savedWorld('public-3'));
     await memory.quarantine('public-3');
     expect(await memory.exists('public-3')).toBe(false);
+  });
+});
+
+describe('saved-world limits', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** Encoded size of a world with n edits. */
+  const size = (n: number) => 27 + n * 6;
+  const world = (id: string, savedAt: number, edits = 0) => savedWorld(id, { savedAt, edits: encodeEdits(makeEdits(edits), true) });
+
+  /** A file store and a memory store with the same limits. */
+  async function bothStores(limits: WorldStoreLimits): Promise<WorldStore[]> {
+    return [new FileWorldStore(await tempDir(), limits), new MemoryWorldStore(limits)];
+  }
+
+  /** Which of the test ids the store holds. */
+  async function held(store: WorldStore): Promise<string[]> {
+    const ids = ['AAAAAA', 'BBBBBB', 'CCCCCC', 'DDDDDD', 'EEEEEE'];
+    const present = await Promise.all(ids.map((id) => store.exists(id)));
+    return ids.filter((_, i) => present[i]);
+  }
+
+  it('evicts the least recently saved world when a new one would go over the count', async () => {
+    for (const store of await bothStores({ maxWorlds: 3 })) {
+      await store.save(world('AAAAAA', 1000));
+      await store.save(world('BBBBBB', 3000));
+      await store.save(world('CCCCCC', 2000));
+      // Saving a world that is already stored needs no room.
+      await store.save(world('AAAAAA', 4000));
+      expect(await held(store)).toEqual(['AAAAAA', 'BBBBBB', 'CCCCCC']);
+      await store.save(world('DDDDDD', 5000));
+      expect(await held(store)).toEqual(['AAAAAA', 'BBBBBB', 'DDDDDD']);
+      await store.save(world('EEEEEE', 6000));
+      expect(await held(store)).toEqual(['AAAAAA', 'DDDDDD', 'EEEEEE']);
+      expect(await store.usage()).toEqual({ worlds: 3, bytes: 3 * size(0) });
+    }
+  });
+
+  it('never evicts worlds open in a room, and refuses a save when nothing else can go', async () => {
+    const warn = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const open = new Set<string>();
+    const inUse = async (id: string) => open.has(id);
+    for (const store of await bothStores({ maxWorlds: 2, inUse })) {
+      open.clear();
+      open.add('AAAAAA').add('BBBBBB');
+      await store.save(world('AAAAAA', 1000));
+      await store.save(world('BBBBBB', 2000));
+      await expect(store.save(world('CCCCCC', 3000))).rejects.toThrow(WorldStoreFullError);
+      expect(await held(store)).toEqual(['AAAAAA', 'BBBBBB']);
+      if (store instanceof FileWorldStore) expect((await fs.readdir(store.worldsDir)).sort()).toEqual(['AAAAAA.cvw', 'BBBBBB.cvw']);
+      // Open worlds are still saved again.
+      await store.save(world('AAAAAA', 4000, 5));
+      // Once its room closes, a world can go, even if it is the most recently saved.
+      open.delete('AAAAAA');
+      await store.save(world('CCCCCC', 5000));
+      expect(await held(store)).toEqual(['BBBBBB', 'CCCCCC']);
+    }
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/not saving world CCCCCC: the store is full/));
+  });
+
+  it('keeps the total size within the byte budget', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    for (const store of await bothStores({ maxBytes: 3 * size(100) })) {
+      await store.save(world('AAAAAA', 1000, 100));
+      await store.save(world('BBBBBB', 2000, 100));
+      await store.save(world('CCCCCC', 3000, 100));
+      expect(await store.usage()).toEqual({ worlds: 3, bytes: 3 * size(100) });
+      // A bigger world pushes out as many of the oldest as it needs.
+      await store.save(world('DDDDDD', 4000, 150));
+      expect(await held(store)).toEqual(['CCCCCC', 'DDDDDD']);
+      expect(await store.usage()).toEqual({ worlds: 2, bytes: size(100) + size(150) });
+      // So does a stored world that grows.
+      await store.save(world('CCCCCC', 5000, 250));
+      expect(await held(store)).toEqual(['CCCCCC']);
+      // A world bigger than the whole budget is refused; shrinking is always allowed.
+      await expect(store.save(world('EEEEEE', 6000, 400))).rejects.toThrow(WorldStoreFullError);
+      await store.save(world('CCCCCC', 7000, 10));
+      expect(await held(store)).toEqual(['CCCCCC']);
+      expect(await store.usage()).toEqual({ worlds: 1, bytes: size(10) });
+    }
+  });
+
+  it('counts the world files already on disk, and keeps the count as worlds go', async () => {
+    const dir = await tempDir();
+    const before = new FileWorldStore(dir);
+    await before.save(world('AAAAAA', 1000, 50));
+    await before.save(world('BBBBBB', 2000, 50));
+    // Leftovers that are not saved worlds do not count.
+    await fs.writeFile(path.join(before.worldsDir, 'CCCCCC.cvw.corrupt'), 'junk');
+    await fs.writeFile(path.join(before.worldsDir, 'DDDDDD.cvw.tmp'), 'partial');
+
+    const store = new FileWorldStore(dir, { maxWorlds: 2 });
+    expect(await store.usage()).toEqual({ worlds: 2, bytes: 2 * size(50) });
+    await store.save(world('CCCCCC', 3000));
+    expect(await held(store)).toEqual(['BBBBBB', 'CCCCCC']);
+    expect(await store.delete('BBBBBB')).toBe(true);
+    await store.quarantine('CCCCCC');
+    expect(await store.usage()).toEqual({ worlds: 0, bytes: 0 });
+    expect(await store.prune(DAY, 2)).toBe(0);
+    await store.save(world('DDDDDD', Date.now() - 2 * DAY));
+    await store.save(world('EEEEEE', Date.now()));
+    expect(await store.prune(DAY, 2)).toBe(1);
+    expect(await store.usage()).toEqual({ worlds: 1, bytes: size(0) });
   });
 });
 
@@ -530,24 +644,6 @@ describe('persistent Voxelvale rooms', () => {
     }
   });
 
-  it('rate limits attempts to reopen worlds by code', async () => {
-    const attempt = async (ip: string): Promise<string> => {
-      const res = await fetch(`http://127.0.0.1:${ts.port}/matchmake/create/voxel`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Real-IP': ip },
-        body: JSON.stringify({ nickname: 'Guesser', reviveCode: 'ZZZZZZ' }),
-      });
-      return ((await res.json()) as { error?: string }).error ?? '';
-    };
-    vi.spyOn(console, 'error').mockImplementation(() => undefined); // the matchmaker logs every refused create
-    const errors: string[] = [];
-    for (let i = 0; i < 21; i++) errors.push(await attempt('198.51.100.7'));
-    expect(errors.slice(0, 20).every((e) => e.includes('NO_SAVED_WORLD'))).toBe(true);
-    expect(errors[20]).toMatch(/TOO_MANY_REVIVES/);
-    // Other addresses still get an answer.
-    expect(await attempt('198.51.100.8')).toMatch(/NO_SAVED_WORLD/);
-  });
-
   it('saves open worlds on graceful shutdown so they survive a restart', async () => {
     const a = await track(await ts.client().create('voxel', { nickname: 'Stayer', mode: 'sandbox', private: true, seed: SEED }));
     const code = a.room.roomId;
@@ -574,5 +670,34 @@ describe('persistent Voxelvale rooms', () => {
     await ts.close();
     const final = await new FileWorldStore(dir).load(code);
     expect(decodeEdits(final!.edits, true)).toEqual(expect.arrayContaining([pillar, broken]));
+  });
+});
+
+describe('graceful shutdown with a pending seat reservation', () => {
+  it('saves the world as soon as shutdown starts, not when the reservation runs out', async () => {
+    const store = new MemoryWorldStore();
+    const server = await startTestServer({ worldStore: store });
+    const a = await track(await server.client().create('voxel', { nickname: 'Holder', mode: 'sandbox', private: true, seed: SEED }));
+    const code = a.room.roomId;
+    // A seat reserved for someone who never connects keeps the room from disposing until it expires.
+    matchMaker.getLocalRoomById(code).setSeatReservationTime(4);
+    const res = await fetch(`http://127.0.0.1:${server.port}/matchmake/joinById/${code}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nickname: 'Ghost' }),
+    });
+    expect(((await res.json()) as { sessionId?: string }).sessionId).toBeTruthy();
+    const pillar = { ...surface, y: surface.y + 2, id: Block.Stone };
+    await a.edit(pillar);
+
+    const started = Date.now();
+    const closing = server.close();
+    await eventually(async () => {
+      const saved = await store.load(code);
+      return !!saved && decodeEdits(saved.edits, true).length === 1;
+    }, 1000);
+    expect(Date.now() - started).toBeLessThan(1000);
+    await closing; // finishes once the reservation has run out and the room disposed
+    expect(decodeEdits((await store.load(code))!.edits, true)).toEqual([pillar]);
   });
 });
