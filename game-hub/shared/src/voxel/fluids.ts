@@ -1,0 +1,155 @@
+/**
+ * Flowing water: a small cellular simulation shared by the server (online,
+ * authoritative) and the client (offline worlds).
+ *
+ * Block.Water is a still source that only players create. A cell that is air
+ * or non-source water becomes:
+ *  - falling water if any water is directly above it;
+ *  - otherwise flowing water at the best level its 4 side neighbours supply.
+ *    A neighbour supplies only while resting on a solid block or a source:
+ *    sources and falling water supply 7, flowing water of level L supplies L - 1;
+ *  - otherwise air (it dries up).
+ * So a source on flat ground settles into a diamond of radius 7, and water
+ * cut off from its source counts down to nothing. Solids, sources and other
+ * liquids are never overwritten, and y = 0 is never touched.
+ *
+ * Work is a deduplicated FIFO queue of cells to re-check. Every applied
+ * change queues its 6 neighbours, so only cells near a change are visited and
+ * the queue drains once the water has settled.
+ */
+import { Block, flowingWater, IS_SOLID, isWater, waterLevel } from './blocks';
+import { packPos, unpackPos } from './chunk';
+import { CHUNK_HEIGHT } from './constants';
+
+export interface FluidAccess {
+  get(x: number, y: number, z: number): number;
+  /** Applies a change; returning false means it was refused and did not happen. */
+  set(x: number, y: number, z: number, id: number): boolean | void;
+}
+
+export interface FluidOptions {
+  /** Most cells waiting at once; further schedules are dropped (see `dropped`). */
+  maxQueue?: number;
+  /** World height: cells outside 0..height-1 are ignored. At most 256 (packPos range). */
+  height?: number;
+}
+
+export interface FluidChange {
+  x: number;
+  y: number;
+  z: number;
+  id: number;
+}
+
+const NEIGHBOURS: readonly (readonly [number, number, number])[] = [
+  [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
+];
+const SIDES: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const PACK_LIMIT = 32767;
+
+export class FluidSimulator {
+  /** Cells not queued because the queue was full. */
+  dropped = 0;
+  private readonly maxQueue: number;
+  private readonly height: number;
+  private queue: number[] = [];
+  private head = 0;
+  private readonly queued = new Set<number>();
+
+  constructor(
+    private readonly access: FluidAccess,
+    opts: FluidOptions = {},
+  ) {
+    this.maxQueue = opts.maxQueue ?? 50_000;
+    this.height = Math.min(256, opts.height ?? CHUNK_HEIGHT);
+  }
+
+  /** Cells waiting to be checked. */
+  get pending(): number {
+    return this.queue.length - this.head;
+  }
+
+  /** Queues a cell and its 6 neighbours for a check on the next step. */
+  schedule(x: number, y: number, z: number): void {
+    this.enqueue(x, y, z);
+    this.enqueueNeighbours(x, y, z);
+  }
+
+  /**
+   * Call after a block edit made outside the simulation. Besides the cell's
+   * own neighbourhood this re-checks the cells beside the block above, since
+   * a solid or a source placed or removed here decides whether water above
+   * rests on it (and so spreads sideways).
+   */
+  notifyEdit(x: number, y: number, z: number): void {
+    this.schedule(x, y, z);
+    this.schedule(x, y + 1, z);
+  }
+
+  /** Forgets all queued work. */
+  clear(): void {
+    this.queue = [];
+    this.head = 0;
+    this.queued.clear();
+  }
+
+  /**
+   * Checks up to `maxUpdates` queued cells, in the order they were queued,
+   * and returns the changes that were applied. Cells queued during this step
+   * wait for the next one.
+   */
+  step(maxUpdates = 512): FluidChange[] {
+    const changes: FluidChange[] = [];
+    const end = Math.min(this.queue.length, this.head + Math.max(0, maxUpdates));
+    while (this.head < end) {
+      const key = this.queue[this.head++];
+      this.queued.delete(key);
+      const [x, y, z] = unpackPos(key);
+      const current = this.access.get(x, y, z);
+      const id = this.settle(x, y, z, current);
+      if (id === current || this.access.set(x, y, z, id) === false) continue;
+      changes.push({ x, y, z, id });
+      this.enqueueNeighbours(x, y, z);
+    }
+    if (this.head === this.queue.length) {
+      this.queue = [];
+      this.head = 0;
+    } else if (this.head > 4096 && this.head * 2 > this.queue.length) {
+      this.queue = this.queue.slice(this.head);
+      this.head = 0;
+    }
+    return changes;
+  }
+
+  /** The block a cell should hold given its neighbours (its current block if the rules leave it alone). */
+  private settle(x: number, y: number, z: number, current: number): number {
+    if (current !== Block.Air && (current === Block.Water || !isWater(current))) return current;
+    const access = this.access;
+    if (y + 1 < this.height && isWater(access.get(x, y + 1, z))) return Block.WaterFalling;
+    let best = 0;
+    for (const [dx, dz] of SIDES) {
+      const supply = waterLevel(access.get(x + dx, y, z + dz)) - 1;
+      if (supply <= best) continue;
+      const below = access.get(x + dx, y - 1, z + dz);
+      if (IS_SOLID[below] || below === Block.Water) best = supply;
+    }
+    return flowingWater(best);
+  }
+
+  private enqueueNeighbours(x: number, y: number, z: number): void {
+    for (const [dx, dy, dz] of NEIGHBOURS) this.enqueue(x + dx, y + dy, z + dz);
+  }
+
+  private enqueue(x: number, y: number, z: number): void {
+    // y = 0 is never modified, so it is never queued either.
+    if (y < 1 || y >= this.height || Math.abs(x) > PACK_LIMIT || Math.abs(z) > PACK_LIMIT) return;
+    const key = packPos(x, y, z);
+    if (this.queued.has(key)) return;
+    if (this.queued.size >= this.maxQueue) {
+      this.dropped++;
+      return;
+    }
+    this.queued.add(key);
+    this.queue.push(key);
+  }
+}

@@ -6,10 +6,14 @@
 import * as THREE from 'three';
 import {
   Block,
+  chunkInWorld,
   createWorldGenerator,
   DAY_LENGTH_SECONDS,
+  FluidSimulator,
   forwardFromYawPitch,
   HOTBAR_BLOCKS,
+  isWater,
+  toChunkCoord,
   type VoxelMode,
   WORLD_LIMIT,
 } from '@hub/shared';
@@ -76,6 +80,8 @@ export interface VoxelGameOptions {
 }
 
 const OFFLINE_SAVE_INTERVAL = 30;
+/** Offline water simulation rate (online, the server runs it). */
+const FLUID_INTERVAL = 0.2;
 
 export class VoxelGame {
   readonly renderer: GameRenderer;
@@ -106,6 +112,11 @@ export class VoxelGame {
   private running = false;
   private disposed = false;
   private saveTimer = OFFLINE_SAVE_INTERVAL;
+  /** Flowing water for offline play; online, water changes arrive as server edits. */
+  private readonly fluids: FluidSimulator;
+  private fluidTimer = FLUID_INTERVAL;
+  /** Saved water to re-check once its chunk has loaded (it may have been mid-flow). */
+  private fluidBacklog: [number, number, number][] = [];
   private readonly unsubscribeSettings: () => void;
   private readonly tmpDir = new THREE.Vector3();
   private readonly tmpEye = new THREE.Vector3();
@@ -146,6 +157,8 @@ export class VoxelGame {
     if (this.parkour) this.player.yaw = -Math.PI / 2; // face along +X, the course direction
 
     for (const e of opts.initialEdits ?? []) this.world.setBlock(e[0], e[1], e[2], e[3]);
+    this.fluids = new FluidSimulator({ get: this.world.getBlock, set: (x, y, z, id) => this.setFluid(x, y, z, id) });
+    for (const e of opts.initialEdits ?? []) if (isWater(e[3])) this.fluidBacklog.push([e[0], e[1], e[2]]);
 
     this.interaction = new BlockInteraction(
       {
@@ -232,6 +245,8 @@ export class VoxelGame {
   setNet(net: VoxelNetHooks): void {
     this.net = net;
     this.pause.setRoomCode(net.roomCode);
+    this.fluids.clear();
+    this.fluidBacklog = [];
   }
 
   /** Applies an edit coming from the server (or local offline play). */
@@ -310,6 +325,7 @@ export class VoxelGame {
 
     // Parkour rules
     if (this.parkour) this.updateParkour();
+    if (!this.net) this.updateFluids(dt);
 
     // Sky / lighting
     const serverTime = this.net?.serverTime?.() ?? null;
@@ -393,6 +409,38 @@ export class VoxelGame {
       if (!this.net.requestEdit(x, y, z, id)) return;
     }
     this.world.setBlock(x, y, z, id);
+    if (!this.net) this.fluids.notifyEdit(x, y, z);
+  }
+
+  /** Offline water: a few simulation steps per second, like the server. */
+  private updateFluids(dt: number): void {
+    this.fluidTimer -= dt;
+    if (this.fluidTimer > 0) return;
+    this.fluidTimer = FLUID_INTERVAL;
+    if (this.fluidBacklog.length) {
+      this.fluidBacklog = this.fluidBacklog.filter(([x, y, z]) => {
+        if (!this.fluidReady(x, z)) return true;
+        this.fluids.schedule(x, y, z);
+        return false;
+      });
+    }
+    this.fluids.step();
+  }
+
+  /**
+   * Applies a simulated water change. Unloaded chunks read as bedrock, so a
+   * cell next to one could dry up wrongly: water waits at loaded edges instead.
+   */
+  private setFluid(x: number, y: number, z: number, id: number): boolean {
+    if (!this.fluidReady(x, z)) return false;
+    this.world.setBlock(x, y, z, id);
+    return true;
+  }
+
+  /** True when a column and its 4 side neighbours are loaded (neighbours outside the world count as loaded). */
+  private fluidReady(x: number, z: number): boolean {
+    const ready = (bx: number, bz: number) => this.world.isLoaded(bx, bz) || !chunkInWorld(toChunkCoord(bx), toChunkCoord(bz));
+    return this.world.isLoaded(x, z) && ready(x - 1, z) && ready(x + 1, z) && ready(x, z - 1) && ready(x, z + 1);
   }
 
   private updateParkour(): void {

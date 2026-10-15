@@ -6,7 +6,7 @@
  * against solid voxels (classic swept-AABB-by-axis approach). Shared so the
  * server can sanity-check reported positions with the same limits.
  */
-import { IS_LIQUID, IS_SOLID } from './blocks';
+import { IS_LIQUID, IS_SOLID, LIQUID_HEIGHT, waterLevel } from './blocks';
 import { PLAYER_HEIGHT, PLAYER_WIDTH } from './constants';
 
 export const VOXEL_PHYSICS = {
@@ -85,7 +85,11 @@ export function collides(get: BlockQuery, x: number, y: number, z: number, heigh
 }
 
 function liquidAt(get: BlockQuery, x: number, y: number, z: number): boolean {
-  return IS_LIQUID[get(Math.floor(x), Math.floor(y), Math.floor(z))] === 1;
+  const by = Math.floor(y);
+  const b = get(Math.floor(x), by, Math.floor(z));
+  if (!IS_LIQUID[b]) return false;
+  // Flowing water is shallow: only points below its surface count.
+  return waterLevel(b) === 8 || y - by < LIQUID_HEIGHT[b];
 }
 
 /** Advances the body by dt seconds. */
