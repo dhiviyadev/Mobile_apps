@@ -134,6 +134,41 @@ export function computeLight(
 }
 
 /**
+ * Fills the layer just above the box (y = height, open air past the build limit)
+ * with the block light it would get from the top layer: one level less than the
+ * cell below, then spread sideways one level per block. `outBlock` must hold that
+ * extra layer. The mesher samples it for faces at the top of the world; light does
+ * not flow back down from it.
+ */
+export function lightAboveTop(outBlock: Uint8Array, sizeX: number, height: number, sizeZ: number): void {
+  const layer = sizeX * sizeZ;
+  const top = (height - 1) * layer;
+  const above = height * layer;
+  for (let col = 0; col < layer; col++) {
+    const v = outBlock[top + col];
+    outBlock[above + col] = v > 0 ? v - 1 : 0;
+  }
+  // Every cell of the layer is air, so two raster passes give the exact spread:
+  // first from the -x / -z sides, then from the +x / +z sides.
+  for (let z = 0, i = above; z < sizeZ; z++) {
+    for (let x = 0; x < sizeX; x++, i++) {
+      let v = outBlock[i];
+      if (x > 0 && outBlock[i - 1] > v + 1) v = outBlock[i - 1] - 1;
+      if (z > 0 && outBlock[i - sizeX] > v + 1) v = outBlock[i - sizeX] - 1;
+      outBlock[i] = v;
+    }
+  }
+  for (let z = sizeZ - 1, i = above + layer - 1; z >= 0; z--) {
+    for (let x = sizeX - 1; x >= 0; x--, i--) {
+      let v = outBlock[i];
+      if (x < sizeX - 1 && outBlock[i + 1] > v + 1) v = outBlock[i + 1] - 1;
+      if (z < sizeZ - 1 && outBlock[i + sizeX] > v + 1) v = outBlock[i + sizeX] - 1;
+      outBlock[i] = v;
+    }
+  }
+}
+
+/**
  * Flood fill from the cells in queue[0..tail). A FIFO ring buffer; a cell is
  * re-queued only when its level rises and it is not already waiting, so the
  * queue never holds more than `volume` entries.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Block, changesLight, computeLight, LIGHT_EMISSION, MAX_LIGHT } from '../src';
+import { Block, changesLight, computeLight, LIGHT_EMISSION, lightAboveTop, MAX_LIGHT } from '../src';
 
 /** A small box of blocks in chunk layout (x fastest, then z, then y). */
 function box(sx: number, h: number, sz: number) {
@@ -106,6 +106,24 @@ describe('light propagation', () => {
     expect(w.sky[w.at(5, 2, 0)]).toBe(14);
     expect(w.sky[w.at(8, 1, 0)]).toBe(11);
     expect(w.sky[w.at(8, 5, 0)]).toBe(15); // on top of the roof
+  });
+
+  it('lights the open air above the top layer', () => {
+    // A lamp and a stone block in the top layer (the build limit).
+    const w = box(20, 4, 3);
+    w.set(5, 3, 1, Block.Lamp);
+    w.set(6, 3, 1, Block.Stone);
+    const block = new Uint8Array(w.blocks.length + 20 * 3).fill(99); // one extra layer, pre-dirtied
+    computeLight(w.blocks, 20, 4, 3, w.sky, block);
+    lightAboveTop(block, 20, 4, 3);
+    const above = (x: number, z: number) => block[w.at(x, 4, z)];
+    expect(above(5, 1)).toBe(14);
+    // Spreads sideways over the stone instead of copying its 0, and fades one level per block.
+    for (let x = 0; x < 20; x++) expect(above(x, 1)).toBe(Math.max(0, 14 - Math.abs(x - 5)));
+    expect(above(6, 0)).toBe(12);
+    // Nothing flows back down into the box.
+    expect(block[w.at(6, 3, 1)]).toBe(0);
+    expect(block[w.at(7, 3, 1)]).toBe(11);
   });
 
   it('flags edits that change light', () => {

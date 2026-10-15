@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
   Block,
+  BLOCK_COUNT,
   blockIndex,
+  changesLight,
   CHUNK_HEIGHT,
   CHUNK_SIZE,
   CHUNK_VOLUME,
+  chunkKey,
   collides,
   createBody,
   createWorldGenerator,
   generateParkourCourse,
   maxJumpDistance,
+  mulberry32,
   packPos,
   PLAYER_EYE,
   raycastVoxels,
@@ -19,7 +23,19 @@ import {
   unpackPos,
   VOXEL_PHYSICS,
 } from '../src';
-import { buildRegion, type MeshBuffers, meshChunk, REGION_SIZE, REGION_VOLUME, regionIndex } from '../src/voxel/mesher';
+import {
+  buildRegion,
+  type ChunkMesh,
+  type MeshBuffers,
+  meshChunk,
+  neighbourNeedsRemesh,
+  REGION_SIZE,
+  REGION_VOLUME,
+  regionDistance,
+  regionIndex,
+  streamMeshRange,
+  streamUnloadRange,
+} from '../src/voxel/mesher';
 
 /** A tiny sparse world for physics/raycast tests. */
 function sparseWorld(blocks: [number, number, number, number][]) {
@@ -231,6 +247,25 @@ describe('greedy mesher', () => {
     expect(corner.every((l) => l.sky < under[0].sky)).toBe(true);
   });
 
+  it('lights faces at the build limit like faces below it', () => {
+    // A stone block beside a lamp, one block below the top and at the top of the world.
+    const meshAt = (y: number) => {
+      const vol = emptyVol();
+      vol[regionIndex(5, y, 5)] = Block.Stone;
+      vol[regionIndex(6, y, 5)] = Block.Lamp;
+      return meshChunk(vol).opaque;
+    };
+    const below = meshAt(CHUNK_HEIGHT - 2);
+    const top = meshAt(CHUNK_HEIGHT - 1);
+    expect(top.vertexCount).toBe(below.vertexCount);
+    expect([...top.lights]).toEqual([...below.lights]);
+    expect([...top.positions]).toEqual([...below.positions].map((v, i) => (i % 3 === 1 ? v + 1 : v)));
+    // The stone's top face and the upper edges of its sides are lit by the lamp.
+    const stoneTop = vertexLight(top, (x, y, z) => y === CHUNK_HEIGHT && x >= 5 && x <= 6 && z >= 5 && z <= 6);
+    expect(stoneTop.length).toBeGreaterThan(4);
+    expect(Math.min(...stoneTop.map((l) => l.block))).toBeGreaterThanOrEqual(11 * 17);
+  });
+
   it('meshes and lights a real terrain region fast enough for a worker', () => {
     const gen = new TerrainGenerator(99);
     const chunks: Uint8Array[] = [];
@@ -251,6 +286,140 @@ describe('greedy mesher', () => {
     console.log(`[mesher] light + mesh of one 48x64x48 region: ${ms.toFixed(2)} ms, ${m.opaque.vertexCount + m.liquid.vertexCount} vertices`);
     expect(m.opaque.vertexCount).toBeGreaterThan(100);
     expect(ms).toBeLessThan(80);
+  });
+});
+
+describe('region dependencies', () => {
+  const NEIGHBOURS = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as const;
+  /** Hash of every buffer of a mesh, to tell whether a remesh would change anything. */
+  const fingerprint = (m: ChunkMesh): string => {
+    let h = 0x811c9dc5;
+    for (const b of [m.opaque, m.liquid]) {
+      for (const a of [b.positions, b.uvs, b.tiles, b.lights, b.indices]) {
+        const bytes = new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
+        for (let i = 0; i < bytes.length; i++) h = Math.imul(h ^ bytes[i], 0x01000193);
+      }
+    }
+    return `${m.opaque.vertexCount}/${m.liquid.vertexCount}/${h >>> 0}`;
+  };
+
+  it('remeshes every neighbour whose mesh an edit can change', { timeout: 30000 }, () => {
+    // 5x5 chunks of terrain. Edits land in the centre chunk; every neighbour the
+    // rule skips is meshed from its own region before and after the edit.
+    const gen = new TerrainGenerator(31);
+    const chunks = new Map<string, Uint8Array>();
+    for (let cz = -2; cz <= 2; cz++) for (let cx = -2; cx <= 2; cx++) chunks.set(chunkKey(cx, cz), gen.generateChunk(cx, cz));
+    const centre = chunks.get(chunkKey(0, 0))!;
+    const region = new Uint8Array(REGION_VOLUME);
+    const meshOf = (cx: number, cz: number) => {
+      const n: Uint8Array[] = [];
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) n.push(chunks.get(chunkKey(cx + dx, cz + dz))!);
+      return fingerprint(meshChunk(buildRegion(n, region)));
+    };
+    const surface = (lx: number, lz: number) => {
+      let y = CHUNK_HEIGHT - 1;
+      while (y > 0 && centre[blockIndex(lx, y, lz)] === Block.Air) y--;
+      return y;
+    };
+
+    const edits: [number, number, number, number][] = [];
+    // Glass and water in each side neighbour, against the border above the terrain:
+    // air -> glass and water -> ice beside them change faces there but not light.
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const lx = dx > 0 ? CHUNK_SIZE - 1 : dx < 0 ? 0 : 8;
+      const lz = dz > 0 ? CHUNK_SIZE - 1 : dz < 0 ? 0 : 8;
+      const n = chunks.get(chunkKey(dx, dz))!;
+      const nx = (lx + dx + CHUNK_SIZE) % CHUNK_SIZE;
+      const nz = (lz + dz + CHUNK_SIZE) % CHUNK_SIZE;
+      n[blockIndex(nx, 60, nz)] = Block.Glass;
+      n[blockIndex(nx, 58, nz)] = Block.Water;
+      edits.push([lx, 60, lz, Block.Glass], [lx, 60, lz, Block.Air], [lx, 58, lz, Block.Water], [lx, 58, lz, Block.Ice], [lx, 58, lz, Block.Air]);
+    }
+    // Lamps exactly at the light reach of the side and diagonal neighbours, then removed again.
+    for (const [lx, lz] of [[0, 8], [1, 8], [7, 8], [8, 7]]) {
+      const y = surface(lx, lz) + 1;
+      edits.push([lx, y, lz, Block.Lamp], [lx, y, lz, Block.Air]);
+    }
+    // Random blocks, mostly around the surface and near the chunk border.
+    const rand = mulberry32(5);
+    const pick = (n: number) => Math.floor(rand() * n);
+    const coord = () => (rand() < 0.5 ? pick(CHUNK_SIZE) : rand() < 0.5 ? pick(3) : CHUNK_SIZE - 1 - pick(3));
+    for (let i = 0; i < 30; i++) {
+      const lx = coord();
+      const lz = coord();
+      const r = rand();
+      const y = r < 0.1 ? CHUNK_HEIGHT - 1 : r < 0.25 ? 1 + pick(CHUNK_HEIGHT - 1) : Math.min(CHUNK_HEIGHT - 1, Math.max(1, surface(lx, lz) - 2 + pick(5)));
+      edits.push([lx, y, lz, pick(BLOCK_COUNT)]);
+    }
+
+    const known = new Map<number, string>(); // neighbour -> fingerprint of its current mesh
+    const misses: string[] = [];
+    let checked = 0;
+    let lightEdits = 0;
+    for (const [lx, y, lz, id] of edits) {
+      const i = blockIndex(lx, y, lz);
+      const old = centre[i];
+      if (old === id) continue;
+      if (changesLight(old, id)) lightEdits++;
+      const skipped: number[] = [];
+      NEIGHBOURS.forEach(([dx, dz], n) => {
+        if (neighbourNeedsRemesh(dx, dz, lx, lz, old, id)) {
+          known.delete(n);
+        } else {
+          skipped.push(n);
+          if (!known.has(n)) known.set(n, meshOf(dx, dz));
+        }
+      });
+      centre[i] = id;
+      for (const n of skipped) {
+        const [dx, dz] = NEIGHBOURS[n];
+        const after = meshOf(dx, dz);
+        if (after !== known.get(n)) misses.push(`${old} -> ${id} at ${lx},${y},${lz} changed neighbour ${dx},${dz}`);
+        known.set(n, after);
+        checked++;
+      }
+    }
+    expect(misses).toEqual([]);
+    expect(lightEdits).toBeGreaterThan(20);
+    expect(checked).toBeGreaterThan(150);
+  });
+
+  it('flags only the neighbours within reach of an edit', () => {
+    const flagged = (lx: number, lz: number, old: number | null, id: number) =>
+      NEIGHBOURS.filter(([dx, dz]) => neighbourNeedsRemesh(dx, dz, lx, lz, old, id)).map((d) => d.join(','));
+    // Same light: only neighbours that read the edited border block.
+    expect(flagged(8, 8, Block.Stone, Block.Brick)).toEqual([]);
+    expect(flagged(15, 8, Block.Stone, Block.Brick)).toEqual(['1,0']);
+    expect(flagged(0, 0, Block.Air, Block.Glass)).toEqual(['-1,-1', '0,-1', '-1,0']);
+    // Light changes reach MAX_LIGHT - 1 blocks; an unknown old block counts as a light change.
+    expect(flagged(0, 8, Block.Air, Block.Lamp)).toEqual(['-1,-1', '0,-1', '-1,0', '-1,1', '0,1']);
+    expect(flagged(1, 8, null, Block.Air)).toEqual(['-1,-1', '0,-1', '-1,0', '1,0', '-1,1', '0,1']);
+  });
+
+  it('loads the whole region of every meshed chunk and never unloads wanted chunks', () => {
+    const problems: string[] = [];
+    for (let r = 1; r <= 12; r++) {
+      const mesh = streamMeshRange(r);
+      const unload = streamUnloadRange(r);
+      for (let dz = -r - 4; dz <= r + 4; dz++) {
+        for (let dx = -r - 4; dx <= r + 4; dx++) {
+          let nearest = Infinity;
+          for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) nearest = Math.min(nearest, (dx + i) ** 2 + (dz + j) ** 2);
+          const d = regionDistance(dx, dz);
+          if (d !== nearest) problems.push(`r=${r} ${dx},${dz}: regionDistance ${d}, nearest region chunk ${nearest}`);
+          const wanted = d <= mesh;
+          // World only scans |dx|, |dz| <= r + 1 for wanted chunks.
+          if (wanted && Math.max(Math.abs(dx), Math.abs(dz)) > r + 1) problems.push(`r=${r} ${dx},${dz}: wanted outside the scan`);
+          // A wanted chunk that also unloads would load and unload in a loop.
+          if (wanted && d > unload) problems.push(`r=${r} ${dx},${dz}: wanted but unloaded`);
+          // Chunks at the edge of the mesh circle have all 8 neighbours wanted, so they mesh.
+          if (dx * dx + dz * dz <= mesh) {
+            for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) if (regionDistance(dx + i, dz + j) > mesh) problems.push(`r=${r} ${dx},${dz}: neighbour ${i},${j} not wanted`);
+          }
+        }
+      }
+    }
+    expect(problems).toEqual([]);
   });
 });
 

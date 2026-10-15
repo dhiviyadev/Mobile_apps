@@ -22,7 +22,7 @@
  */
 import { IS_EMISSIVE, IS_LIQUID, IS_TRANSPARENT, TILE_BOTTOM, TILE_SIDE, TILE_TOP } from './blocks';
 import { CHUNK_HEIGHT, CHUNK_SIZE } from './constants';
-import { computeLight, MAX_LIGHT } from './light';
+import { changesLight, computeLight, lightAboveTop, MAX_LIGHT } from './light';
 
 export const REGION_SIZE = CHUNK_SIZE * 3; // 48
 export const REGION_VOLUME = REGION_SIZE * REGION_SIZE * CHUNK_HEIGHT;
@@ -69,6 +69,45 @@ export function buildRegion(chunks: readonly (Uint8Array | null)[], out: Uint8Ar
   }
   return out;
 }
+
+// ---- region dependencies (used by the client World for remeshing and streaming) ----
+
+/**
+ * True when the mesh of the neighbouring chunk at offset (dx, dz) can change after
+ * the block at chunk-local (lx, lz) changes from `old` (null when unknown) to `id`.
+ * A mesh reads blocks one past its chunk edge (face culling, AO), and an edit that
+ * changes light moves it at most MAX_LIGHT - 1 blocks sideways (sky light only
+ * falls without loss inside its own column). Keep in step with meshChunk: a test
+ * meshes the neighbours before and after random edits.
+ */
+export function neighbourNeedsRemesh(dx: number, dz: number, lx: number, lz: number, old: number | null, id: number): boolean {
+  // Blocks between the edit and the row of ours that the neighbour reads.
+  const ex = dx > 0 ? CHUNK_SIZE - 1 - lx : dx < 0 ? lx : 0;
+  const ez = dz > 0 ? CHUNK_SIZE - 1 - lz : dz < 0 ? lz : 0;
+  if (ex === 0 && ez === 0) return true;
+  return (old === null || changesLight(old, id)) && ex + ez < MAX_LIGHT;
+}
+
+/**
+ * Squared distance (in chunks) from the origin chunk to the nearest chunk of the
+ * 3x3 region centred on (dx, dz). A chunk's blocks are needed while any chunk
+ * whose region contains it is meshed.
+ */
+export const regionDistance = (dx: number, dz: number): number => {
+  const a = Math.max(0, Math.abs(dx) - 1);
+  const b = Math.max(0, Math.abs(dz) - 1);
+  return a * a + b * b;
+};
+
+/**
+ * Streaming rings for a render distance of r chunks, as squared chunk distances
+ * from the player's chunk: chunks with dx² + dz² <= streamMeshRange(r) are meshed,
+ * block data is loaded while regionDistance <= streamMeshRange(r) (so edge chunks
+ * have their whole region) and unloaded once regionDistance > streamUnloadRange(r)
+ * (the slack avoids reloading when walking back and forth).
+ */
+export const streamMeshRange = (r: number): number => (r + 0.5) * (r + 0.5);
+export const streamUnloadRange = (r: number): number => (r + 2) * (r + 2);
 
 export interface MeshBuffers {
   positions: Float32Array;
@@ -183,7 +222,7 @@ const mask = new Int32Array(CHUNK_HEIGHT * CHUNK_SIZE);
 /** Per-face vertex light, one byte per corner: sky and block. */
 const skyMask = new Int32Array(CHUNK_HEIGHT * CHUNK_SIZE);
 const blockMask = new Int32Array(CHUNK_HEIGHT * CHUNK_SIZE);
-/** Region light plus one extra layer above the world (open sky, no block light). */
+/** Region light plus one extra layer above the world (open sky; block light from lightAboveTop). */
 let skyLight: Uint8Array | null = null;
 let blockLight: Uint8Array | null = null;
 
@@ -208,6 +247,7 @@ export function meshChunk(region: Uint8Array): ChunkMesh {
     blockLight = new Uint8Array(REGION_VOLUME + REGION_SIZE * REGION_SIZE);
   }
   computeLight(region, REGION_SIZE, CHUNK_HEIGHT, REGION_SIZE, skyLight, blockLight);
+  lightAboveTop(blockLight, REGION_SIZE, CHUNK_HEIGHT, REGION_SIZE);
   const sky = skyLight;
   const blk = blockLight;
 

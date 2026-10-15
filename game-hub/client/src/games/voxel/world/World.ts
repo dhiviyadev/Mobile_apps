@@ -10,17 +10,23 @@ import * as THREE from 'three';
 import {
   Block,
   blockIndex,
-  changesLight,
   CHUNK_HEIGHT,
   CHUNK_SIZE,
   chunkInWorld,
   chunkKey,
-  MAX_LIGHT,
   toChunkCoord,
   toLocal,
   type VoxelMode,
 } from '@hub/shared';
-import { buildRegion, type MeshBuffers, REGION_VOLUME } from '@hub/shared/voxel/mesher';
+import {
+  buildRegion,
+  type MeshBuffers,
+  neighbourNeedsRemesh,
+  REGION_VOLUME,
+  regionDistance,
+  streamMeshRange,
+  streamUnloadRange,
+} from '@hub/shared/voxel/mesher';
 import { WorkerPool } from './WorkerPool';
 
 /** Remesh priorities: an edited chunk first so the player sees the change at once, then its neighbours. */
@@ -57,17 +63,6 @@ const NEIGHBOURS = [
   [-1, 0], [1, 0],
   [-1, 1], [0, 1], [1, 1],
 ];
-
-/**
- * Squared distance (in chunks) from the player's chunk to the nearest chunk of
- * the 3x3 block around offset (dx, dz). A chunk's data is needed while any
- * chunk whose mesh region it belongs to is in range.
- */
-const regionDistance = (dx: number, dz: number): number => {
-  const a = Math.max(0, Math.abs(dx) - 1);
-  const b = Math.max(0, Math.abs(dz) - 1);
-  return a * a + b * b;
-};
 
 export class World {
   readonly group = new THREE.Group();
@@ -122,22 +117,17 @@ export class World {
     if (!e) this.edits.set(key, (e = new Map()));
     e.set(idx, id);
     const c = this.chunks.get(key);
-    let lightChanged = true; // unknown when the chunk is not loaded
+    let old: number | null = null; // unknown when the chunk is not loaded
     if (c?.blocks) {
-      const old = c.blocks[idx];
+      old = c.blocks[idx];
       // Server echoes of our own optimistic edits are no-ops: skip the remesh.
       if (old === id) return;
       c.blocks[idx] = id;
       this.markDirty(c, PRIORITY_EDIT);
-      lightChanged = changesLight(old, id);
     }
+    // Neighbours whose border reads or light the edit can change.
     for (const [dx, dz] of NEIGHBOURS) {
-      // Blocks between the edit and the row of ours that the neighbour samples.
-      const ex = dx > 0 ? CHUNK_SIZE - 1 - lx : dx < 0 ? lx : 0;
-      const ez = dz > 0 ? CHUNK_SIZE - 1 - lz : dz < 0 ? lz : 0;
-      // Neighbours sample our border blocks for face culling and AO, and light
-      // changes reach up to MAX_LIGHT - 1 blocks sideways.
-      if ((ex === 0 && ez === 0) || (lightChanged && ex + ez < MAX_LIGHT)) this.markDirtyAt(cx + dx, cz + dz, PRIORITY_NEIGHBOUR);
+      if (neighbourNeedsRemesh(dx, dz, lx, lz, old, id)) this.markDirtyAt(cx + dx, cz + dz, PRIORITY_NEIGHBOUR);
     }
   }
 
@@ -171,7 +161,7 @@ export class World {
     // Wanted chunks: meshes inside the render circle, block data for those and
     // the ring around them (each mesh is built from its 3x3 chunk region).
     // Rebuilt only when the player crosses a chunk border or the radius changes.
-    const meshRange = (r + 0.5) * (r + 0.5);
+    const meshRange = streamMeshRange(r);
     const key = `${this.centerCx},${this.centerCz},${r}`;
     if (key !== this.wantedKey) {
       this.wantedKey = key;
@@ -218,7 +208,7 @@ export class World {
     }
     // 3. Unload chunks well past the wanted ring (the slack avoids reloading
     //    when walking back and forth), and hide those outside the render circle.
-    const unload = (r + 2) * (r + 2);
+    const unload = streamUnloadRange(r);
     for (const c of this.chunks.values()) {
       const dx = c.cx - this.centerCx;
       const dz = c.cz - this.centerCz;
