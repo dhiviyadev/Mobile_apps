@@ -80,8 +80,8 @@ Desktop: click to lock the mouse. WASD moves, Space jumps, Shift sprints, Ctrl c
 Tablet: left thumb on the joystick (push to the rim to sprint), drag elsewhere to look, and use the Break, Place, Jump and Crouch buttons. Pause → Edit touch layout rearranges the controls.
 
 ### Known issues / notes
-- Lighting is per-vertex face shading plus AO with a global day/night level. There is no flood-fill light propagation, so lamps glow but don't light their surroundings, and caves are lit at the same level as the surface.
-- Water is static: it doesn't flow into holes you dig.
+- Lighting is per-vertex face shading plus AO with a global day/night level. There is no flood-fill light propagation, so lamps glow but don't light their surroundings, and caves are lit at the same level as the surface. *(Fixed in the follow-up below.)*
+- Water is static: it doesn't flow into holes you dig. *(Fixed in the follow-up below.)*
 - In headless Chromium (SwiftShader software GL) the game runs at ~25–40 FPS. Real tablet GPUs are far faster; the performance pass on hardware is Phase 6.
 - On first `npm run dev` start, Vite pre-bundles three.js and reloads the page once.
 
@@ -127,7 +127,7 @@ npm run dev         # open two browser windows → Voxelvale → Private room in
 ```
 
 ### Known issues / notes
-- Edits are kept in memory per room: a room's world resets when everyone leaves. A persistence layer (Redis or SQLite) would be the next step.
+- Edits are kept in memory per room: a room's world resets when everyone leaves. A persistence layer (Redis or SQLite) would be the next step. *(Fixed in the follow-up below: worlds are saved to disk.)*
 - Player movement in Voxelvale is client-authoritative with server sanity checks (no full server physics). That is fine for a co-op sandbox; the competitive arena uses full server authority.
 - Nametags draw through walls by design (helps find friends while building).
 
@@ -286,6 +286,123 @@ On a tablet: Settings → Show FPS & ping, then play both games on Auto quality.
 
 ### Known issues / what to verify next
 - **Real-device performance is not yet verified.** This environment has no GPU (tests use SwiftShader), so the 60 FPS target on a base iPad and 30 FPS on low-end Android still need checking on hardware. The benchmark thresholds in `client/src/core/render/benchmark.ts` may need tuning after that.
-- Voxel worlds aren't persisted server-side; rooms reset when empty.
+- Voxel worlds aren't persisted server-side; rooms reset when empty. *(Fixed in the follow-up below.)*
 - No service worker / offline cache yet (the PWA manifest is in place).
 - The FPS-cap and dynamic-resolution heuristics use frame intervals, so a browser that throttles `requestAnimationFrame` (e.g. Low Power Mode on iOS) will look like a slow GPU and drop resolution.
+
+---
+
+## Follow-up: Voxelvale limitations fixed ✅
+
+Three limitations were listed after phase 6. This step fixes the first two: worlds now persist, and lamps light their surroundings, caves are dark, and water flows. As agreed, the third (the arena trusting client aim angles) is unchanged. The Colyseus 0.16 → 0.18 upgrade is still a separate decision.
+
+### What was built
+
+**Saved worlds (server)**
+
+`server/src/voxel/WorldStore.ts` stores one binary file per world.
+- **Format:** a `CVW1` header (seed, mode, private flag, time of day, save time) followed by the 6-byte edit list.
+- **Safe writes:** each save goes to a temp file, is fsynced, then renamed. Saves of the same world are queued.
+- **Bad data:** corrupt files are moved aside. Ids are validated before any file is touched.
+- **Pruning:** worlds are deleted after `WORLD_TTL_DAYS` without a visit, and the oldest go when there are more than `MAX_SAVED_WORLDS`.
+- **Memory store:** used for tests and `PERSIST_WORLDS=false`, and as a fallback, with a warning, when `DATA_DIR` isn't writable.
+
+Rooms:
+- **Private worlds:** a private sandbox world is saved under its room code.
+- **Reopening:** `create('voxel', { reviveCode })` reopens a saved world.
+  - It fails with `NO_SAVED_WORLD` or `ROOM_ALREADY_OPEN`.
+  - Attempts are rate limited per address in `onAuth`.
+- **Room codes:** claimed without races, and a new room never takes a saved world's code.
+- **Public worlds:** quick-match sandbox rooms use 8 persistent slots, `public-1` to `public-8`. A slot whose save can't be restored is moved aside.
+- **When it saves:**
+  - Every 30 s while the world has changed.
+  - Once more on dispose, which includes graceful shutdown, before the code or slot is released.
+  - A world nobody built in is never written.
+
+Client:
+- Joining an unknown code tries to reopen a saved world.
+- The pause menu says how long the world is kept.
+- A chat line greets players in a restored world.
+
+Deploy:
+- **Docker:** a `/data` volume. The entrypoint takes ownership of it, then runs the server as `node` via `su-exec`.
+- **Fly.io:** a `[mounts]` block, and the one-time `fly volumes create` step in the README.
+- **Render:** a commented-out disk block, with `PERSIST_WORLDS=false` until a disk is attached.
+
+**Light propagation (shared mesher + client)**
+
+`shared/src/voxel/light.ts` flood-fills light over typed arrays.
+- **Sky light:** level 15 straight down open columns, then spreads into shade.
+- **Block light:** lamps give 15; checkpoint and finish pads give 10.
+- **Blocking:** opaque blocks stop light; leaves, water and ice dim it faster.
+
+The mesher now takes a 48×64×48 region: the chunk plus its 8 neighbours.
+- It lights the region and writes 4 bytes per vertex: shade×AO, sky light, block light and an emissive flag.
+- Light is smoothed per corner, and faces merge only when both AO and light match.
+
+The shader turns light levels into brightness.
+- **Curve:** `0.8^(15 − level)`.
+- **Sky light** is scaled by daylight.
+- **Lamp light** is warm-tinted.
+- **Ambient floor:** a small minimum, so dark caves aren't pitch black.
+
+`World` streaming changed to match.
+- **Readiness:** a chunk is meshed only once all 8 neighbours have block data. A ring of data-only chunks sits beyond the render distance.
+- **Edits:** only the neighbours whose border or light an edit can reach are remeshed, and the edited chunk goes first.
+
+**Flowing water (shared + server + client)**
+
+New blocks are flowing water levels 1–7 and falling water (ids 22–29). The water source takes Clay's hotbar slot; Clay stays placeable.
+
+`shared/src/voxel/fluids.ts` is a deterministic, bounded queue simulator (at most 512 cells per step).
+- Water above a cell makes it falling water.
+- Otherwise the cell takes the best neighbour's level minus one, counting only neighbours that rest on solid ground or a source.
+- Water with no supply dries up.
+- No new sources are created.
+
+Server:
+- `VoxelFluids` steps at 5 Hz inside `VoxelRoom`, and its changes are broadcast with player edits.
+- Water may use at most 75 % of the 200 000-edit budget.
+- Unfinished flows resume when a saved world is reopened.
+
+Offline:
+- `StreamedFluids` waits for unloaded chunks instead of treating them as solid.
+- Saves keep only player edits, so water is rebuilt from its sources, and channels dug next to generated water refill on load.
+
+Mesher:
+- **Surface height:** level / 8, so a level-7 flow lines up with its 7/8-high source.
+- **Steps:** the side of higher water next to lower water shows only the step between them.
+
+### How to test
+```bash
+npm test && npm run e2e            # 144 + 26 automated tests (6 e2e skipped by design)
+```
+- **Saved world:**
+  1. `npm run dev`, open Voxelvale → Private room, build something and leave.
+  2. Enter the same code from the hub: the world comes back.
+  3. Stop the server with Ctrl+C (a graceful shutdown saves), restart it, and enter the code again.
+- **Water:** place Water (hotbar slot 11, key `-`) on a ledge and watch it spread and fall. Cover the source with a block and the flow dries up.
+- **Light:** at night, place lamps and see the warm falloff. Dig into a hillside by day: the tunnel gets dark.
+
+### Measured render budget
+Same seed (12345), before and after light propagation (Chromium, SwiftShader):
+
+| Scene | Draw calls | Triangles before → after | CPU per frame (median) |
+| --- | --- | --- | --- |
+| Voxelvale, Low (3 chunks) | 43 | 51 k → 53 k | 1.0 ms |
+| Voxelvale, Medium (5 chunks) | 82 | 120 k → 128 k | 1.5 ms |
+| Voxelvale, High (8 chunks) | 143 | 240 k → 261 k | 2.2 ms |
+
+In the mesh workers, a chunk takes about 1.5 ms to light and about 12 ms to light and mesh.
+
+### Known issues / notes
+- **Visual check:** lighting and water were checked in headless Chromium screenshots only; check them on tablets too.
+- **One server:** saved worlds live on one machine's disk. Running several server machines would need shared storage and room routing.
+- **Disk use:** the worst case is about 1.2 MB per world (200 000 edits), so about 600 MB at the default limit of 500 worlds.
+- **Water model:**
+  - No new sources form, and currents don't push players.
+  - A flood stopped by the water budget continues only when something next to it changes.
+  - Offline, flows pause at unloaded chunks and resume when they load.
+- **Still open:**
+  - The arena trusts client aim angles (left as is, as agreed).
+  - The Colyseus upgrade has not been done.

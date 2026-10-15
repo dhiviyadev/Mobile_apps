@@ -26,11 +26,12 @@ All names, art, music and sound are original. Textures are painted in code, audi
 ```
 game-hub/
 ├── shared/src/
-│   ├── voxel/       worldgen (seeded simplex), parkour, greedy mesher, physics, raycast, protocol
+│   ├── voxel/       worldgen (seeded simplex), parkour, light propagation, greedy mesher, flowing water, physics, raycast, protocol
 │   ├── arena/       maps, movement, weapons, player step, hitscan, simulation, bots, protocol
 │   └── util/        noise, RNG, binary codec, rate limiter, text sanitising
 ├── server/src/
 │   ├── rooms/       HubRoom (codes, reconnect, chat) · VoxelRoom · ArenaRoom · schema
+│   ├── voxel/       authoritative world copy, saved-world store, server-side water
 │   └── http/        /health and /api/rooms
 ├── client/src/
 │   ├── hub/         landing page, game sheets, launcher, room poller
@@ -43,7 +44,8 @@ game-hub/
 
 ### Key design decisions
 - **One simulation, three users.** The arena's `ArenaSimulation` runs on the server for online play, in the browser for practice against bots, and its per-input step (`applyCommand`) drives client-side prediction. Bots send the same input commands as players, so they obey the same rules.
-- **Seeded worlds.** Voxelvale terrain is generated identically on every client and on the server from a seed; only edits travel over the network.
+- **Seeded worlds.** Voxelvale terrain is generated identically on every client and on the server from a seed; only edits travel over the network, and only edits are saved (a seed plus a compact edit list per world).
+- **Lighting in the mesher.** Sky light and lamp light are flood-filled per chunk in the mesh workers and baked into vertices with smooth (per-corner) averaging, so caves are dark, lamps light their surroundings, and the GPU still does one texture fetch per pixel.
 - **Server authority where it matters.** Arena: movement, fire rate, ammo, line of sight and hits are all decided on the server, with lag compensation. Voxelvale: block edits are validated by the server; movement is client-simulated but speed-checked (it's a co-op sandbox).
 - **Small first download.** The hub is ~21 KB gzipped JS + ~7 KB CSS. Three.js (~124 KB gz) and each game (~20–25 KB gz) load only when you open one; the network library (~41 KB gz) loads only when you join a room.
 
@@ -61,10 +63,12 @@ npm run dev          # game server on :2567 and Vite on :5173, both with hot rel
 
 Open http://localhost:5173. **On a tablet:** connect it to the same Wi-Fi and open `http://<your-computer's-LAN-IP>:5173`. The client automatically talks to port 2567 on the same host.
 
+Voxelvale sandbox worlds you build online are saved to `server/data/` (gitignored); delete it to start over.
+
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Server and client in watch mode |
-| `npm test` | 70 unit and integration tests (Vitest): world generation, meshing, physics, combat rules, lag compensation, full bot matches, real Colyseus rooms over WebSockets |
+| `npm test` | 144 unit and integration tests (Vitest): world generation, lighting, meshing, flowing water, saved worlds, physics, combat rules, lag compensation, full bot matches, real Colyseus rooms over WebSockets |
 | `npm run e2e` | 26 browser tests (Playwright, desktop and emulated Android tablet), incl. multi-touch and two-browser multiplayer |
 | `npm run typecheck` | `tsc --noEmit` for all three packages |
 | `npm run build` | Production builds: `server/dist/index.js` and `client/dist/` |
@@ -108,14 +112,16 @@ Every button can be **moved and resized**: Menu → *Edit touch layout*. You can
 - The screen is kept awake while playing (Wake Lock API, where available).
 
 ### Performance budget
-Measured render cost per frame (CPU, Chromium):
+Measured render cost per frame (CPU, Chromium; Voxelvale offline sandbox, seed 12345, with light propagation):
 
 | Scene | Draw calls | Triangles | CPU per frame (median) |
 | --- | --- | --- | --- |
-| Voxelvale, Low (3 chunks) | 44 | 49 k | 0.9 ms |
-| Voxelvale, Medium (5 chunks) | 61 | 126 k | 1.6 ms |
-| Voxelvale, High (8 chunks) | 117 | 181 k | 3.1 ms |
+| Voxelvale, Low (3 chunks) | 43 | 53 k | 1.0 ms |
+| Voxelvale, Medium (5 chunks) | 82 | 128 k | 1.5 ms |
+| Voxelvale, High (8 chunks) | 143 | 261 k | 2.2 ms |
 | Arcfire Arena, FFA | 9 | 1.5 k | 1.1 ms |
+
+Against the same seed before light propagation, draw calls are unchanged and triangles are 4–9 % higher (faces lit differently are no longer merged). Light is computed in the mesh workers: about 1.5 ms per chunk for the flood fill and about 12 ms for light plus meshing.
 
 Techniques used:
 - Greedy meshing with ambient occlusion, generated in Web Workers.
@@ -123,7 +129,7 @@ Techniques used:
 - The whole arena map merged into one mesh.
 - Instanced avatars (5–6 draw calls for all players), tracers, sparks and particles.
 - Frustum culling plus render-distance culling of chunks.
-- Baked vertex lighting (no real-time lights on terrain).
+- Baked per-vertex sky and lamp light (flood-filled in workers; no real-time lights on terrain).
 - Pixel-ratio caps per preset.
 
 These figures were captured with software rendering, so they show CPU and scene cost rather than real GPU speed. **Please verify on your target devices** (a base iPad and a low-end Android tablet): see "Known issues" in [`docs/PHASES.md`](docs/PHASES.md).
@@ -132,7 +138,7 @@ These figures were captured with software rendering, so they show CPU and scene 
 
 ## Deploy
 
-The client is a static site; the server is one Node process holding game rooms in memory.
+The client is a static site; the server is one Node process holding game rooms in memory. Voxelvale sandbox worlds are also written to disk (`DATA_DIR`, `/data` in the image), so give the server a persistent volume if worlds should survive deploys and restarts.
 
 ### 1. Game server
 
@@ -140,19 +146,20 @@ The client is a static site; the server is one Node process holding game rooms i
 ```bash
 cd game-hub
 fly launch --no-deploy --copy-config   # pick a unique app name, keep the Dockerfile
+fly volumes create hub_data --size 1 --region iad   # once; same region as primary_region
 fly secrets set ALLOWED_ORIGINS=https://your-client.example   # optional, defaults to "*"
 fly deploy
 # → wss://<app>.fly.dev
 ```
-`fly.toml` keeps one machine running (`auto_stop_machines = "off"`) because rooms live in memory.
+`fly.toml` keeps one machine running (`auto_stop_machines = "off"`) because rooms live in memory, and mounts the `hub_data` volume at `/data` for saved worlds. Fly volumes are root-owned, so the container's entrypoint takes ownership of `/data` and then runs the server as the unprivileged `node` user.
 
-**Render** (Blueprint: [`../render.yaml`](../render.yaml)): New → Blueprint → select this repository. It creates the Docker web service (`game-hub/server/Dockerfile`, health check `/health`) and a static site for the client. After the first deploy, set the client's `VITE_SERVER_URL` to `wss://<server>.onrender.com` and redeploy the client.
+**Render** (Blueprint: [`../render.yaml`](../render.yaml)): New → Blueprint → select this repository. It creates the Docker web service (`game-hub/server/Dockerfile`, health check `/health`) and a static site for the client. After the first deploy, set the client's `VITE_SERVER_URL` to `wss://<server>.onrender.com` and redeploy the client. Render disks need a paid instance, so the blueprint sets `PERSIST_WORLDS=false`: worlds survive rooms emptying but not restarts, and players are told so. To keep them, uncomment the `disk` block in `render.yaml` and delete `PERSIST_WORLDS`.
 
 **Any Docker host**
 ```bash
 cd game-hub
 docker build -f server/Dockerfile -t cobalt-hub-server .
-docker run -p 2567:2567 -e ALLOWED_ORIGINS=* cobalt-hub-server
+docker run -p 2567:2567 -v hub-data:/data -e ALLOWED_ORIGINS=* cobalt-hub-server
 ```
 (Behind a registry rate limit, use `--build-arg NODE_IMAGE=mirror.gcr.io/library/node:22-alpine`.)
 
@@ -184,12 +191,25 @@ You can also point any build at another server with `?server=wss://host` in the 
 | `HOST` | server | `0.0.0.0` | Listen address |
 | `ALLOWED_ORIGINS` | server | `*` | Comma-separated origins allowed to call `/api/rooms` |
 | `LOG_LEVEL` | server | `info` | `debug`, `info`, `warn`, `error` |
+| `DATA_DIR` | server | `./data` (`/data` in the image) | Where saved Voxelvale worlds are written (`worlds/<id>.cvw`) |
+| `PERSIST_WORLDS` | server | on | `false`/`0` keeps saved worlds in memory only (until restart) |
+| `WORLD_TTL_DAYS` | server | `30` | Saved worlds not visited for this long are deleted |
+| `MAX_SAVED_WORLDS` | server | `500` | Oldest saved worlds beyond this count are deleted |
 
 ---
 
 ## Status and known issues
-All six phases are complete; see [`docs/PHASES.md`](docs/PHASES.md) for what each phase delivered, how to test it, and the known issues. Main limitations:
-- Voxel worlds live in memory per room (no persistence when a room empties). Offline worlds are saved in the browser.
-- Voxel lighting is baked AO and face shade with a global day/night level (no light propagation from lamps), and water doesn't flow.
+All six phases are complete, plus a follow-up that removed the Voxelvale limitations listed after phase 6; see [`docs/PHASES.md`](docs/PHASES.md) for what each step delivered, how to test it, and the known issues.
+
+**Saved worlds.** Online sandbox worlds are kept when their room empties and across server restarts:
+- A private room's world is saved under its room code. Entering that code later reopens it, with the same terrain, builds, water and time of day, for 30 days after the last visit (`WORLD_TTL_DAYS`). Reopening by code is rate limited.
+- Quick-match sandbox rooms use eight persistent public worlds; a new public room continues the most recently played free one.
+- Worlds autosave every 30 s while changed and on close. Parkour courses are not saved, and a room nobody built in is never written.
+- The pause menu says whether, and for how long, the current world is kept. Offline worlds are still saved in the browser.
+
+**Light and water.** Lamps (and parkour checkpoints) light their surroundings, caves and interiors are dark by day, and water flows: it spreads up to 7 blocks from a source, falls, and dries up when its source is removed. Online, the server runs the water and sends changes as ordinary edits; offline, the browser does. Water may use at most three quarters of a world's 200 000-edit budget, so floods can't stop players building.
+
+Remaining limitations:
 - The arena trusts client aim angles (inherent to FPS games); everything else is validated on the server.
-- Colyseus is pinned to the 0.16 line; 0.17/0.18 have since been released.
+- Colyseus is pinned to the 0.16 line; 0.17/0.18 have since been released. Upgrading changes the room and schema APIs, so it is left as a separate step.
+- Water is a simple 7-level model: no new sources form, currents don't push players, and a flood cut off by the edit budget resumes only when something nearby changes.
