@@ -276,7 +276,12 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
 
   private startFluids(): void {
     this.fluids =
-      this.mode === 'sandbox' ? new VoxelFluids(this.world, (x, y, z, id) => this.pendingEdits.push({ x, y, z, id })) : null;
+      this.mode === 'sandbox'
+        ? new VoxelFluids(this.world, (x, y, z, id) => this.pendingEdits.push({ x, y, z, id }), {
+            // VoxelFluids calls this at most once a minute.
+            onLimit: () => this.systemChat("Water has reached this world's limit; it will not spread further until some is removed."),
+          })
+        : null;
   }
 
   /**

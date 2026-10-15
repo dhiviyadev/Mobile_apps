@@ -224,10 +224,14 @@ describe('fluid simulation', () => {
     // Water that is not resting on anything does not spread sideways.
     expect(g.get(4, 3, 0)).toBe(Block.Air);
     expect(g.get(4, 2, 0)).toBe(Block.Air);
-    // The bottom of the fall acts like a source.
-    expect(g.get(4, 1, 0)).toBe(flowingWater(7));
-    expect(g.get(5, 1, 0)).toBe(flowingWater(6));
-    expect(g.get(10, 1, 0)).toBe(flowingWater(1));
+    // At the bottom it carries on from the level it fell at (5), so it still
+    // travels 7 blocks sideways from the source in all: the fall is free.
+    expect(g.get(4, 1, 0)).toBe(flowingWater(4));
+    expect(g.get(5, 1, 0)).toBe(flowingWater(3));
+    expect(g.get(7, 1, 0)).toBe(flowingWater(1));
+    expect(g.get(8, 1, 0)).toBe(Block.Air);
+    expect(g.get(4, 1, 3)).toBe(flowingWater(1));
+    expect(g.get(4, 1, 4)).toBe(Block.Air);
     expect(g.get(0, 0, 0)).toBe(Block.Stone);
   });
 
@@ -242,6 +246,85 @@ describe('fluid simulation', () => {
     edit(g, sim, 0, 3, 0, Block.Air);
     settle(sim);
     expect(g.water()).toEqual([]);
+  });
+
+  it('travels at most 7 blocks from its source down a staircase hill, and dries again', () => {
+    // A stepped pyramid: terraces 2 blocks wide, each 1 block below the one inside it.
+    const STEPS = 20;
+    const g = new Grid();
+    const size = 2 * STEPS + 2;
+    for (let x = -size; x <= size; x++) {
+      for (let z = -size; z <= size; z++) {
+        g.fill(x, 0, z, x, Math.max(0, STEPS - Math.floor(Math.max(Math.abs(x), Math.abs(z)) / 2)), z, Block.Stone);
+      }
+    }
+    const sim = new FluidSimulator(g, { height: STEPS + 8 });
+    edit(g, sim, 0, STEPS + 1, 0, Block.Water);
+    settle(sim);
+    const wet = [...g.blocks].filter(([, id]) => isWater(id)).map(([key]) => unpackPos(key));
+    // Falls do not restart the water at every drop, so it wets only a small patch of the hill...
+    expect(wet.length).toBeLessThan(250);
+    for (const [x, , z] of wet) expect(Math.abs(x) + Math.abs(z), `${x},${z}`).toBeLessThanOrEqual(7);
+    // ...though it does pour down several steps on the way.
+    expect(Math.min(...wet.map(([, y]) => y))).toBeLessThanOrEqual(STEPS - 2);
+    expect(g.get(4, STEPS, 0)).toBe(flowingWater(4));
+    expect(g.get(4, STEPS - 1, 0)).toBe(Block.WaterFalling);
+    expect(g.get(5, STEPS - 1, 0)).toBe(flowingWater(3));
+
+    edit(g, sim, 0, STEPS + 1, 0, Block.Air);
+    settle(sim);
+    expect(g.water()).toEqual([]);
+  });
+
+  it('updates the water below a fall when the water feeding it changes', () => {
+    const g = flatGrid();
+    g.fill(-R, 1, -R, R, 2, R, Block.Stone);
+    g.fill(3, 1, -6, 10, 2, 6, Block.Air);
+    const sim = new FluidSimulator(g);
+    edit(g, sim, 0, 3, 0, Block.Water);
+    settle(sim);
+    const before = new Map(g.blocks);
+    expect(g.get(4, 1, 0)).toBe(flowingWater(4));
+
+    // A source on top of the fall feeds it at full strength (a player edit)...
+    edit(g, sim, 3, 3, 0, Block.Water);
+    settle(sim);
+    expect(g.get(3, 1, 0)).toBe(Block.WaterFalling);
+    expect(g.get(4, 1, 0)).toBe(flowingWater(7));
+    expect(g.get(10, 1, 0)).toBe(flowingWater(1));
+    // ...and once it is gone the water below falls back to what the first source supplies.
+    edit(g, sim, 3, 3, 0, Block.Air);
+    settle(sim);
+    expect(g.blocks).toEqual(before);
+
+    // The same when the change comes from the simulation: a nearer source lifts the flow
+    // that feeds the fall (5 -> 6), and the water at the bottom follows.
+    edit(g, sim, 1, 3, 0, Block.Water);
+    settle(sim);
+    expect(g.get(3, 3, 0)).toBe(flowingWater(6));
+    expect(g.get(4, 1, 0)).toBe(flowingWater(5));
+    edit(g, sim, 1, 3, 0, Block.Air);
+    settle(sim);
+    expect(g.blocks).toEqual(before);
+  });
+
+  it('queues only the cells the rules would change when asked to', () => {
+    const g = flatGrid();
+    const sim = new FluidSimulator(g);
+    edit(g, sim, 0, 1, 0, Block.Water);
+    settle(sim);
+    // Settled water needs nothing.
+    for (let x = -R; x <= R; x++) sim.scheduleIfUnsettled(x, 1, 0);
+    expect(sim.pending).toBe(0);
+    expect(sim.wouldChange(0, 1, 3)).toBe(false);
+    // A source placed without notifying the simulation: only its 4 dry sides would change.
+    g.put(10, 1, 10, Block.Water);
+    expect(sim.wouldChange(10, 1, 10)).toBe(false);
+    expect(sim.wouldChange(11, 1, 10)).toBe(true);
+    sim.scheduleIfUnsettled(10, 1, 10);
+    expect(sim.pending).toBe(4);
+    settle(sim);
+    expect(g.get(10, 1, 12)).toBe(flowingWater(6));
   });
 
   it('dries a flat diamond and refills it when the source returns', () => {
