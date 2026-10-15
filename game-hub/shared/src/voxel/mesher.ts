@@ -20,7 +20,7 @@
  * light are uniform across them, which keeps lighting exact while still
  * collapsing large flat areas (fields, cliffs, sea, dark caves) into few quads.
  */
-import { IS_EMISSIVE, IS_LIQUID, IS_TRANSPARENT, TILE_BOTTOM, TILE_SIDE, TILE_TOP } from './blocks';
+import { IS_EMISSIVE, IS_LIQUID, IS_TRANSPARENT, LIQUID_HEIGHT, TILE_BOTTOM, TILE_SIDE, TILE_TOP } from './blocks';
 import { CHUNK_HEIGHT, CHUNK_SIZE } from './constants';
 import { changesLight, computeLight, lightAboveTop, MAX_LIGHT } from './light';
 
@@ -126,7 +126,6 @@ export interface ChunkMesh {
 const AO_CURVE = [0.5, 0.68, 0.84, 1];
 /** Directional shading per face: +x, -x, +y, -y, +z, -z. */
 const FACE_SHADE = [0.82, 0.82, 1, 0.55, 0.68, 0.68];
-const WATER_DROP = 0.125;
 /** Approximate brightness of a vertex light byte (matches the shader curve); picks quad diagonals. */
 const BRIGHTNESS = new Float32Array(256);
 for (let v = 0; v < 256; v++) BRIGHTNESS[v] = Math.pow(0.8, ((255 - v) / 255) * MAX_LIGHT);
@@ -257,6 +256,8 @@ export function meshChunk(region: Uint8Array): ChunkMesh {
     return region[regionIndex(x, y, z)];
   };
   const opaqueAt = (x: number, y: number, z: number): number => (IS_TRANSPARENT[get(x, y, z)] ? 0 : 1);
+  /** Top of a liquid cell: full when more liquid sits on it, else its surface height. */
+  const liquidTop = (x: number, y: number, z: number, id: number): number => (IS_LIQUID[get(x, y + 1, z)] ? 1 : LIQUID_HEIGHT[id]);
 
   const pos = [0, 0, 0];
   const q = [0, 0, 0];
@@ -288,7 +289,12 @@ export function meshChunk(region: Uint8Array): ChunkMesh {
               q[axis] += sign;
               const n = get(q[0], q[1], q[2]);
               let visible: boolean;
-              if (IS_LIQUID[b]) visible = !IS_LIQUID[n] && (IS_TRANSPARENT[n] === 1 || (axis === 1 && sign > 0 && n === 0));
+              // Liquid beside a lower liquid surface: only the strip above that surface shows.
+              let lower = 0;
+              if (IS_LIQUID[b] && IS_LIQUID[n]) {
+                visible = axis !== 1 && liquidTop(pos[0], pos[1], pos[2], b) > liquidTop(q[0], q[1], q[2], n);
+                lower = n;
+              } else if (IS_LIQUID[b]) visible = IS_TRANSPARENT[n] === 1 || (axis === 1 && sign > 0 && n === 0);
               else if (IS_TRANSPARENT[b]) visible = n !== b && IS_TRANSPARENT[n] === 1;
               else visible = IS_TRANSPARENT[n] === 1;
               if (visible) {
@@ -333,10 +339,11 @@ export function meshChunk(region: Uint8Array): ChunkMesh {
                   skyBits |= lightByte(s, cells) << (c * 8);
                   blockBits |= lightByte(l, cells) << (c * 8);
                 }
-                // Liquids: skip AO; flag surface blocks so their quads drop slightly.
+                // Liquids: skip AO; flag surface blocks so their quads drop to the
+                // surface height, and keep the lower neighbour for strips above it.
                 if (IS_LIQUID[b]) {
                   const above = get(pos[0], pos[1] + 1, pos[2]);
-                  ao = 0xff | (IS_LIQUID[above] ? 0 : 1 << 8);
+                  ao = 0xff | (IS_LIQUID[above] ? 0 : 1 << 8) | (lower << 9);
                 }
                 key = b | (ao << 8) | (1 << 30);
               }
@@ -415,23 +422,27 @@ function emitQuad(
   const b = key & 0xff;
   const liquid = IS_LIQUID[b] === 1;
   const surface = liquid && ((key >> 16) & 1) === 1;
+  const lower = liquid ? (key >> 17) & 0xff : 0;
+  const drop = surface ? 1 - LIQUID_HEIGHT[b] : 0;
   const ao = (key >> 8) & 0xff;
   const plane = slice + (sign > 0 ? 1 : 0);
   // Corner order (u,v): (0,0) (1,0) (1,1) (0,1) is CCW for the +axis face.
   cu[0] = u; cu[1] = u + w; cu[2] = u + w; cu[3] = u;
   cv[0] = v; cv[1] = v; cv[2] = v + h; cv[3] = v + h;
-  // For side faces of surface water, the top edge is wherever Y is largest.
+  // Side faces of liquids: the top edge is wherever Y is largest, the bottom edge where it is smallest.
   const topY = uAxis === 1 ? u + w : vAxis === 1 ? v + h : -1;
+  const bottomY = uAxis === 1 ? u : vAxis === 1 ? v : -1;
   const order = sign > 0 ? ORDER_POS : ORDER_NEG;
   for (let k = 0; k < 4; k++) {
     const c = order[k];
     p[axis] = plane;
     p[uAxis] = cu[c];
     p[vAxis] = cv[c];
-    if (surface) {
+    if (liquid) {
       if (axis === 1) {
-        if (sign > 0) p[1] -= WATER_DROP;
-      } else if (p[1] === topY) p[1] -= WATER_DROP;
+        if (sign > 0) p[1] -= drop;
+      } else if (p[1] === topY) p[1] -= drop;
+      else if (lower !== 0 && p[1] === bottomY) p[1] += LIQUID_HEIGHT[lower];
     }
     corners[k * 3] = p[0];
     corners[k * 3 + 1] = p[1];

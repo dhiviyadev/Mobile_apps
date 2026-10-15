@@ -59,7 +59,16 @@ test.describe('Voxelvale offline', () => {
       v.player.pitch = -Math.PI / 2 + 0.02;
     });
     await expect.poll(() => page.evaluate(() => (window as unknown as { __voxel: V }).__voxel.player.body.onGround)).toBe(true);
-    await expect.poll(() => page.evaluate(() => !!(window as unknown as { __voxel: V }).__voxel.interaction.target)).toBe(true);
+    // Wait for a target under our feet: the first frames after the pitch change may still report the old view.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const v = (window as unknown as { __voxel: V }).__voxel;
+          const t = v.interaction.target;
+          return !!t && t.y < v.player.body.y && Math.abs(t.x + 0.5 - v.player.body.x) < 1.5 && Math.abs(t.z + 0.5 - v.player.body.z) < 1.5;
+        }),
+      )
+      .toBe(true);
     const target = (await page.evaluate(() => (window as unknown as { __voxel: V }).__voxel.interaction.target))!;
     const below = [target.x, target.y, target.z] as const;
     const blockBefore = target.block;

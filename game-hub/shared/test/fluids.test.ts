@@ -147,7 +147,7 @@ describe('water blocks', () => {
       expect(IS_LIQUID[id]).toBe(1);
       expect(IS_SOLID[id]).toBe(0);
       expect(isPlaceable(id)).toBe(false);
-      expect(LIQUID_HEIGHT[id]).toBeCloseTo((level + 1) / 9);
+      expect(LIQUID_HEIGHT[id]).toBeCloseTo(level / 8);
     }
     expect(flowingWater(0)).toBe(Block.Air);
     expect(isWater(Block.Ice)).toBe(false);
@@ -458,6 +458,7 @@ describe('fluids in a streamed world', () => {
     // Saved water in chunk cx = 2 (loaded, but its neighbour is not) and cx = 3 (not loaded).
     const saved: Edit[] = [];
     for (let x = 32; x < 64; x++) for (let z = 0; z < 16; z++) for (let y = 1; y <= 40; y++) saved.push([x, y, z, Block.Water]);
+    for (const [x, y, z, id] of saved) w.grid.set(x, y, z, id); // restore() takes edits already in the world
     fluids.restore(saved);
     expect(fluids.waitingCells).toBe(saved.length);
     w.loadChecks = 0;
@@ -470,6 +471,31 @@ describe('fluids in a streamed world', () => {
     fluids.step();
     expect(fluids.waitingCells).toBe(0);
     expect(fluids.pending).toBeGreaterThan(0);
+  });
+
+  it('refills cells dug beside generated water after loading', () => {
+    // A generated pond (sources, not edits) at x = -3..-1 and a channel dug out of it.
+    const terrain = () => {
+      const g = flatGrid();
+      g.fill(-R, 1, -R, R, 1, R, Block.Stone);
+      g.fill(-3, 1, 0, -1, 1, 0, Block.Water);
+      return g;
+    };
+    const w = new StreamedGrid(terrain());
+    const fluids = new StreamedFluids(w);
+    for (let x = 0; x <= 3; x++) playerEdit(w, fluids, x, 1, 0, Block.Air);
+    settleStreamed(fluids);
+    expect(w.grid.get(2, 1, 0)).toBe(flowingWater(5));
+
+    // Only the digging is saved; loading it lets the pond flow into the channel again.
+    const saved = [...fluids.saveEdits(w.allEdits())];
+    expect(saved.map((e) => e[3])).toEqual([Block.Air, Block.Air, Block.Air, Block.Air]);
+    const loaded = new StreamedGrid(terrain());
+    for (const [x, y, z, id] of saved) loaded.setBlock(x, y, z, id);
+    const again = new StreamedFluids(loaded);
+    again.restore(saved);
+    settleStreamed(again);
+    expect(loaded.grid.blocks).toEqual(w.grid.blocks);
   });
 
   it('saves player edits only, and saved sources flow back after loading', () => {

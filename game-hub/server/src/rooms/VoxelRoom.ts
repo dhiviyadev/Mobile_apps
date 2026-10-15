@@ -9,6 +9,8 @@
  *    it, and broadcasts accepted edits in batches. Rejected edits are bounced
  *    back to the sender with the authoritative block so they can roll back.
  *  - Late joiners (and reconnecting players) receive the full edit list.
+ *  - Water flows on the server only (VoxelFluids, 5 Hz); each change is an
+ *    ordinary edit in the same broadcast batches.
  *  - Movement is client-simulated (it's a co-op sandbox) but sanity-checked
  *    for speed; offenders are snapped back, persistent offenders kicked.
  *  - Parkour times are measured on the server clock.
@@ -59,11 +61,14 @@ import {
 } from '@hub/shared';
 import { config } from '../config';
 import { ServerVoxelWorld } from '../voxel/ServerVoxelWorld';
+import { VoxelFluids } from '../voxel/VoxelFluids';
 import { getWorldStore, PUBLIC_WORLD_SLOTS, publicWorldId, type SavedWorld } from '../voxel/WorldStore';
 import { HubRoom, ROOM_CODE_SET } from './HubRoom';
 import { VoxelPlayer, VoxelState } from './schema/VoxelState';
 
 const TICK_MS = 50;
+/** Water steps every 4th tick (5 Hz). */
+const FLUID_TICKS = 4;
 const EDIT_BURST = 24;
 const EDIT_REFILL = 12;
 const MOVE_SLACK = 1.5;
@@ -127,6 +132,9 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
   private readonly runtime = new Map<string, PlayerRuntime>();
   private pendingEdits: BlockEdit[] = [];
   private timeAccumulator = 0;
+  /** Flowing water (sandbox only); its changes are broadcast like player edits. */
+  private fluids: VoxelFluids | null = null;
+  private fluidTicks = 0;
   /** Id the world is saved under (room code or public-N); null for temporary worlds. */
   private saveId: string | null = null;
   /** Public slot this room holds in PUBLIC_SLOT_SET. */
@@ -184,6 +192,7 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     const seed = typeof options.seed === 'number' && process.env.NODE_ENV === 'test' ? options.seed >>> 0 : (Math.random() * 0xffffffff) >>> 0;
     this.state.seed = saved ? saved.seed : this.mode === 'parkour' ? 20251 + Math.floor(Math.random() * 1000) : seed;
     this.world = new ServerVoxelWorld(this.state.seed, this.mode as VoxelMode);
+    this.startFluids();
     if (saved) {
       try {
         this.restore(saved);
@@ -260,7 +269,15 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
   }
 
   /** Called once a saved world's edits are restored (restoredEdits holds them). */
-  protected onWorldRestored(): void {}
+  protected onWorldRestored(): void {
+    // Water that was still moving when the world was saved carries on.
+    this.fluids?.resumeFrom(this.restoredEdits);
+  }
+
+  private startFluids(): void {
+    this.fluids =
+      this.mode === 'sandbox' ? new VoxelFluids(this.world, (x, y, z, id) => this.pendingEdits.push({ x, y, z, id })) : null;
+  }
 
   /**
    * Edits as read from the save this world was restored from (empty for new
@@ -360,6 +377,7 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     this.hasSave = false;
     this.state.seed = seed;
     this.world = new ServerVoxelWorld(seed, 'sandbox');
+    this.startFluids();
     try {
       await getWorldStore().quarantine(id);
       this.log.error(`could not restore ${id}; moved it aside, ${this.roomId} starts a fresh world there`, err);
@@ -398,6 +416,7 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
   // ---- simulation tick ------------------------------------------------------------
 
   private tick(dtMs: number): void {
+    if (this.fluids && ++this.fluidTicks % FLUID_TICKS === 0) this.fluids.step();
     if (this.pendingEdits.length) {
       // Chunk big batches so one message never exceeds the u16 count.
       for (let i = 0; i < this.pendingEdits.length; i += 4000) {
@@ -437,6 +456,8 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
       return;
     }
     this.pendingEdits.push(edit);
+    // Any change can start a flow: water placed, or a wall next to water removed.
+    this.fluids?.notifyEdit(edit.x, edit.y, edit.z);
   }
 
   /** Returns a reason string if the edit is not allowed, or null. */

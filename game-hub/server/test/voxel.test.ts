@@ -10,6 +10,7 @@ import {
   encodeMove,
   TerrainGenerator,
   VoxelMsg,
+  waterLevel,
 } from '@hub/shared';
 import { startTestServer, type TestServer, until, wait } from './helpers';
 
@@ -81,6 +82,19 @@ describe('Voxelvale room', () => {
     expect(snapshot).toHaveLength(2);
     expect(snapshot).toContainEqual({ ...surface, id: Block.Air });
     await Promise.all([a.room.leave(), b.room.leave(), c.room.leave()]);
+  });
+
+  it('lets placed water flow and broadcasts the flow as edits', async () => {
+    const a = await joinSandbox(SEED, 'Plumber');
+    await until(() => a.world.length > 0);
+    const source = { ...surface, y: surface.y + 1, id: Block.Water };
+    a.room.sendBytes(VoxelMsg.Edit, encodeEdit(source));
+    const flowed = () => a.edits.flatMap((e) => decodeEdits(e)).filter((e) => waterLevel(e.id) > 0 && e.id !== Block.Water);
+    await until(() => flowed().length > 0, 3000);
+    expect(a.rejects).toHaveLength(0);
+    // Every flowing cell is reachable from the source by water.
+    for (const e of flowed()) expect(Math.abs(e.x - source.x) + Math.abs(e.z - source.z)).toBeLessThanOrEqual(7);
+    await a.room.leave();
   });
 
   it('rejects invalid edits with the authoritative block', async () => {

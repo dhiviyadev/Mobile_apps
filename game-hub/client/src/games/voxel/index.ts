@@ -27,7 +27,8 @@ function loadSave(): OfflineSave | null {
 
 function writeSave(game: VoxelGame): void {
   const edits: [number, number][] = [];
-  for (const [x, y, z, id] of game.world.allEdits()) {
+  // Player edits only: water the simulation spread is rebuilt from its sources.
+  for (const [x, y, z, id] of game.savedEdits()) {
     if (edits.length >= MAX_SAVED_EDITS) break;
     edits.push([packPos(x, y, z), id]);
   }

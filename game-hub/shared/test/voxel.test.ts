@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   Block,
+  flowingWater,
   BLOCK_COUNT,
   blockIndex,
   changesLight,
@@ -178,6 +179,35 @@ describe('greedy mesher', () => {
     for (let i = 0; i < m.liquid.vertexCount; i++) ys.add(m.liquid.positions[i * 3 + 1]);
     expect(ys.has(4.875)).toBe(true);
     expect(ys.has(5)).toBe(false);
+  });
+
+  it('drops flowing water to its level and shows the step down to lower water', () => {
+    const vol = emptyVol();
+    vol[regionIndex(3, 4, 3)] = Block.Water; // source: 0.875
+    vol[regionIndex(4, 4, 3)] = flowingWater(3); // 3/8 high
+    const m = meshChunk(vol);
+    const ys = (x: number) => {
+      const out = new Set<number>();
+      for (let i = 0; i < m.liquid.vertexCount; i++) if (m.liquid.positions[i * 3] === x) out.add(m.liquid.positions[i * 3 + 1]);
+      return out;
+    };
+    expect(Math.max(...ys(3))).toBeCloseTo(4.875); // the source's -x face
+    expect(Math.max(...ys(5))).toBeCloseTo(4.375); // the flow's +x face
+    // The source's +x face only covers the strip above the flowing surface.
+    const strips: number[][] = [];
+    for (let q = 0; q < m.liquid.vertexCount; q += 4) {
+      const ys: number[] = [];
+      for (let k = q; k < q + 4; k++) if (m.liquid.positions[k * 3] === 4) ys.push(m.liquid.positions[k * 3 + 1]);
+      if (ys.length === 4) strips.push(ys);
+    }
+    expect(strips).toHaveLength(1);
+    expect(Math.min(...strips[0])).toBeCloseTo(4.375);
+    expect(Math.max(...strips[0])).toBeCloseTo(4.875);
+    // Water stacked on water has no faces between the two cells.
+    const col = emptyVol();
+    col[regionIndex(3, 4, 3)] = Block.WaterFalling;
+    col[regionIndex(3, 5, 3)] = Block.WaterFalling;
+    expect(meshChunk(col).liquid.vertexCount).toBe(40);
   });
 
   it('applies ambient occlusion next to walls', () => {

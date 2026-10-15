@@ -215,9 +215,10 @@ export function flowingWater(level: number): Block {
 
 /**
  * Height of a block's liquid surface in block units (for meshing and swimming):
- * sources and falling water 0.875, flowing water (level + 1) / 9, anything else 1.
+ * sources and falling water 0.875, flowing water level / 8 (level 7 lines up
+ * with its source), anything else 1.
  */
 export const LIQUID_HEIGHT = new Float32Array(256).fill(1);
 LIQUID_HEIGHT[Block.Water] = 0.875;
 LIQUID_HEIGHT[Block.WaterFalling] = 0.875;
-for (let level = 1; level <= 7; level++) LIQUID_HEIGHT[flowingWater(level)] = (level + 1) / 9;
+for (let level = 1; level <= 7; level++) LIQUID_HEIGHT[flowingWater(level)] = level / 8;

@@ -222,11 +222,15 @@ export class StreamedFluids {
     return n;
   }
 
-  /** Takes note of saved edits already applied to the world; saved water is re-checked once its chunk loads. */
+  /**
+   * Takes note of saved edits already applied to the world. Once its chunk
+   * loads, saved water is re-checked, and so is a dug-out cell (it may border
+   * water that filled it before the save, which is not saved).
+   */
   restore(edits: Iterable<EditTuple>): void {
     for (const [x, y, z, id] of edits) {
       this.edited.add(packPos(x, y, z));
-      if (isWater(id)) this.wait(x, y, z);
+      if (isWater(id) || id === Block.Air) this.wait(x, y, z);
     }
   }
 
@@ -241,7 +245,10 @@ export class StreamedFluids {
     for (const [key, w] of this.waiting) {
       if (!this.ready(w.cx * CHUNK_SIZE, w.cz * CHUNK_SIZE, CHUNK_SIZE)) continue;
       this.waiting.delete(key);
-      for (const cell of w.cells) this.sim.schedule(...unpackPos(cell));
+      for (const cell of w.cells) {
+        const [x, y, z] = unpackPos(cell);
+        if (this.nearWater(x, y, z)) this.sim.schedule(x, y, z);
+      }
     }
     return this.sim.step(maxUpdates);
   }
@@ -262,6 +269,12 @@ export class StreamedFluids {
       if (!this.edited.has(packPos(x, y, z))) continue;
       yield [x, y, z, isWater(id) && id !== Block.Water ? Block.Air : id];
     }
+  }
+
+  /** Only water, or a cell water could flow into, can change; the rest need no check. */
+  private nearWater(x: number, y: number, z: number): boolean {
+    const get = (bx: number, by: number, bz: number) => isWater(this.world.getBlock(bx, by, bz));
+    return get(x, y, z) || get(x, y + 1, z) || get(x - 1, y, z) || get(x + 1, y, z) || get(x, y, z - 1) || get(x, y, z + 1);
   }
 
   private cellReady(x: number, y: number, z: number): boolean {
