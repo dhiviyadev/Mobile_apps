@@ -11,6 +11,15 @@ services:
     envVars:
       - key: ALLOWED_ORIGINS
         value: "*"
+      # Saved Voxelvale worlds are written here.
+      - key: DATA_DIR
+        value: /data
+    # Without a persistent disk, saved worlds survive rooms emptying but are lost on the
+    # next deploy or restart. Render disks need a paid instance type; to keep worlds, uncomment:
+    # disk:
+    #   name: hub-data
+    #   mountPath: /data
+    #   sizeGB: 1
 
   - type: web
     name: cobalt-hub-client

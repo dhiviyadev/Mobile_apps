@@ -21,4 +21,10 @@ export class VoxelState extends HubState<VoxelPlayer> {
   @type('uint32') seed = 0;
   /** Day/night cycle position, 0..1 (updated about once a second). */
   @type('float32') timeOfDay = 0.3;
+  /** "saved" when the server keeps the world after the room empties, otherwise "temporary". */
+  @type('string') worldKind = 'temporary';
+  /** Saved worlds: days the world is kept after the last visit (0 for temporary worlds). */
+  @type('uint16') saveDays = 0;
+  /** Private (code-only) room: the room code is what reopens a saved world. */
+  @type('boolean') privateRoom = false;
 }

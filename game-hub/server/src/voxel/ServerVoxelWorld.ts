@@ -2,10 +2,12 @@
  * The server's view of a Voxelvale world: the seed's generated terrain plus
  * the authoritative edit list. Generated chunks are cached in a small LRU,
  * so validating edits anywhere in the world stays cheap in memory.
+ * A dirty flag tracks edits made since the last save (see WorldStore).
  */
 import {
   type BlockEdit,
   blockIndex,
+  blockInWorld,
   CHUNK_HEIGHT,
   chunkKey,
   createWorldGenerator,
@@ -24,6 +26,7 @@ export class ServerVoxelWorld {
   /** packPos -> block id; the full history needed by late joiners. */
   private readonly edits = new Map<number, number>();
   private readonly cache = new Map<string, Uint8Array>();
+  private _dirty = false;
 
   constructor(
     readonly seed: number,
@@ -35,6 +38,20 @@ export class ServerVoxelWorld {
 
   get editCount(): number {
     return this.edits.size;
+  }
+
+  /** True when the edit list changed since the last markClean(). */
+  get dirty(): boolean {
+    return this._dirty;
+  }
+
+  markClean(): void {
+    this._dirty = false;
+  }
+
+  /** Flags unsaved changes again, e.g. after a failed save. */
+  markDirty(): void {
+    this._dirty = true;
   }
 
   getBlock(x: number, y: number, z: number): number {
@@ -51,9 +68,30 @@ export class ServerVoxelWorld {
     if (!this.edits.has(key) && this.edits.size >= this.maxEdits) return false;
     // An edit that restores the generated block can be forgotten entirely.
     const generated = this.chunk(toChunkCoord(x), toChunkCoord(z))[blockIndex(toLocal(x), y, toLocal(z))];
-    if (generated === id) this.edits.delete(key);
-    else this.edits.set(key, id);
+    if (generated === id) {
+      if (this.edits.delete(key)) this._dirty = true;
+    } else if (this.edits.get(key) !== id) {
+      this.edits.set(key, id);
+      this._dirty = true;
+    }
     return true;
+  }
+
+  /**
+   * Bulk-restores saved edits without marking the world dirty. Edits outside
+   * the world are skipped and loading stops at the edit budget.
+   * Returns the number of edits applied.
+   */
+  loadEdits(edits: Iterable<BlockEdit>): number {
+    let applied = 0;
+    for (const e of edits) {
+      if (!blockInWorld(e.x, e.y, e.z)) continue;
+      const key = packPos(e.x, e.y, e.z);
+      if (!this.edits.has(key) && this.edits.size >= this.maxEdits) break;
+      this.edits.set(key, e.id);
+      applied++;
+    }
+    return applied;
   }
 
   allEdits(): BlockEdit[] {

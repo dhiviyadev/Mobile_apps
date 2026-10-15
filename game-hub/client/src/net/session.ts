@@ -9,14 +9,17 @@
  * colyseus.js is imported dynamically so the hub's first paint doesn't pay for it.
  */
 import type { Client, Room } from 'colyseus.js';
-import { CLOSE_KICKED, type GameId, type JoinOptions, RECONNECT_WINDOW_SECONDS } from '@hub/shared';
+import { CLOSE_KICKED, type GameId, type JoinOptions, RECONNECT_WINDOW_SECONDS, REVIVE_ERRORS } from '@hub/shared';
 import { serverWsUrl } from './serverUrl';
 
 export type JoinRequest =
   | { kind: 'quick'; game: GameId; options: JoinOptions }
   | { kind: 'create'; game: GameId; options: JoinOptions }
-  | { kind: 'code'; code: string; options: JoinOptions }
+  /** `game` is set when the code is known to belong to that game (room list); saved worlds only reopen for voxel. */
+  | { kind: 'code'; code: string; options: JoinOptions; game?: GameId }
   | { kind: 'resume'; token: string };
+
+type CodeRequest = Extract<JoinRequest, { kind: 'code' }>;
 
 export type SessionStatus = 'connected' | 'reconnecting' | 'closed';
 export type CloseReason = 'left' | 'lost' | 'kicked' | 'room-closed';
@@ -64,7 +67,7 @@ export class NetSession {
           room = await client.create(req.game, { ...req.options, private: true });
           break;
         case 'code':
-          room = await client.joinById(req.code, req.options);
+          room = await joinByCode(client, req);
           break;
         case 'resume':
           room = await client.reconnect(req.token);
@@ -237,9 +240,38 @@ function waitForOnline(timeoutMs: number): Promise<void> {
   });
 }
 
+const NOT_FOUND = /not found|no rooms found|not exist/i;
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Joins the open room with this code. When none is open the code may belong
+ * to a saved Voxelvale world, so ask the server to reopen it.
+ */
+async function joinByCode(client: Client, req: CodeRequest): Promise<Room> {
+  const canRevive = req.game === undefined || req.game === 'voxel';
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await client.joinById(req.code, req.options);
+    } catch (err) {
+      if (!canRevive || !NOT_FOUND.test(errorMessage(err))) throw err;
+    }
+    try {
+      return await client.create('voxel', { ...req.options, reviveCode: req.code } satisfies JoinOptions);
+    } catch (err) {
+      // Someone reopened it a moment ago (or its last room is still closing): join that room instead.
+      if (attempt > 0 || !errorMessage(err).includes(REVIVE_ERRORS.alreadyOpen)) throw err;
+      await sleep(300);
+    }
+  }
+}
+
 function describeJoinError(err: unknown, req: JoinRequest): string {
-  const msg = err instanceof Error ? err.message : String(err);
-  if (/not found|no rooms found|not exist/i.test(msg)) {
+  const msg = errorMessage(err);
+  if (msg.includes(REVIVE_ERRORS.alreadyOpen)) return 'That world is just reopening. Try joining again in a moment.';
+  if (msg.includes(REVIVE_ERRORS.noSavedWorld) || NOT_FOUND.test(msg)) {
     return req.kind === 'code' ? `No room with code ${req.code}. Check the code and try again.` : 'That room no longer exists.';
   }
   if (/locked|full|maxClients/i.test(msg)) return 'That room is full.';

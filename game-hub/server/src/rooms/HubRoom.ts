@@ -3,7 +3,8 @@
  *
  * Handles the lobby plumbing shared by both games:
  *  - unique 6-character room codes (used as the Colyseus roomId, so
- *    `client.joinById(code)` is all a friend needs)
+ *    `client.joinById(code)` is all a friend needs); codes of saved voxel
+ *    worlds are never handed out to new rooms
  *  - private rooms (hidden from quick match and listings)
  *  - nickname sanitising and host assignment
  *  - holding a dropped player's seat for auto-reconnect
@@ -24,9 +25,17 @@ import {
   TokenBucket,
 } from '@hub/shared';
 import { logger } from '../log';
+import { getWorldStore } from '../voxel/WorldStore';
 import type { HubPlayer, HubState } from './schema/HubState';
 
 const CODE_SET = 'hub:room-codes';
+
+/**
+ * Claims in progress in this process ("set|member"). Checking a presence set
+ * and then adding to it spans awaits, so without this two rooms created at
+ * the same moment could both claim one code.
+ */
+const pendingClaims = new Set<string>();
 
 export abstract class HubRoom<S extends HubState<P>, P extends HubPlayer> extends Room<S, RoomMeta> {
   protected abstract readonly gameId: GameId;
@@ -35,7 +44,10 @@ export abstract class HubRoom<S extends HubState<P>, P extends HubPlayer> extend
   protected mode = '';
   /** Set in setup() to enable text chat (rate limited, sanitised) with join/leave notices. */
   protected chatEnabled = false;
+  /** True once onCreate() finished. A room whose onCreate() threw is abandoned (Colyseus may still dispose it later). */
+  protected created = false;
   private readonly chatBuckets = new Map<string, TokenBucket>();
+  private codeClaimed = false;
 
   // ---- hooks for subclasses -------------------------------------------------
 
@@ -57,20 +69,28 @@ export abstract class HubRoom<S extends HubState<P>, P extends HubPlayer> extend
   // ---- lifecycle --------------------------------------------------------------
 
   override async onCreate(options: JoinOptions = { nickname: '' }): Promise<void> {
-    this.roomId = await this.reserveRoomCode();
-    this.isPrivate = options.private === true;
-    this.mode = this.resolveMode(options.mode);
-    if (this.isPrivate) await this.setPrivate(true);
+    this.roomId = await this.chooseRoomCode(options);
+    this.codeClaimed = true;
+    try {
+      this.isPrivate = options.private === true;
+      this.mode = this.resolveMode(options.mode);
+      if (this.isPrivate) await this.setPrivate(true);
 
-    await this.setup(options);
-    this.state.code = this.roomId;
-    this.state.mode = this.mode;
+      await this.setup(options);
+      this.state.code = this.roomId;
+      this.state.mode = this.mode;
 
-    this.onMessage('ping', (client, t: unknown) => {
-      if (typeof t === 'number') client.send('pong', t);
-    });
-    if (this.chatEnabled) this.onMessage('chat', (client, data: { text?: unknown }) => this.handleChat(client, data));
-    await this.refreshMetadata();
+      this.onMessage('ping', (client, t: unknown) => {
+        if (typeof t === 'number') client.send('pong', t);
+      });
+      if (this.chatEnabled) this.onMessage('chat', (client, data: { text?: unknown }) => this.handleChat(client, data));
+      await this.refreshMetadata();
+    } catch (err) {
+      // The room never opens: give back the code (and anything else claimed) right away.
+      await this.releaseClaims();
+      throw err;
+    }
+    this.created = true;
     this.log.info(`created ${this.gameId} room ${this.roomId} mode=${this.mode} private=${this.isPrivate}`);
   }
 
@@ -110,8 +130,66 @@ export abstract class HubRoom<S extends HubState<P>, P extends HubPlayer> extend
   }
 
   override async onDispose(): Promise<void> {
-    await this.presence.srem(CODE_SET, this.roomId);
+    await this.releaseClaims();
     this.log.info(`disposed room ${this.roomId}`);
+  }
+
+  // ---- room codes -------------------------------------------------------------------
+
+  /**
+   * Picks and claims the code used as this room's id. The default is a fresh
+   * random code; subclasses may claim a specific one (e.g. to reopen a saved world).
+   */
+  protected async chooseRoomCode(_options: JoinOptions): Promise<string> {
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const code = generateRoomCode();
+      if (await this.claimRoomCode(code, () => this.isCodeAvailable(code))) return code;
+    }
+    throw new Error('could not allocate a unique room code');
+  }
+
+  /** A code is free when no open room uses it and no saved world is stored under it. */
+  protected async isCodeAvailable(code: string): Promise<boolean> {
+    if (await this.presence.sismember(CODE_SET, code)) return false;
+    return !(await getWorldStore().exists(code));
+  }
+
+  /** Claims code for this room if isFree() agrees (default: no open room has it). */
+  protected claimRoomCode(code: string, isFree?: () => Promise<boolean>): Promise<boolean> {
+    return this.claimInSet(CODE_SET, code, isFree);
+  }
+
+  /**
+   * Adds member to a presence set unless it is already there or isFree() says
+   * no. Race-free within the process (see pendingClaims); with a Redis presence
+   * SADD reports 0 when another process won the race.
+   */
+  protected async claimInSet(set: string, member: string, isFree?: () => Promise<boolean>): Promise<boolean> {
+    const key = `${set}|${member}`;
+    if (pendingClaims.has(key)) return false;
+    pendingClaims.add(key);
+    try {
+      if (await this.presence.sismember(set, member)) return false;
+      if (isFree && !(await isFree())) return false;
+      const added: unknown = await this.presence.sadd(set, member);
+      return added !== 0;
+    } finally {
+      pendingClaims.delete(key);
+    }
+  }
+
+  protected async releaseFromSet(set: string, member: string): Promise<void> {
+    await this.presence.srem(set, member);
+  }
+
+  /**
+   * Gives back everything this room claimed. Runs on dispose and when
+   * onCreate() fails; subclasses releasing their own claims call super.
+   */
+  protected async releaseClaims(): Promise<void> {
+    if (!this.codeClaimed) return;
+    this.codeClaimed = false;
+    await this.releaseFromSet(CODE_SET, this.roomId);
   }
 
   // ---- helpers ------------------------------------------------------------------
@@ -171,16 +249,5 @@ export abstract class HubRoom<S extends HubState<P>, P extends HubPlayer> extend
       private: this.isPrivate,
       status: this.describeStatus(),
     });
-  }
-
-  private async reserveRoomCode(): Promise<string> {
-    for (let attempt = 0; attempt < 50; attempt++) {
-      const code = generateRoomCode();
-      if (!(await this.presence.sismember(CODE_SET, code))) {
-        await this.presence.sadd(CODE_SET, code);
-        return code;
-      }
-    }
-    throw new Error('could not allocate a unique room code');
   }
 }

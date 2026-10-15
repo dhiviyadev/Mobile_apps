@@ -21,7 +21,20 @@ export interface JoinOptions {
   private?: boolean;
   /** Preferred avatar colour (0xRRGGBB). */
   color?: number;
+  /**
+   * Voxelvale: reopen the saved world with this room code (sent with
+   * create('voxel') after joinById found no open room).
+   */
+  reviveCode?: string;
 }
+
+/** Markers in the error message when reopening a saved world fails. */
+export const REVIVE_ERRORS = {
+  /** No saved world has that code (never existed, or expired). */
+  noSavedWorld: 'NO_SAVED_WORLD',
+  /** A room with that code is already open (or still closing): join it instead. */
+  alreadyOpen: 'ROOM_ALREADY_OPEN',
+} as const;
 
 /** Metadata each room publishes for listings. */
 export interface RoomMeta {

@@ -195,7 +195,7 @@ export class HubApp {
         void this.start({ online: true, game, mode: action.mode, join: { kind: 'create', game, options: profileOptions(action.mode) } });
         break;
       case 'join':
-        void this.start({ online: true, game, mode: '', join: { kind: 'code', code: action.code, options: profileOptions() } });
+        void this.start({ online: true, game, mode: '', join: { kind: 'code', code: action.code, options: profileOptions(), game } });
         break;
       case 'offline':
         void this.start({ online: false, game, mode: action.mode });
