@@ -357,6 +357,7 @@ New blocks are flowing water levels 1–7 and falling water (ids 22–29). The w
 `shared/src/voxel/fluids.ts` is a deterministic, bounded queue simulator (at most 512 cells per step).
 - Water above a cell makes it falling water.
 - Otherwise the cell takes the best neighbour's level minus one, counting only neighbours that rest on solid ground or a source.
+- Falling water passes on the level of the water feeding its column, so water travels at most 7 blocks sideways from its source in total, and falls don't restart the count.
 - Water with no supply dries up.
 - No new sources are created.
 
@@ -375,7 +376,7 @@ Mesher:
 
 ### How to test
 ```bash
-npm test && npm run e2e            # 144 + 26 automated tests (6 e2e skipped by design)
+npm test && npm run e2e            # 168 + 26 automated tests (6 e2e skipped by design)
 ```
 - **Saved world:**
   1. `npm run dev`, open Voxelvale → Private room, build something and leave.
@@ -383,6 +384,19 @@ npm test && npm run e2e            # 144 + 26 automated tests (6 e2e skipped by 
   3. Stop the server with Ctrl+C (a graceful shutdown saves), restart it, and enter the code again.
 - **Water:** place Water (hotbar slot 11, key `-`) on a ledge and watch it spread and fall. Cover the source with a block and the flow dries up.
 - **Light:** at night, place lamps and see the warm falloff. Dig into a hillside by day: the tunnel gets dark.
+
+### Review round
+An independent multi-reviewer pass over the merged change, with each finding checked by a second reviewer who tried to refute it, confirmed these issues. All are fixed, with tests:
+
+- **Revive rate limit was spoofable.** The limit on reopening worlds by code trusted client-supplied headers (`Fly-Client-IP`, `X-Real-IP`, leftmost `X-Forwarded-For`). It now uses `Fly-Client-IP` only on Fly, otherwise the proxy-appended `X-Forwarded-For` entry (`TRUST_PROXY_HOPS`) or the TCP peer. IPv6 addresses are grouped by /64, and old addresses are evicted LRU instead of the whole table being cleared.
+- **Final save could be lost on shutdown.** It could miss Fly's 5 s kill timeout when a seat reservation was pending. Rooms now save as shutdown starts, and `kill_timeout = 20`.
+- **Saved-world store was unbounded between prunes.** Every save now enforces the world count and a byte budget, evicting the least recently saved world that isn't open, or refusing the save.
+- **Reopening a world with lots of water overflowed the water queue.** It now feeds the saved water in gradually: only cells that can still change, newest first, capped per step by count and time. Dug cells next to water are re-checked too.
+- **One source on a hill re-energised at every drop.** It could claim 10 000+ edits; it now wets about 165 cells on a 20-step staircase.
+- **Flowing water starved terrain streaming.** Water-only changes now remesh at their own lower priority, at most every 250 ms per chunk, and streaming keeps a worker while terrain is missing.
+- **Reconnecting players kept stale water.** The server's edit snapshot now replaces the client's overlay, regenerating chunks whose edits were undone.
+- **Shallow water under a block left a see-through gap.** Its surface is now drawn.
+- **The held block glowed in dark caves.** It now takes the light at the eye.
 
 ### Measured render budget
 Same seed (12345), before and after light propagation (Chromium, SwiftShader):
@@ -403,6 +417,8 @@ In the mesh workers, a chunk takes about 1.5 ms to light and about 12 ms to ligh
   - No new sources form, and currents don't push players.
   - A flood stopped by the water budget continues only when something next to it changes.
   - Offline, flows pause at unloaded chunks and resume when they load.
+- **Render proxy hops:** `TRUST_PROXY_HOPS=1` for Render is based on Render appending the client address to `X-Forwarded-For`; confirm it on a live deploy. Too low groups clients together; it is never spoofable.
+- **Avatars:** other players' avatars are still lit by daylight only.
 - **Still open:**
   - The arena trusts client aim angles (left as is, as agreed).
   - The Colyseus upgrade has not been done.

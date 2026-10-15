@@ -68,7 +68,7 @@ Voxelvale sandbox worlds you build online are saved to `server/data/` (gitignore
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Server and client in watch mode |
-| `npm test` | 144 unit and integration tests (Vitest): world generation, lighting, meshing, flowing water, saved worlds, physics, combat rules, lag compensation, full bot matches, real Colyseus rooms over WebSockets |
+| `npm test` | 168 unit and integration tests (Vitest): world generation, lighting, meshing, flowing water, saved worlds, physics, combat rules, lag compensation, full bot matches, real Colyseus rooms over WebSockets |
 | `npm run e2e` | 26 browser tests (Playwright, desktop and emulated Android tablet), incl. multi-touch and two-browser multiplayer |
 | `npm run typecheck` | `tsc --noEmit` for all three packages |
 | `npm run build` | Production builds: `server/dist/index.js` and `client/dist/` |
@@ -151,9 +151,9 @@ fly secrets set ALLOWED_ORIGINS=https://your-client.example   # optional, defaul
 fly deploy
 # → wss://<app>.fly.dev
 ```
-`fly.toml` keeps one machine running (`auto_stop_machines = "off"`) because rooms live in memory, and mounts the `hub_data` volume at `/data` for saved worlds. Fly volumes are root-owned, so the container's entrypoint takes ownership of `/data` and then runs the server as the unprivileged `node` user.
+`fly.toml` keeps one machine running (`auto_stop_machines = "off"`) because rooms live in memory, mounts the `hub_data` volume at `/data` for saved worlds, and gives a stopping server 20 s (`kill_timeout`) to save them. Fly volumes are root-owned, so the container's entrypoint takes ownership of `/data` and then runs the server as the unprivileged `node` user.
 
-**Render** (Blueprint: [`../render.yaml`](../render.yaml)): New → Blueprint → select this repository. It creates the Docker web service (`game-hub/server/Dockerfile`, health check `/health`) and a static site for the client. After the first deploy, set the client's `VITE_SERVER_URL` to `wss://<server>.onrender.com` and redeploy the client. Render disks need a paid instance, so the blueprint sets `PERSIST_WORLDS=false`: worlds survive rooms emptying but not restarts, and players are told so. To keep them, uncomment the `disk` block in `render.yaml` and delete `PERSIST_WORLDS`.
+**Render** (Blueprint: [`../render.yaml`](../render.yaml)): New → Blueprint → select this repository. It creates the Docker web service (`game-hub/server/Dockerfile`, health check `/health`) and a static site for the client. After the first deploy, set the client's `VITE_SERVER_URL` to `wss://<server>.onrender.com` and redeploy the client. Render disks need a paid instance, so the blueprint sets `PERSIST_WORLDS=false`: worlds survive rooms emptying but not restarts, and players are told so. To keep them, uncomment the `disk` block in `render.yaml` and delete `PERSIST_WORLDS`. The blueprint also sets `TRUST_PROXY_HOPS=1`, because Render's proxy appends the client address to `X-Forwarded-For`. It's worth confirming on a live deploy that the server logs your real address.
 
 **Any Docker host**
 ```bash
@@ -194,7 +194,10 @@ You can also point any build at another server with `?server=wss://host` in the 
 | `DATA_DIR` | server | `./data` (`/data` in the image) | Where saved Voxelvale worlds are written (`worlds/<id>.cvw`) |
 | `PERSIST_WORLDS` | server | on | `false`/`0` keeps saved worlds in memory only (until restart) |
 | `WORLD_TTL_DAYS` | server | `30` | Saved worlds not visited for this long are deleted |
-| `MAX_SAVED_WORLDS` | server | `500` | Oldest saved worlds beyond this count are deleted |
+| `MAX_SAVED_WORLDS` | server | `500` | Most saved worlds kept; a new save evicts the least recently saved world that isn't open |
+| `MAX_SAVED_WORLD_BYTES` | server | 850 MiB | Byte budget for world files on disk (same eviction rule) |
+| `MAX_MEMORY_WORLD_BYTES` | server | 128 MiB | Byte budget when worlds are kept in memory (`PERSIST_WORLDS=false`) |
+| `TRUST_PROXY_HOPS` | server | `0` | Reverse proxies that append to `X-Forwarded-For` (Render: `1`). Used for the rate limit on reopening worlds by code. On Fly.io `Fly-Client-IP` is used automatically; otherwise the TCP peer address is used. Client-supplied headers are never trusted |
 
 ---
 
@@ -207,9 +210,14 @@ All six phases are complete, plus a follow-up that removed the Voxelvale limitat
 - Worlds autosave every 30 s while changed and on close. Parkour courses are not saved, and a room nobody built in is never written.
 - The pause menu says whether, and for how long, the current world is kept. Offline worlds are still saved in the browser.
 
-**Light and water.** Lamps (and parkour checkpoints) light their surroundings, caves and interiors are dark by day, and water flows: it spreads up to 7 blocks from a source, falls, and dries up when its source is removed. Online, the server runs the water and sends changes as ordinary edits; offline, the browser does. Water may use at most three quarters of a world's 200 000-edit budget, so floods can't stop players building.
+**Light and water.** Lamps (and parkour checkpoints) light their surroundings, caves and interiors are dark by day, and the block in your hand takes the light where you stand.
+
+Water flows. It spreads up to 7 blocks sideways from its source in total, and a fall doesn't restart the count, so one source on a hillside stays small. It also falls, and dries up when its source is removed.
+
+Online, the server runs the water and sends changes as ordinary edits; offline, the browser does. Water may use at most three quarters of a world's 200 000-edit budget, so floods can't stop players building. The room gets a chat notice when water hits that limit.
 
 Remaining limitations:
 - The arena trusts client aim angles (inherent to FPS games); everything else is validated on the server.
 - Colyseus is pinned to the 0.16 line; 0.17/0.18 have since been released. Upgrading changes the room and schema APIs, so it is left as a separate step.
 - Water is a simple 7-level model: no new sources form, currents don't push players, and a flood cut off by the edit budget resumes only when something nearby changes.
+- Other players' avatars are lit by daylight only, not by lamps or cave darkness.
