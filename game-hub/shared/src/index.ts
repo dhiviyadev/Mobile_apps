@@ -14,6 +14,7 @@ export * from './voxel/generator';
 export * from './voxel/physics';
 export * from './voxel/raycast';
 export * from './voxel/light';
+export * from './voxel/fluids';
 export * from './util/binary';
 export * from './voxel/protocol';
 export * from './arena/constants';

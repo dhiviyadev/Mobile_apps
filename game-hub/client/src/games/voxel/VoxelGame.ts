@@ -10,6 +10,7 @@ import {
   DAY_LENGTH_SECONDS,
   forwardFromYawPitch,
   HOTBAR_BLOCKS,
+  StreamedFluids,
   type VoxelMode,
   WORLD_LIMIT,
 } from '@hub/shared';
@@ -76,6 +77,8 @@ export interface VoxelGameOptions {
 }
 
 const OFFLINE_SAVE_INTERVAL = 30;
+/** Offline water simulation rate (online, the server runs it). */
+const FLUID_INTERVAL = 0.2;
 
 export class VoxelGame {
   readonly renderer: GameRenderer;
@@ -106,6 +109,9 @@ export class VoxelGame {
   private running = false;
   private disposed = false;
   private saveTimer = OFFLINE_SAVE_INTERVAL;
+  /** Flowing water for offline play; online, water changes arrive as server edits. */
+  private readonly fluids: StreamedFluids;
+  private fluidTimer = FLUID_INTERVAL;
   private readonly unsubscribeSettings: () => void;
   private readonly tmpDir = new THREE.Vector3();
   private readonly tmpEye = new THREE.Vector3();
@@ -146,6 +152,8 @@ export class VoxelGame {
     if (this.parkour) this.player.yaw = -Math.PI / 2; // face along +X, the course direction
 
     for (const e of opts.initialEdits ?? []) this.world.setBlock(e[0], e[1], e[2], e[3]);
+    this.fluids = new StreamedFluids(this.world);
+    this.fluids.restore(opts.initialEdits ?? []);
 
     this.interaction = new BlockInteraction(
       {
@@ -232,11 +240,20 @@ export class VoxelGame {
   setNet(net: VoxelNetHooks): void {
     this.net = net;
     this.pause.setRoomCode(net.roomCode);
+    this.fluids.clear();
   }
 
   /** Applies an edit coming from the server (or local offline play). */
   applyEdit(x: number, y: number, z: number, id: number): void {
     this.world.setBlock(x, y, z, id);
+  }
+
+  /**
+   * The edits an offline save should keep: the world's edits without the
+   * cells only flowing water wrote (saved sources flow again after loading).
+   */
+  savedEdits(): Iterable<[number, number, number, number]> {
+    return this.fluids.saveEdits(this.world.allEdits());
   }
 
   exit(message?: string): void {
@@ -310,6 +327,7 @@ export class VoxelGame {
 
     // Parkour rules
     if (this.parkour) this.updateParkour();
+    if (!this.net) this.updateFluids(dt);
 
     // Sky / lighting
     const serverTime = this.net?.serverTime?.() ?? null;
@@ -393,6 +411,15 @@ export class VoxelGame {
       if (!this.net.requestEdit(x, y, z, id)) return;
     }
     this.world.setBlock(x, y, z, id);
+    if (!this.net) this.fluids.notifyEdit(x, y, z);
+  }
+
+  /** Offline water: a few simulation steps per second, like the server. */
+  private updateFluids(dt: number): void {
+    this.fluidTimer -= dt;
+    if (this.fluidTimer > 0) return;
+    this.fluidTimer = FLUID_INTERVAL;
+    this.fluids.step();
   }
 
   private updateParkour(): void {

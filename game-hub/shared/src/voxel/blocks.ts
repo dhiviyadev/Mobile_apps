@@ -28,6 +28,16 @@ export enum Block {
   Cloud = 19,
   SnowyGrass = 20,
   Ice = 21,
+  /** Flowing water, level 1 (thinnest) to 7 (next to a source). Made by the fluid simulation only. */
+  WaterFlow1 = 22,
+  WaterFlow2 = 23,
+  WaterFlow3 = 24,
+  WaterFlow4 = 25,
+  WaterFlow5 = 26,
+  WaterFlow6 = 27,
+  WaterFlow7 = 28,
+  /** Water pouring down from the block above. Made by the fluid simulation only. */
+  WaterFalling = 29,
 }
 
 export interface BlockDef {
@@ -100,6 +110,9 @@ export const Tile = {
 
 const AIR = def(Block.Air, 'Air', [0, 0, 0], 0, { solid: false, transparent: true, breakable: false });
 
+const WATER_OPTS = { solid: false, transparent: true, liquid: true, breakable: false };
+const WATER_TILES: [number, number, number] = [Tile.Water, Tile.Water, Tile.Water];
+
 const DEFS: BlockDef[] = [];
 for (const d of [
   AIR,
@@ -107,7 +120,7 @@ for (const d of [
   def(Block.Dirt, 'Dirt', [Tile.Dirt, Tile.Dirt, Tile.Dirt], 0x8a5a3b, { hardness: 0.25 }),
   def(Block.Stone, 'Stone', [Tile.Stone, Tile.Stone, Tile.Stone], 0x8c8f99, { hardness: 0.6 }),
   def(Block.Sand, 'Sand', [Tile.Sand, Tile.Sand, Tile.Sand], 0xe8d39a, { hardness: 0.2 }),
-  def(Block.Water, 'Water', [Tile.Water, Tile.Water, Tile.Water], 0x3f8fd8, { solid: false, transparent: true, liquid: true, breakable: false }),
+  def(Block.Water, 'Water', WATER_TILES, 0x3f8fd8, WATER_OPTS),
   def(Block.Log, 'Log', [Tile.LogTop, Tile.LogTop, Tile.LogSide], 0x8b6340, { hardness: 0.5 }),
   def(Block.Leaves, 'Leaves', [Tile.Leaves, Tile.Leaves, Tile.Leaves], 0x4f9a3a, { transparent: true, hardness: 0.1 }),
   def(Block.Planks, 'Planks', [Tile.Planks, Tile.Planks, Tile.Planks], 0xc49a5c, { hardness: 0.4 }),
@@ -124,6 +137,8 @@ for (const d of [
   def(Block.Cloud, 'Cloud', [Tile.Cloud, Tile.Cloud, Tile.Cloud], 0xffffff, { breakable: false }),
   def(Block.SnowyGrass, 'Snowy Grass', [Tile.Snow, Tile.Dirt, Tile.SnowyGrassSide], 0xe9f1ff, { hardness: 0.3 }),
   def(Block.Ice, 'Ice', [Tile.Ice, Tile.Ice, Tile.Ice], 0x9fd8ff, { transparent: true, hardness: 0.3 }),
+  ...Array.from({ length: 7 }, (_, i) => def(Block.WaterFlow1 + i, 'Flowing Water', WATER_TILES, 0x3f8fd8, WATER_OPTS)),
+  def(Block.WaterFalling, 'Falling Water', WATER_TILES, 0x3f8fd8, WATER_OPTS),
 ]) {
   DEFS[d.id] = d;
 }
@@ -167,13 +182,42 @@ export const HOTBAR_BLOCKS: readonly Block[] = [
   Block.Glass,
   Block.Brick,
   Block.Sand,
-  Block.Clay,
+  Block.Water,
   Block.Lamp,
 ];
 
-/** Blocks players may place (server validation). */
-export const PLACEABLE = new Set<number>([...HOTBAR_BLOCKS, Block.Snow, Block.Gravel, Block.Ice]);
+/** Blocks players may place (server validation). Flowing and falling water never are. */
+export const PLACEABLE = new Set<number>([...HOTBAR_BLOCKS, Block.Snow, Block.Gravel, Block.Ice, Block.Clay]);
 
 export function isPlaceable(id: number): boolean {
   return PLACEABLE.has(id);
 }
+
+// ---- water -------------------------------------------------------------------------
+
+/** Any kind of water: the still source, flowing levels 1..7 or falling. */
+export function isWater(id: number): boolean {
+  return id === Block.Water || (id >= Block.WaterFlow1 && id <= Block.WaterFalling);
+}
+
+/** Water level for the fluid simulation: sources and falling water 8, flowing water 1..7, anything else 0. */
+export function waterLevel(id: number): number {
+  if (id === Block.Water || id === Block.WaterFalling) return 8;
+  if (id >= Block.WaterFlow1 && id <= Block.WaterFlow7) return id - Block.WaterFlow1 + 1;
+  return 0;
+}
+
+/** Flowing water block for a level (clamped to 1..7); level 0 or below is air. */
+export function flowingWater(level: number): Block {
+  if (level <= 0) return Block.Air;
+  return Block.WaterFlow1 + Math.min(7, Math.floor(level)) - 1;
+}
+
+/**
+ * Height of a block's liquid surface in block units (for meshing and swimming):
+ * sources and falling water 0.875, flowing water (level + 1) / 9, anything else 1.
+ */
+export const LIQUID_HEIGHT = new Float32Array(256).fill(1);
+LIQUID_HEIGHT[Block.Water] = 0.875;
+LIQUID_HEIGHT[Block.WaterFalling] = 0.875;
+for (let level = 1; level <= 7; level++) LIQUID_HEIGHT[flowingWater(level)] = (level + 1) / 9;
