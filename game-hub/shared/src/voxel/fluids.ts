@@ -7,15 +7,21 @@
  *  - falling water if any water is directly above it;
  *  - otherwise flowing water at the best level its 4 side neighbours supply.
  *    A neighbour supplies only while resting on a solid block or a source:
- *    sources and falling water supply 7, flowing water of level L supplies L - 1;
+ *    sources supply 7, flowing water of level L supplies L - 1, and falling
+ *    water passes on what the water feeding its column would: walking up the
+ *    column, the first water that is not falling supplies 7 if it is a
+ *    source and L - 1 if it is flowing at level L (anything else, 0);
  *  - otherwise air (it dries up).
- * So a source on flat ground settles into a diamond of radius 7, and water
- * cut off from its source counts down to nothing. Solids, sources and other
- * liquids are never overwritten, and y = 0 is never touched.
+ * So a source on flat ground settles into a diamond of radius 7, water
+ * travels at most 7 blocks sideways from its source however far it falls on
+ * the way (a slope does not restart it at every drop), and water cut off from
+ * its source counts down to nothing. Solids, sources and other liquids are
+ * never overwritten, and y = 0 is never touched.
  *
  * Work is a deduplicated FIFO queue of cells to re-check. Every applied
- * change queues its 6 neighbours, so only cells near a change are visited and
- * the queue drains once the water has settled.
+ * change queues its 6 neighbours (and, above a falling column, the cells
+ * beside where it lands), so only cells near a change are visited and the
+ * queue drains once the water has settled.
  */
 import { Block, flowingWater, IS_SOLID, isWater, waterLevel } from './blocks';
 import { chunkInWorld, chunkKey, packPos, toChunkCoord, unpackPos } from './chunk';
@@ -84,11 +90,31 @@ export class FluidSimulator {
    * Call after a block edit made outside the simulation. Besides the cell's
    * own neighbourhood this re-checks the cells beside the block above, since
    * a solid or a source placed or removed here decides whether water above
-   * rests on it (and so spreads sideways).
+   * rests on it (and so spreads sideways), and the cells beside where a
+   * falling column below it lands, since this cell may be what feeds it.
    */
   notifyEdit(x: number, y: number, z: number): void {
     this.schedule(x, y, z);
     this.schedule(x, y + 1, z);
+    this.scheduleLanding(x, y, z);
+  }
+
+  /**
+   * Like schedule(), but queues only those of the 7 cells the rules would
+   * change now, so settled water takes no queue space (for re-checking many
+   * cells, such as a restored world's water). The blocks around the cells
+   * must be known (see FluidAccess.ready).
+   */
+  scheduleIfUnsettled(x: number, y: number, z: number): void {
+    if (this.wouldChange(x, y, z)) this.enqueue(x, y, z);
+    for (const [dx, dy, dz] of NEIGHBOURS) if (this.wouldChange(x + dx, y + dy, z + dz)) this.enqueue(x + dx, y + dy, z + dz);
+  }
+
+  /** True when the rules would change the cell given the blocks around it now. */
+  wouldChange(x: number, y: number, z: number): boolean {
+    if (y < 1 || y >= this.height || Math.abs(x) > PACK_LIMIT || Math.abs(z) > PACK_LIMIT) return false;
+    const current = this.access.get(x, y, z);
+    return this.settle(x, y, z, current) !== current;
   }
 
   /** Forgets all queued work. */
@@ -116,6 +142,7 @@ export class FluidSimulator {
       if (id === current || this.access.set(x, y, z, id) === false) continue;
       changes.push({ x, y, z, id });
       this.enqueueNeighbours(x, y, z);
+      this.scheduleLanding(x, y, z);
     }
     if (this.head === this.queue.length) {
       this.queue = [];
@@ -134,12 +161,33 @@ export class FluidSimulator {
     if (y + 1 < this.height && isWater(access.get(x, y + 1, z))) return Block.WaterFalling;
     let best = 0;
     for (const [dx, dz] of SIDES) {
-      const supply = waterLevel(access.get(x + dx, y, z + dz)) - 1;
-      if (supply <= best) continue;
+      const side = access.get(x + dx, y, z + dz);
+      // Nothing supplies more than 7, so an upper bound skips most sides cheaply.
+      if (Math.min(7, waterLevel(side) - 1) <= best) continue;
       const below = access.get(x + dx, y - 1, z + dz);
-      if (IS_SOLID[below] || below === Block.Water) best = supply;
+      if (IS_SOLID[below] || below === Block.Water) best = Math.max(best, this.supply(x + dx, y, z + dz, side));
     }
     return flowingWater(best);
+  }
+
+  /** What water cell `id` at (x, y, z) supplies to its sides while it rests. */
+  private supply(x: number, y: number, z: number, id: number): number {
+    // Falling water passes on what the water feeding its column supplies.
+    for (let top = y + 1; id === Block.WaterFalling; top++) id = top < this.height ? this.access.get(x, top, z) : Block.Air;
+    if (id === Block.Water) return 7;
+    return isWater(id) ? waterLevel(id) - 1 : 0;
+  }
+
+  /**
+   * Re-checks the cells beside where the falling column below (x, y, z)
+   * lands, if there is one: what they get from it depends on the water
+   * feeding the column, which may just have changed.
+   */
+  private scheduleLanding(x: number, y: number, z: number): void {
+    let by = y - 1;
+    if (by < 1 || this.access.get(x, by, z) !== Block.WaterFalling) return;
+    while (by > 1 && this.access.get(x, by - 1, z) === Block.WaterFalling) by--;
+    for (const [dx, dz] of SIDES) this.enqueue(x + dx, by, z + dz);
   }
 
   private enqueueNeighbours(x: number, y: number, z: number): void {
