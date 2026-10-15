@@ -1,7 +1,8 @@
 /**
- * Custom shaders for voxel terrain. Lighting (face shade + AO) is baked into
- * vertex attributes by the mesher, so the GPU work per pixel is one texture
- * fetch and a fog mix: cheap enough for low-end tablets.
+ * Custom shaders for voxel terrain. Lighting (face shade + AO, sky and block
+ * light) is baked into vertex attributes by the mesher and combined per
+ * vertex with the time of day, so the GPU work per pixel is one texture fetch
+ * and a fog mix: cheap enough for low-end tablets.
  *
  * Greedy-merged quads span several blocks, so UVs are in block units and the
  * fragment shader wraps them into the right atlas tile with fract().
@@ -30,19 +31,29 @@ export function createVoxelUniforms(atlas: THREE.Texture): VoxelUniforms {
   };
 }
 
+/**
+ * light = (face shade * AO, sky light, block light, emissive), each 0..1.
+ * Light levels fade by 20% per level; sky light follows the day, block light
+ * (lamps) is warm and constant. Emissive faces ignore both.
+ */
 const VERT = /* glsl */ `
   attribute vec2 tile;
-  attribute vec2 light;
+  attribute vec4 light;
   uniform float uDaylight;
   varying vec2 vUv;
   varying vec2 vTile;
-  varying float vLight;
+  varying vec3 vLight;
   varying float vFogDist;
+  float brightness(float level) {
+    return pow(0.8, (1.0 - level) * 15.0);
+  }
   void main() {
     vUv = uv;
     vTile = tile;
-    float sky = mix(0.2, 1.0, uDaylight);
-    vLight = light.x * max(sky, light.y);
+    float sky = brightness(light.y) * mix(0.16, 1.0, uDaylight);
+    vec3 lamp = brightness(light.z) * vec3(1.0, 0.85, 0.62);
+    vec3 lit = max(max(vec3(sky), lamp), vec3(0.035));
+    vLight = light.x * mix(lit, vec3(1.0), light.w);
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     vFogDist = length(mv.xyz);
     gl_Position = projectionMatrix * mv;
@@ -57,7 +68,7 @@ const FRAG_COMMON = /* glsl */ `
   uniform float uTime;
   varying vec2 vUv;
   varying vec2 vTile;
-  varying float vLight;
+  varying vec3 vLight;
   varying float vFogDist;
   vec4 atlasSample(vec2 uv) {
     vec2 f = clamp(fract(uv), 0.001, 0.999);
@@ -91,8 +102,9 @@ export function createLiquidMaterial(u: VoxelUniforms): THREE.ShaderMaterial {
       ${FRAG_COMMON}
       void main() {
         vec4 c = atlasSample(vUv + vec2(uTime * 0.04, uTime * 0.025));
+        // Scaled by the light so water in dark caves does not glimmer.
         float shimmer = 0.06 * sin(uTime * 1.7 + vUv.x * 2.1 + vUv.y * 1.3);
-        gl_FragColor = vec4(applyFog(c.rgb * (vLight + shimmer)), 0.72);
+        gl_FragColor = vec4(applyFog(c.rgb * vLight * (1.0 + shimmer)), 0.72);
       }
     `,
     transparent: true,
