@@ -43,6 +43,11 @@ export interface VoxelFluidsOptions {
  * stalls a tick (the first look at a chunk generates it).
  */
 const RESUME_SCAN = 2048;
+/**
+ * ...and for at most this long: restored edits spread over more chunks than
+ * the world keeps generated would otherwise regenerate chunks all step long.
+ */
+const RESUME_BUDGET_MS = 6;
 /** Shortest time between two onLimit calls. */
 const LIMIT_NOTICE_MS = 60_000;
 
@@ -135,9 +140,11 @@ export class VoxelFluids {
     if (!restored) return;
     let left = this.restoredLeft;
     const stop = Math.max(0, left - RESUME_SCAN);
+    const deadline = performance.now() + RESUME_BUDGET_MS;
     while (left > stop && this.sim.pending < this.maxUpdates) {
       const [x, y, z] = unpackPos(restored[--left]);
       if (this.nearWater(x, y, z)) this.sim.scheduleIfUnsettled(x, y, z);
+      if ((left & 63) === 0 && performance.now() > deadline) break;
     }
     this.restoredLeft = left;
     if (left === 0) this.restored = null;

@@ -101,8 +101,10 @@ export class VoxelNet implements VoxelNetHooks {
     );
 
     this.offs.push(
+      // The full edit list (on joining and after a reconnect) replaces ours, so changes
+      // missed while away (such as water drying up) are undone too.
       session.onMessage(VoxelMsg.World, (bytes: Uint8Array) => {
-        for (const e of decodeEdits(bytes, true)) game.applyEdit(e.x, e.y, e.z, e.id);
+        game.world.replaceEdits(decodeEdits(bytes, true).map((e) => [e.x, e.y, e.z, e.id] as [number, number, number, number]));
       }),
       session.onMessage(VoxelMsg.Edits, (bytes: Uint8Array) => {
         for (const e of decodeEdits(bytes)) game.applyEdit(e.x, e.y, e.z, e.id);

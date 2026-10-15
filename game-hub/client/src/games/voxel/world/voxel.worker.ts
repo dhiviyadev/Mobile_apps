@@ -26,7 +26,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
       self.postMessage({ id: msg.id, blocks }, { transfer: [blocks.buffer] });
     } else {
       const mesh = meshChunk(msg.region);
-      const transfer: ArrayBuffer[] = [msg.region.buffer as ArrayBuffer];
+      const transfer: ArrayBuffer[] = [msg.region.buffer as ArrayBuffer, mesh.light.buffer as ArrayBuffer];
       for (const part of [mesh.opaque, mesh.liquid]) {
         transfer.push(part.positions.buffer as ArrayBuffer, part.uvs.buffer as ArrayBuffer, part.tiles.buffer as ArrayBuffer, part.lights.buffer as ArrayBuffer, part.indices.buffer as ArrayBuffer);
       }

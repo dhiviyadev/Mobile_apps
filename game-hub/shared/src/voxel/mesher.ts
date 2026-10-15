@@ -9,6 +9,8 @@
  * Output: two vertex buffers per chunk:
  *   - opaque: solid + alpha-tested blocks (leaves, glass)
  *   - liquid: water (alpha-blended pass)
+ * plus the centre chunk's light levels (for lighting things that are not
+ * terrain, such as the held block).
  *
  * Vertex layout (non-interleaved):
  *   position Float32x3 (chunk-local), uv Float32x2 (in blocks, tiled in the
@@ -20,8 +22,9 @@
  * light are uniform across them, which keeps lighting exact while still
  * collapsing large flat areas (fields, cliffs, sea, dark caves) into few quads.
  */
-import { IS_EMISSIVE, IS_LIQUID, IS_TRANSPARENT, LIQUID_HEIGHT, TILE_BOTTOM, TILE_SIDE, TILE_TOP } from './blocks';
-import { CHUNK_HEIGHT, CHUNK_SIZE } from './constants';
+import { Block, IS_EMISSIVE, IS_LIQUID, IS_TRANSPARENT, isWater, LIQUID_HEIGHT, TILE_BOTTOM, TILE_SIDE, TILE_TOP } from './blocks';
+import { blockIndex } from './chunk';
+import { CHUNK_HEIGHT, CHUNK_SIZE, CHUNK_VOLUME } from './constants';
 import { changesLight, computeLight, lightAboveTop, MAX_LIGHT } from './light';
 
 export const REGION_SIZE = CHUNK_SIZE * 3; // 48
@@ -88,6 +91,23 @@ export function neighbourNeedsRemesh(dx: number, dz: number, lx: number, lz: num
   return (old === null || changesLight(old, id)) && ex + ez < MAX_LIGHT;
 }
 
+/** True when an edit at chunk-local (lx, lz) is in the row the neighbour at (dx, dz) reads (faces, AO). */
+export function editTouchesBorder(dx: number, dz: number, lx: number, lz: number): boolean {
+  const ex = dx > 0 ? CHUNK_SIZE - 1 - lx : dx < 0 ? lx : 0;
+  const ez = dz > 0 ? CHUNK_SIZE - 1 - lz : dz < 0 ? lz : 0;
+  return ex === 0 && ez === 0;
+}
+
+/** Air, flowing or falling water: the cells the water simulation writes (never a source). */
+const isFlowCell = (id: number): boolean => id === Block.Air || (isWater(id) && id !== Block.Water);
+
+/**
+ * True for a change only flowing water can make (both ids air or non-source
+ * water). The client remeshes those at a lower priority and rate, so a flood
+ * never holds up player edits or chunk streaming.
+ */
+export const isFluidOnlyChange = (old: number | null, id: number): boolean => old !== null && isFlowCell(old) && isFlowCell(id);
+
 /**
  * Squared distance (in chunks) from the origin chunk to the nearest chunk of the
  * 3x3 region centred on (dx, dz). A chunk's blocks are needed while any chunk
@@ -121,6 +141,8 @@ export interface MeshBuffers {
 export interface ChunkMesh {
   opaque: MeshBuffers;
   liquid: MeshBuffers;
+  /** Light of every cell of the centre chunk (blockIndex order): sky << 4 | block. */
+  light: Uint8Array;
 }
 
 const AO_CURVE = [0.5, 0.68, 0.84, 1];
@@ -294,8 +316,10 @@ export function meshChunk(region: Uint8Array): ChunkMesh {
               if (IS_LIQUID[b] && IS_LIQUID[n]) {
                 visible = axis !== 1 && liquidTop(pos[0], pos[1], pos[2], b) > liquidTop(q[0], q[1], q[2], n);
                 lower = n;
-              } else if (IS_LIQUID[b]) visible = IS_TRANSPARENT[n] === 1 || (axis === 1 && sign > 0 && n === 0);
-              else if (IS_TRANSPARENT[b]) visible = n !== b && IS_TRANSPARENT[n] === 1;
+              } else if (IS_LIQUID[b]) {
+                // A surface below the block above still shows: it sits lower than that block.
+                visible = IS_TRANSPARENT[n] === 1 || (axis === 1 && sign > 0 && (n === 0 || LIQUID_HEIGHT[b] < 1));
+              } else if (IS_TRANSPARENT[b]) visible = n !== b && IS_TRANSPARENT[n] === 1;
               else visible = IS_TRANSPARENT[n] === 1;
               if (visible) {
                 const emissive = IS_EMISSIVE[b] === 1;
@@ -344,6 +368,12 @@ export function meshChunk(region: Uint8Array): ChunkMesh {
                 if (IS_LIQUID[b]) {
                   const above = get(pos[0], pos[1] + 1, pos[2]);
                   ao = 0xff | (IS_LIQUID[above] ? 0 : 1 << 8) | (lower << 9);
+                  if (!IS_TRANSPARENT[n]) {
+                    // Under a solid block the cell in front is dark: light the surface from the water itself.
+                    const pi = regionIndex(pos[0], pos[1], pos[2]);
+                    skyBits = Math.imul(lightByte(sky[pi], 1), 0x01010101);
+                    blockBits = Math.imul(lightByte(blk[pi], 1), 0x01010101);
+                  }
                 }
                 key = b | (ao << 8) | (1 << 30);
               }
@@ -389,7 +419,16 @@ export function meshChunk(region: Uint8Array): ChunkMesh {
     }
   }
 
-  return { opaque: opaqueBuilder.finish(), liquid: liquidBuilder.finish() };
+  const light = new Uint8Array(CHUNK_VOLUME);
+  for (let y = 0; y < CHUNK_HEIGHT; y++) {
+    for (let z = 0; z < CHUNK_SIZE; z++) {
+      for (let x = 0; x < CHUNK_SIZE; x++) {
+        const ri = regionIndex(x, y, z);
+        light[blockIndex(x, y, z)] = (sky[ri] << 4) | blk[ri];
+      }
+    }
+  }
+  return { opaque: opaqueBuilder.finish(), liquid: liquidBuilder.finish(), light };
 }
 
 const corners = new Array<number>(12);

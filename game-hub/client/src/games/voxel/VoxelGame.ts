@@ -104,6 +104,11 @@ export class VoxelGame {
   private readonly handCamera = new THREE.PerspectiveCamera(60, 1, 0.01, 10);
   private held: THREE.Mesh;
   private heldBlock: Block = HOTBAR_BLOCKS[0];
+  /** Sky and block light on the held block (0..15), easing toward the light at the eye. */
+  private heldSky = 15;
+  private heldLamp = 0;
+  /** Light bytes last written into the held block's geometry (-1: rewrite). */
+  private heldLightKey = -1;
   private readonly clickToPlay: HTMLElement | null;
   private raf = 0;
   private running = false;
@@ -392,6 +397,7 @@ export class VoxelGame {
     this.heldBlock = block;
     this.held.geometry.dispose();
     this.held.geometry = createBlockGeometry(block, 0.24);
+    this.heldLightKey = -1;
   }
 
   private updateHeldItem(dt: number): void {
@@ -403,7 +409,28 @@ export class VoxelGame {
     const swing = this.interaction.swing;
     this.held.position.set(0.34, -0.25 + bob - swing * 0.06, -0.6 + swing * 0.08);
     this.held.rotation.set(0.25 - swing * 0.6, -0.6 + swing * 0.2, 0.08);
-    void dt;
+    this.updateHeldLight(dt);
+  }
+
+  /** Lights the held block like the cell the eye is in (dark in caves, warm near lamps). */
+  private updateHeldLight(dt: number): void {
+    const e = this.tmpEye;
+    const light = this.world.lightAt(Math.floor(e.x), Math.floor(e.y), Math.floor(e.z));
+    const ease = Math.min(1, dt * 6);
+    this.heldSky += ((light >> 4) - this.heldSky) * ease;
+    this.heldLamp += ((light & 15) - this.heldLamp) * ease;
+    const sky = Math.round(this.heldSky * 17);
+    const lamp = Math.round(this.heldLamp * 17);
+    const key = (sky << 8) | lamp;
+    if (key === this.heldLightKey) return;
+    this.heldLightKey = key;
+    const attr = this.held.geometry.getAttribute('light') as THREE.BufferAttribute;
+    const bytes = attr.array as Uint8Array;
+    for (let i = 0; i < attr.count; i++) {
+      bytes[i * 4 + 1] = sky;
+      bytes[i * 4 + 2] = lamp;
+    }
+    attr.needsUpdate = true;
   }
 
   private requestEdit(x: number, y: number, z: number, id: number): void {

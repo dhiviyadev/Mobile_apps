@@ -9,7 +9,7 @@ export function createBlockGeometry(block: number, size = 1): THREE.BufferGeomet
   const def = blockDef(block);
   const n = geo.attributes.position.count; // 24: 4 per face, order +x -x +y -y +z -z
   const tiles = new Uint8Array(n * 2);
-  // Shade, sky, block, emissive: lit like an open-air block (follows the day, no lamp light).
+  // Shade, sky, block, emissive: lit like an open-air block (the game rewrites sky and block for the held block).
   const light = new Uint8Array(n * 4);
   for (let face = 0; face < 6; face++) {
     const tile = face === 2 ? def.tiles[0] : face === 3 ? def.tiles[1] : def.tiles[2];

@@ -27,6 +27,8 @@ import {
 import {
   buildRegion,
   type ChunkMesh,
+  editTouchesBorder,
+  isFluidOnlyChange,
   type MeshBuffers,
   meshChunk,
   neighbourNeedsRemesh,
@@ -210,6 +212,33 @@ describe('greedy mesher', () => {
     expect(meshChunk(col).liquid.vertexCount).toBe(40);
   });
 
+  it('shows a water surface under a solid block, lit from the water cell', () => {
+    const vol = emptyVol();
+    vol[regionIndex(3, 4, 3)] = Block.Water;
+    vol[regionIndex(3, 5, 3)] = Block.Stone; // roof right on top of the water
+    const m = meshChunk(vol);
+    const tops: number[] = [];
+    for (let q = 0; q < m.liquid.vertexCount; q += 4) {
+      let flat = true;
+      for (let k = q; k < q + 4; k++) flat &&= m.liquid.positions[k * 3 + 1] === 4.875;
+      if (flat) tops.push(q);
+    }
+    expect(tops).toHaveLength(1);
+    // Sky light reaches the water from the sides, so the surface is not black.
+    expect(m.liquid.lights[tops[0] * 4 + 1]).toBeGreaterThan(150);
+  });
+
+  it('returns the light of every cell of the centre chunk', () => {
+    const vol = emptyVol();
+    for (let x = -16; x < 32; x++) for (let z = -16; z < 32; z++) vol[regionIndex(x, 0, z)] = Block.Stone;
+    vol[regionIndex(5, 1, 5)] = Block.Lamp;
+    const { light } = meshChunk(vol);
+    expect(light).toHaveLength(CHUNK_SIZE * CHUNK_SIZE * CHUNK_HEIGHT);
+    expect(light[blockIndex(6, 1, 5)]).toBe((15 << 4) | 14); // open sky, next to the lamp
+    expect(light[blockIndex(5, 1, 9)] & 15).toBe(11);
+    expect(light[blockIndex(5, 0, 5)]).toBe(0); // inside stone
+  });
+
   it('applies ambient occlusion next to walls', () => {
     const vol = emptyVol();
     vol[regionIndex(4, 0, 4)] = Block.Stone;
@@ -316,6 +345,24 @@ describe('greedy mesher', () => {
     console.log(`[mesher] light + mesh of one 48x64x48 region: ${ms.toFixed(2)} ms, ${m.opaque.vertexCount + m.liquid.vertexCount} vertices`);
     expect(m.opaque.vertexCount).toBeGreaterThan(100);
     expect(ms).toBeLessThan(80);
+  });
+});
+
+describe('fluid remesh rules', () => {
+  it('treats only air and non-source water changes as water-only', () => {
+    expect(isFluidOnlyChange(Block.Air, flowingWater(5))).toBe(true);
+    expect(isFluidOnlyChange(flowingWater(5), Block.WaterFalling)).toBe(true);
+    expect(isFluidOnlyChange(flowingWater(2), Block.Air)).toBe(true);
+    expect(isFluidOnlyChange(Block.Air, Block.Water)).toBe(false); // a placed source
+    expect(isFluidOnlyChange(Block.Stone, Block.Air)).toBe(false); // a broken block
+    expect(isFluidOnlyChange(null, flowingWater(3))).toBe(false); // unknown old block
+  });
+
+  it('knows which neighbours read the edited cell', () => {
+    expect(editTouchesBorder(1, 0, 15, 4)).toBe(true);
+    expect(editTouchesBorder(1, 0, 14, 4)).toBe(false);
+    expect(editTouchesBorder(-1, -1, 0, 0)).toBe(true);
+    expect(editTouchesBorder(-1, -1, 0, 1)).toBe(false);
   });
 });
 
