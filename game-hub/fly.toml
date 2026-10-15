@@ -4,6 +4,10 @@
 #   fly deploy
 app = "cobalt-game-hub"
 primary_region = "iad"
+# Seconds Fly waits after the stop signal before killing the server (default 5). Shutdown
+# closes every room first, and a room holding a seat for a player who never connected
+# only closes once that reservation runs out (15 s); open worlds are saved before that.
+kill_timeout = 20
 
 [build]
   dockerfile = "server/Dockerfile"

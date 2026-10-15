@@ -10,7 +10,15 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const PRUNE_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 // Saved Voxelvale worlds. Falls back to memory (with a warning) if the data dir is unusable.
-const store = await openWorldStore({ dir: config.dataDir, persist: config.persistWorlds });
+// Saves beyond the limits evict the least recently saved worlds that no open room holds.
+const store = await openWorldStore({
+  dir: config.dataDir,
+  persist: config.persistWorlds,
+  maxWorlds: config.maxSavedWorlds,
+  maxMemoryBytes: config.maxMemoryWorldBytes,
+  maxFileBytes: config.maxSavedWorldBytes,
+  inUse: isWorldOpen,
+});
 setWorldStore(store);
 
 async function pruneWorlds(): Promise<void> {
@@ -25,7 +33,7 @@ async function pruneWorlds(): Promise<void> {
 await pruneWorlds();
 setInterval(() => void pruneWorlds(), PRUNE_INTERVAL_MS).unref();
 
-// SIGTERM/SIGINT dispose every room first, and voxel rooms save their world while disposing.
+// SIGTERM/SIGINT dispose every room first; voxel rooms save their world as the shutdown starts and again while disposing.
 const server = createGameServer();
 await server.listen(config.port, config.host);
 log.info(`listening on ws://${config.host}:${config.port}`);
