@@ -38,7 +38,8 @@ export class BlockFx {
     const cube = new THREE.BoxGeometry(1.01, 1.01, 1.01);
     const n = cube.attributes.position.count;
     this.crackTiles = new THREE.BufferAttribute(new Uint8Array(n * 2), 2);
-    const light = new THREE.BufferAttribute(new Uint8Array(n * 2).fill(255), 2, true);
+    // Shade, sky, block, emissive: full-bright (the crack shader ignores light).
+    const light = new THREE.BufferAttribute(new Uint8Array(n * 4).fill(255), 4, true);
     cube.setAttribute('tile', this.crackTiles);
     cube.setAttribute('light', light);
     this.crack = new THREE.Mesh(cube, crackMaterial);

@@ -46,8 +46,9 @@ export class WorkerPool {
     return this.submit({ type: 'gen', seed, mode, cx, cz }, []);
   }
 
-  mesh(vol: Uint8Array): Promise<{ mesh: ChunkMesh }> {
-    return this.submit({ type: 'mesh', vol }, [vol.buffer as ArrayBuffer]);
+  /** Lights and meshes a 3x3 chunk region; the region buffer is transferred and handed back. */
+  mesh(region: Uint8Array): Promise<{ mesh: ChunkMesh; region: Uint8Array }> {
+    return this.submit({ type: 'mesh', region }, [region.buffer as ArrayBuffer]);
   }
 
   dispose(): void {

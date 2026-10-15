@@ -19,7 +19,7 @@ import {
   unpackPos,
   VOXEL_PHYSICS,
 } from '../src';
-import { meshChunk, PAD, paddedIndex, PADDED_VOLUME } from '../src/voxel/mesher';
+import { buildRegion, type MeshBuffers, meshChunk, REGION_SIZE, REGION_VOLUME, regionIndex } from '../src/voxel/mesher';
 
 /** A tiny sparse world for physics/raycast tests. */
 function sparseWorld(blocks: [number, number, number, number][]) {
@@ -100,11 +100,36 @@ describe('terrain generator', () => {
 });
 
 describe('greedy mesher', () => {
-  const emptyVol = () => new Uint8Array(PADDED_VOLUME);
+  const emptyVol = () => new Uint8Array(REGION_VOLUME);
+  /** Sky / block light bytes of every non-emissive vertex matching `filter` (position x, y, z). */
+  const vertexLight = (m: MeshBuffers, filter: (x: number, y: number, z: number) => boolean) => {
+    const out: { sky: number; block: number }[] = [];
+    for (let i = 0; i < m.vertexCount; i++) {
+      if (m.lights[i * 4 + 3] === 0 && filter(m.positions[i * 3], m.positions[i * 3 + 1], m.positions[i * 3 + 2])) {
+        out.push({ sky: m.lights[i * 4 + 1], block: m.lights[i * 4 + 2] });
+      }
+    }
+    return out;
+  };
+
+  it('indexes the 3x3 chunk region', () => {
+    expect(REGION_SIZE).toBe(48);
+    expect(REGION_VOLUME).toBe(48 * 48 * CHUNK_HEIGHT);
+    expect(regionIndex(-16, 0, -16)).toBe(0);
+    expect(regionIndex(31, CHUNK_HEIGHT - 1, 31)).toBe(REGION_VOLUME - 1);
+    const chunks: (Uint8Array | null)[] = [...Array(9)].map((_, i) => new Uint8Array(CHUNK_VOLUME).fill(i + 1));
+    chunks[0] = null;
+    const region = buildRegion(chunks);
+    expect(region[regionIndex(-16, 3, -16)]).toBe(0); // missing chunk reads as air
+    expect(region[regionIndex(0, 3, -16)]).toBe(2);
+    expect(region[regionIndex(5, 3, 5)]).toBe(5);
+    expect(region[regionIndex(16, 3, 31)]).toBe(9);
+    expect(region[regionIndex(-1, 3, 16)]).toBe(7);
+  });
 
   it('emits 6 quads for a single block', () => {
     const vol = emptyVol();
-    vol[paddedIndex(5, 10, 5)] = Block.Stone;
+    vol[regionIndex(5, 10, 5)] = Block.Stone;
     const m = meshChunk(vol);
     expect(m.opaque.vertexCount).toBe(24);
     expect(m.opaque.indices.length).toBe(36);
@@ -113,23 +138,23 @@ describe('greedy mesher', () => {
 
   it('merges a flat 16x16 floor into very few quads', () => {
     const vol = emptyVol();
-    for (let x = -1; x <= 16; x++) for (let z = -1; z <= 16; z++) vol[paddedIndex(x, 0, z)] = Block.Stone;
+    for (let x = -16; x < 32; x++) for (let z = -16; z < 32; z++) vol[regionIndex(x, 0, z)] = Block.Stone;
     const m = meshChunk(vol);
-    // Top face is one quad; sides are hidden by the padded neighbours; bottom is the world floor.
+    // Top face is one quad; sides are hidden by the neighbours; bottom is the world floor.
     expect(m.opaque.vertexCount).toBe(4);
   });
 
-  it('culls faces between neighbours and keeps faces against the padding border', () => {
+  it('culls faces between neighbours and keeps faces against the chunk border', () => {
     const vol = emptyVol();
-    vol[paddedIndex(15, 5, 0)] = Block.Stone;
-    vol[paddedIndex(16, 5, 0)] = Block.Stone; // in the neighbour chunk
+    vol[regionIndex(15, 5, 0)] = Block.Stone;
+    vol[regionIndex(16, 5, 0)] = Block.Stone; // in the neighbour chunk
     const m = meshChunk(vol);
     expect(m.opaque.vertexCount).toBe(5 * 4); // +X face hidden by the neighbour
   });
 
   it('meshes water separately and lowers surface water', () => {
     const vol = emptyVol();
-    vol[paddedIndex(3, 4, 3)] = Block.Water;
+    vol[regionIndex(3, 4, 3)] = Block.Water;
     const m = meshChunk(vol);
     expect(m.opaque.vertexCount).toBe(0);
     expect(m.liquid.vertexCount).toBe(24);
@@ -141,32 +166,89 @@ describe('greedy mesher', () => {
 
   it('applies ambient occlusion next to walls', () => {
     const vol = emptyVol();
-    vol[paddedIndex(4, 0, 4)] = Block.Stone;
-    vol[paddedIndex(5, 1, 4)] = Block.Stone; // wall beside the top face
+    vol[regionIndex(4, 0, 4)] = Block.Stone;
+    vol[regionIndex(5, 1, 4)] = Block.Stone; // wall beside the top face
     const m = meshChunk(vol);
     const lights = new Set<number>();
-    for (let i = 0; i < m.opaque.vertexCount; i++) lights.add(m.opaque.lights[i * 2]);
+    for (let i = 0; i < m.opaque.vertexCount; i++) lights.add(m.opaque.lights[i * 4]);
     expect(lights.size).toBeGreaterThan(3);
   });
 
-  it('meshes a real terrain chunk fast enough for a worker', () => {
-    const gen = new TerrainGenerator(99);
-    const vol = new Uint8Array(PADDED_VOLUME);
-    const chunks = new Map<string, Uint8Array>();
-    for (let cx = -1; cx <= 1; cx++) for (let cz = -1; cz <= 1; cz++) chunks.set(`${cx},${cz}`, gen.generateChunk(cx, cz));
-    for (let y = 0; y < CHUNK_HEIGHT; y++) {
-      for (let z = -1; z <= CHUNK_SIZE; z++) {
-        for (let x = -1; x <= CHUNK_SIZE; x++) {
-          const cx = Math.floor(x / 16);
-          const cz = Math.floor(z / 16);
-          const c = chunks.get(`${cx},${cz}`)!;
-          vol[(y * PAD + (z + 1)) * PAD + (x + 1)] = c[blockIndex(x - cx * 16, y, z - cz * 16)];
-        }
+  it('bakes sky and block light into vertices', () => {
+    const vol = emptyVol();
+    // Solid ground up to y = 9 with two sealed one-block pockets; one holds a lamp neighbour.
+    for (let x = -16; x < 32; x++) for (let z = -16; z < 32; z++) for (let y = 0; y < 10; y++) vol[regionIndex(x, y, z)] = Block.Stone;
+    vol[regionIndex(3, 5, 3)] = Block.Air; // dark pocket
+    vol[regionIndex(10, 5, 10)] = Block.Air; // lamp-lit pocket
+    vol[regionIndex(11, 5, 10)] = Block.Lamp;
+    const m = meshChunk(vol);
+    const inPocket = (px: number, pz: number) => (x: number, y: number, z: number) => x >= px && x <= px + 1 && z >= pz && z <= pz + 1 && y >= 5 && y <= 6;
+    const surface = vertexLight(m.opaque, (_x, y) => y === 10);
+    const dark = vertexLight(m.opaque, inPocket(3, 3));
+    const lamp = vertexLight(m.opaque, (x, y, z) => inPocket(10, 10)(x, y, z) && x <= 11);
+    expect(surface.length).toBeGreaterThan(0);
+    expect(surface.every((l) => l.sky === 255 && l.block === 0)).toBe(true);
+    expect(dark.length).toBe(24);
+    expect(dark.every((l) => l.sky === 0 && l.block === 0)).toBe(true);
+    expect(lamp.length).toBeGreaterThan(0);
+    expect(lamp.every((l) => l.sky === 0 && l.block === 14 * 17)).toBe(true);
+    // The lamp's own faces stay full-bright.
+    let emissive = 0;
+    for (let i = 0; i < m.opaque.vertexCount; i++) if (m.opaque.lights[i * 4 + 3] === 255) emissive++;
+    expect(emissive).toBe(4); // only the face looking into the pocket is visible
+  });
+
+  it('does not merge faces with different light', () => {
+    // A floor under a roof with a skylight: the floor brightens towards the hole.
+    const vol = emptyVol();
+    for (let x = -16; x < 32; x++) {
+      for (let z = -16; z < 32; z++) {
+        vol[regionIndex(x, 0, z)] = Block.Stone;
+        vol[regionIndex(x, 4, z)] = Block.Stone;
       }
     }
-    const t0 = performance.now();
+    vol[regionIndex(12, 4, 12)] = Block.Air;
     const m = meshChunk(vol);
-    const ms = performance.now() - t0;
+    const floor: number[] = [];
+    let lit = 0;
+    for (let q = 0; q < m.opaque.vertexCount; q += 4) {
+      if (m.opaque.positions[q * 3 + 1] !== 1 || m.opaque.positions[(q + 2) * 3 + 1] !== 1) continue;
+      floor.push(q);
+      const sky = [0, 1, 2, 3].map((k) => m.opaque.lights[(q + k) * 4 + 1]);
+      if (sky.some((s) => s > 0)) lit++;
+      // Merged quads (bigger than one block) must carry uniform light.
+      const xs = [0, 1, 2, 3].map((k) => m.opaque.positions[(q + k) * 3]);
+      const zs = [0, 1, 2, 3].map((k) => m.opaque.positions[(q + k) * 3 + 2]);
+      const big = Math.max(...xs) - Math.min(...xs) > 1 || Math.max(...zs) - Math.min(...zs) > 1;
+      if (big) expect(new Set(sky).size).toBe(1);
+    }
+    expect(lit).toBeGreaterThan(50);
+    expect(floor.length).toBeGreaterThan(lit);
+    // Under the skylight the floor is bright; far away it is dark.
+    const under = vertexLight(m.opaque, (x, y, z) => y === 1 && x >= 12 && x <= 13 && z >= 12 && z <= 13);
+    expect(Math.min(...under.map((l) => l.sky))).toBeGreaterThan(200);
+    const corner = vertexLight(m.opaque, (x, y, z) => y === 1 && x === 0 && z === 0);
+    expect(corner.every((l) => l.sky < under[0].sky)).toBe(true);
+  });
+
+  it('meshes and lights a real terrain region fast enough for a worker', () => {
+    const gen = new TerrainGenerator(99);
+    const chunks: Uint8Array[] = [];
+    for (let cz = -1; cz <= 1; cz++) for (let cx = -1; cx <= 1; cx++) chunks.push(gen.generateChunk(cx, cz));
+    const region = buildRegion(chunks);
+    const center = chunks[4];
+    for (let y = 0; y < CHUNK_HEIGHT; y++) {
+      for (let z = 0; z < CHUNK_SIZE; z++) {
+        for (let x = 0; x < CHUNK_SIZE; x++) expect(region[regionIndex(x, y, z)]).toBe(center[blockIndex(x, y, z)]);
+      }
+    }
+    meshChunk(region); // warm up the JIT
+    const runs = 5;
+    const t0 = performance.now();
+    let m = meshChunk(region);
+    for (let i = 1; i < runs; i++) m = meshChunk(region);
+    const ms = (performance.now() - t0) / runs;
+    console.log(`[mesher] light + mesh of one 48x64x48 region: ${ms.toFixed(2)} ms, ${m.opaque.vertexCount + m.liquid.vertexCount} vertices`);
     expect(m.opaque.vertexCount).toBeGreaterThan(100);
     expect(ms).toBeLessThan(80);
   });

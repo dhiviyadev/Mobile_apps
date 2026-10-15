@@ -10,16 +10,23 @@ import * as THREE from 'three';
 import {
   Block,
   blockIndex,
+  changesLight,
   CHUNK_HEIGHT,
   CHUNK_SIZE,
   chunkInWorld,
   chunkKey,
+  MAX_LIGHT,
   toChunkCoord,
   toLocal,
   type VoxelMode,
 } from '@hub/shared';
-import { type MeshBuffers, PAD, PADDED_VOLUME } from '@hub/shared/voxel/mesher';
+import { buildRegion, type MeshBuffers, REGION_VOLUME } from '@hub/shared/voxel/mesher';
 import { WorkerPool } from './WorkerPool';
+
+/** Remesh priorities: an edited chunk first so the player sees the change at once, then its neighbours. */
+const PRIORITY_STREAM = 0;
+const PRIORITY_NEIGHBOUR = 1;
+const PRIORITY_EDIT = 2;
 
 interface Chunk {
   cx: number;
@@ -32,8 +39,8 @@ interface Chunk {
   dirty: boolean;
   /** Bumped by every edit; lets us detect stale mesh results. */
   version: number;
-  /** Edit-driven remesh: jump the queue. */
-  urgent: boolean;
+  /** Edit-driven remeshes jump the streaming queue (PRIORITY_*). */
+  priority: number;
   opaque: THREE.Mesh | null;
   liquid: THREE.Mesh | null;
 }
@@ -51,6 +58,17 @@ const NEIGHBOURS = [
   [-1, 1], [0, 1], [1, 1],
 ];
 
+/**
+ * Squared distance (in chunks) from the player's chunk to the nearest chunk of
+ * the 3x3 block around offset (dx, dz). A chunk's data is needed while any
+ * chunk whose mesh region it belongs to is in range.
+ */
+const regionDistance = (dx: number, dz: number): number => {
+  const a = Math.max(0, Math.abs(dx) - 1);
+  const b = Math.max(0, Math.abs(dz) - 1);
+  return a * a + b * b;
+};
+
 export class World {
   readonly group = new THREE.Group();
   private readonly chunks = new Map<string, Chunk>();
@@ -61,6 +79,9 @@ export class World {
   private wanted: { cx: number; cz: number; d: number }[] = [];
   private wantedKey = '';
   private disposed = false;
+  /** Region buffers handed back by workers, reused for the next mesh jobs. */
+  private readonly spareRegions: Uint8Array[] = [];
+  private readonly regionChunks: (Uint8Array | null)[] = new Array(9).fill(null);
   renderDistance = 4;
 
   constructor(
@@ -101,18 +122,23 @@ export class World {
     if (!e) this.edits.set(key, (e = new Map()));
     e.set(idx, id);
     const c = this.chunks.get(key);
+    let lightChanged = true; // unknown when the chunk is not loaded
     if (c?.blocks) {
+      const old = c.blocks[idx];
       // Server echoes of our own optimistic edits are no-ops: skip the remesh.
-      if (c.blocks[idx] === id) return;
+      if (old === id) return;
       c.blocks[idx] = id;
-      this.markDirty(c, true);
+      this.markDirty(c, PRIORITY_EDIT);
+      lightChanged = changesLight(old, id);
     }
-    // Neighbours sample this block for face culling and AO.
-    const nx = lx === 0 ? -1 : lx === CHUNK_SIZE - 1 ? 1 : 0;
-    const nz = lz === 0 ? -1 : lz === CHUNK_SIZE - 1 ? 1 : 0;
-    if (nx) this.markDirtyAt(cx + nx, cz, true);
-    if (nz) this.markDirtyAt(cx, cz + nz, true);
-    if (nx && nz) this.markDirtyAt(cx + nx, cz + nz, true);
+    for (const [dx, dz] of NEIGHBOURS) {
+      // Blocks between the edit and the row of ours that the neighbour samples.
+      const ex = dx > 0 ? CHUNK_SIZE - 1 - lx : dx < 0 ? lx : 0;
+      const ez = dz > 0 ? CHUNK_SIZE - 1 - lz : dz < 0 ? lz : 0;
+      // Neighbours sample our border blocks for face culling and AO, and light
+      // changes reach up to MAX_LIGHT - 1 blocks sideways.
+      if ((ex === 0 && ez === 0) || (lightChanged && ex + ez < MAX_LIGHT)) this.markDirtyAt(cx + dx, cz + dz, PRIORITY_NEIGHBOUR);
+    }
   }
 
   /** Replaces the whole edit overlay (late join / reconnect) and re-applies it. */
@@ -142,8 +168,10 @@ export class World {
     this.centerCz = toChunkCoord(pz);
     const r = this.renderDistance;
 
-    // Wanted chunks: data for radius r+1 (neighbours of the visible ring), meshes for r.
+    // Wanted chunks: meshes inside the render circle, block data for those and
+    // the ring around them (each mesh is built from its 3x3 chunk region).
     // Rebuilt only when the player crosses a chunk border or the radius changes.
+    const meshRange = (r + 0.5) * (r + 0.5);
     const key = `${this.centerCx},${this.centerCz},${r}`;
     if (key !== this.wantedKey) {
       this.wantedKey = key;
@@ -152,7 +180,7 @@ export class World {
         for (let dx = -r - 1; dx <= r + 1; dx++) {
           const cx = this.centerCx + dx;
           const cz = this.centerCz + dz;
-          if (!chunkInWorld(cx, cz)) continue;
+          if (!chunkInWorld(cx, cz) || regionDistance(dx, dz) > meshRange) continue;
           this.wanted.push({ cx, cz, d: dx * dx + dz * dz });
         }
       }
@@ -161,10 +189,16 @@ export class World {
     const wanted = this.wanted;
     const busy = this.pool.capacity <= 0;
 
-    // 1. Urgent remeshes (player edits) first.
-    if (!busy) for (const c of this.chunks.values()) {
-      if (this.pool.capacity <= 0) break;
-      if (c.urgent && c.dirty && !c.meshing && this.neighboursReady(c)) this.mesh(c);
+    // 1. Edit-driven remeshes first: edited chunks, then neighbours whose borders or light changed.
+    //    Chunks outside the render circle keep their flag until they come into range.
+    if (!busy) for (let p = PRIORITY_EDIT; p > PRIORITY_STREAM; p--) {
+      for (const c of this.chunks.values()) {
+        if (this.pool.capacity <= 0) break;
+        if (c.priority !== p || !c.dirty || c.meshing) continue;
+        const dx = c.cx - this.centerCx;
+        const dz = c.cz - this.centerCz;
+        if (dx * dx + dz * dz <= meshRange && this.neighboursReady(c)) this.mesh(c);
+      }
     }
     // 2. Generate / mesh nearest-first.
     if (!busy) for (const w of wanted) {
@@ -172,28 +206,27 @@ export class World {
       const key = chunkKey(w.cx, w.cz);
       let c = this.chunks.get(key);
       if (!c) {
-        c = { cx: w.cx, cz: w.cz, key, blocks: null, generating: false, meshing: false, dirty: true, version: 0, urgent: false, opaque: null, liquid: null };
+        c = { cx: w.cx, cz: w.cz, key, blocks: null, generating: false, meshing: false, dirty: true, version: 0, priority: PRIORITY_STREAM, opaque: null, liquid: null };
         this.chunks.set(key, c);
       }
       if (!c.blocks && !c.generating) {
         this.generate(c);
         continue;
       }
-      const inMeshRange = w.d <= (r + 0.5) * (r + 0.5);
+      const inMeshRange = w.d <= meshRange;
       if (inMeshRange && c.blocks && c.dirty && !c.meshing && this.neighboursReady(c)) this.mesh(c);
     }
-    // 3. Unload far chunks and hide those outside the render circle.
-    const unload = (r + 3) * (r + 3);
-    const visible = (r + 0.5) * (r + 0.5);
+    // 3. Unload chunks well past the wanted ring (the slack avoids reloading
+    //    when walking back and forth), and hide those outside the render circle.
+    const unload = (r + 2) * (r + 2);
     for (const c of this.chunks.values()) {
       const dx = c.cx - this.centerCx;
       const dz = c.cz - this.centerCz;
-      const d = dx * dx + dz * dz;
-      if (d > unload && !c.generating && !c.meshing) {
+      if (regionDistance(dx, dz) > unload && !c.generating && !c.meshing) {
         this.disposeChunk(c);
         continue;
       }
-      const vis = d <= visible;
+      const vis = dx * dx + dz * dz <= meshRange;
       if (c.opaque) c.opaque.visible = vis;
       if (c.liquid) c.liquid.visible = vis;
     }
@@ -226,19 +259,20 @@ export class World {
     this.disposed = true;
     for (const c of this.chunks.values()) this.disposeChunk(c);
     this.chunks.clear();
+    this.spareRegions.length = 0;
   }
 
   // ---- internals --------------------------------------------------------------------
 
-  private markDirtyAt(cx: number, cz: number, urgent: boolean): void {
+  private markDirtyAt(cx: number, cz: number, priority: number): void {
     const c = this.chunks.get(chunkKey(cx, cz));
-    if (c?.blocks) this.markDirty(c, urgent);
+    if (c?.blocks) this.markDirty(c, priority);
   }
 
-  private markDirty(c: Chunk, urgent: boolean): void {
+  private markDirty(c: Chunk, priority: number): void {
     c.dirty = true;
     c.version++;
-    if (urgent) c.urgent = true;
+    if (priority > c.priority) c.priority = priority;
   }
 
   private neighboursReady(c: Chunk): boolean {
@@ -273,15 +307,16 @@ export class World {
   }
 
   private mesh(c: Chunk): void {
-    const vol = this.buildPaddedVolume(c);
+    const region = this.regionFor(c);
     const version = c.version;
     c.meshing = true;
     c.dirty = false;
-    c.urgent = false;
+    c.priority = PRIORITY_STREAM;
     this.pool
-      .mesh(vol)
-      .then(({ mesh }) => {
+      .mesh(region)
+      .then(({ mesh, region }) => {
         c.meshing = false;
+        if (this.spareRegions.length < 8) this.spareRegions.push(region);
         if (this.disposed || this.chunks.get(c.key) !== c) return;
         if (c.version !== version) c.dirty = true; // edited meanwhile: mesh again, but show this one now
         c.opaque = this.applyMesh(c, c.opaque, mesh.opaque, this.opaqueMaterial, 0);
@@ -305,7 +340,7 @@ export class World {
     geo.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
     geo.setAttribute('uv', new THREE.BufferAttribute(data.uvs, 2));
     geo.setAttribute('tile', new THREE.BufferAttribute(data.tiles, 2));
-    geo.setAttribute('light', new THREE.BufferAttribute(data.lights, 2, true));
+    geo.setAttribute('light', new THREE.BufferAttribute(data.lights, 4, true));
     geo.setIndex(new THREE.BufferAttribute(data.indices, 1));
     geo.boundingSphere = BOUNDS_SPHERE.clone();
     geo.boundingBox = new THREE.Box3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(CHUNK_SIZE, CHUNK_HEIGHT, CHUNK_SIZE));
@@ -324,36 +359,15 @@ export class World {
     return mesh;
   }
 
-  /** Copies the chunk and a 1-block border from its 8 neighbours into an 18x64x18 volume. */
-  private buildPaddedVolume(c: Chunk): Uint8Array {
-    const vol = new Uint8Array(PADDED_VOLUME);
-    const S = CHUNK_SIZE;
-    const get = (dx: number, dz: number) => this.chunks.get(chunkKey(c.cx + dx, c.cz + dz))?.blocks ?? null;
-    const center = c.blocks!;
-    const n: (Uint8Array | null)[][] = [
-      [get(-1, -1), get(0, -1), get(1, -1)],
-      [get(-1, 0), center, get(1, 0)],
-      [get(-1, 1), get(0, 1), get(1, 1)],
-    ];
-    for (let y = 0; y < CHUNK_HEIGHT; y++) {
-      for (let pz = 0; pz < PAD; pz++) {
-        const lz = pz - 1;
-        const nzi = lz < 0 ? 0 : lz >= S ? 2 : 1;
-        const sz = lz < 0 ? S - 1 : lz >= S ? 0 : lz;
-        const rowBase = (y * PAD + pz) * PAD;
-        // Centre run of 16 blocks in one copy.
-        const mid = n[nzi][1];
-        if (mid) {
-          const src = (y * S + sz) * S;
-          vol.set(mid.subarray(src, src + S), rowBase + 1);
-        }
-        const left = n[nzi][0];
-        const right = n[nzi][2];
-        if (left) vol[rowBase] = left[(y * S + sz) * S + (S - 1)];
-        if (right) vol[rowBase + PAD - 1] = right[(y * S + sz) * S];
-      }
+  /** Copies the chunk and its 8 neighbours into a 48x64x48 region (a recycled buffer when one is free). */
+  private regionFor(c: Chunk): Uint8Array {
+    const n = this.regionChunks;
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) n[(dz + 1) * 3 + dx + 1] = this.chunks.get(chunkKey(c.cx + dx, c.cz + dz))?.blocks ?? null;
     }
-    return vol;
+    const region = buildRegion(n, this.spareRegions.pop() ?? new Uint8Array(REGION_VOLUME));
+    n.fill(null);
+    return region;
   }
 
   private disposeChunk(c: Chunk): void {
