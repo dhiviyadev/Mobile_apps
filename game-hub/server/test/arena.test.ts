@@ -148,10 +148,14 @@ describe('Arcfire Arena room', () => {
 
   it('kicks clients that flood garbage input', async () => {
     const a = await join('Garbage');
+    const live = serverRoom(a.room.roomId);
     let closed = 0;
     a.room.onLeave((code) => (closed = code));
     for (let i = 0; i < 60; i++) a.room.sendBytes(ArenaMsg.Input, new Uint8Array([200, 1, 2]));
     await until(() => closed !== 0, 3000);
     expect(closed).toBe(4100);
+    // No seat is held for a kicked player: they are gone at once and cannot reconnect.
+    await until(() => !live.state.players.has(a.room.sessionId), 1000);
+    await expect(ts.client().reconnect(a.room.reconnectionToken)).rejects.toThrow();
   });
 });

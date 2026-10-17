@@ -4,7 +4,7 @@
  *   GET /health      liveness probe for Fly.io / Render
  *   GET /api/rooms   public room list + online counts for the hub UI
  */
-import type { IncomingMessage } from 'node:http';
+import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { createEndpoint, createRouter, matchMaker } from '@colyseus/core';
 import { GAME_IDS, type GameId, isGameId, type RoomListResponse, type RoomMeta } from '@hub/shared';
 import { config } from '../config';
@@ -18,6 +18,47 @@ export const PEER_ADDRESS_HEADER = 'x-hub-peer-address';
 
 export function stampPeerAddress(req: IncomingMessage): void {
   req.headers[PEER_ADDRESS_HEADER] = req.socket.remoteAddress ?? '';
+}
+
+const ROUTED_METHODS = new Set(['GET', 'HEAD', 'POST', 'OPTIONS']);
+
+/**
+ * True when Colyseus' router can turn the request into a Fetch Request. It
+ * cannot for some methods (TRACE) or an unparseable Host / X-Forwarded-Proto,
+ * and then fails without answering, so such requests get a 400 instead.
+ */
+export function isRoutable(req: IncomingMessage): boolean {
+  if (!ROUTED_METHODS.has(req.method ?? '')) return false;
+  const proto = req.headers['x-forwarded-proto'] ?? 'http';
+  return typeof proto === 'string' && URL.canParse(`${proto}://${req.headers.host}${req.url ?? '/'}`);
+}
+
+/** Proxies may chain X-Forwarded-Proto ("https, http"); the router expects one scheme. */
+function normaliseForwardedProto(req: IncomingMessage): void {
+  const raw = req.headers['x-forwarded-proto'];
+  if (raw === undefined) return;
+  const first = (Array.isArray(raw) ? raw[0] : raw).split(',')[0].trim().toLowerCase();
+  if (first === 'http' || first === 'https') req.headers['x-forwarded-proto'] = first;
+  else delete req.headers['x-forwarded-proto'];
+}
+
+/**
+ * Puts one listener in front of the server's request listeners (Colyseus'
+ * router among them): it stamps the peer address, turns away requests the
+ * router cannot handle, and hands the rest on.
+ */
+export function guardRequests(server: Server): void {
+  const listeners = server.listeners('request') as ((req: IncomingMessage, res: ServerResponse) => void)[];
+  server.removeAllListeners('request');
+  server.on('request', (req: IncomingMessage, res: ServerResponse) => {
+    stampPeerAddress(req);
+    normaliseForwardedProto(req);
+    if (!isRoutable(req)) {
+      res.writeHead(400, { 'Content-Type': 'text/plain' }).end('bad request');
+      return;
+    }
+    for (const listener of listeners) listener.call(server, req, res);
+  });
 }
 
 /**

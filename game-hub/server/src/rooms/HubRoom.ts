@@ -10,9 +10,10 @@
  *  - holding a dropped player's seat for auto-reconnect
  *  - a ping/pong channel for the in-game ping display
  */
-import { type Client, Room } from '@colyseus/core';
+import { type Client, CloseCode, Room } from '@colyseus/core';
 import {
   CHAT_BURST,
+  CLOSE_KICKED,
   CHAT_REFILL_PER_SECOND,
   type ChatMessage,
   generateRoomCode,
@@ -115,13 +116,17 @@ export abstract class HubRoom<S extends HubState<P>, P extends HubPlayer> extend
    * reconnection token); Colyseus then calls onReconnect(), or onLeave() once
    * the window has passed.
    */
-  override onDrop(client: Client): void {
+  override onDrop(client: Client, code?: number): void {
+    // Kicked players and a server shutting down get no seat: Colyseus goes on to onLeave().
+    if (code === CLOSE_KICKED || code === CloseCode.SERVER_SHUTDOWN) return;
     const player = this.state.players.get(client.sessionId);
     if (!player) return;
     player.connected = false;
     this.onPlayerDropped(client.sessionId, player);
     this.log.info(`${player.name} dropped from ${this.roomId}, holding seat ${RECONNECT_WINDOW_SECONDS}s`);
-    this.allowReconnection(client, RECONNECT_WINDOW_SECONDS);
+    // Refused outright when the room is closing or the client never finished joining;
+    // onLeave() follows either way (as it does when the window runs out).
+    this.allowReconnection(client, RECONNECT_WINDOW_SECONDS).catch(() => undefined);
   }
 
   override onReconnect(client: Client): void {

@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { matchMaker } from '@colyseus/core';
 import type { Room } from '@colyseus/sdk';
 import {
@@ -645,6 +645,11 @@ describe('persistent Voxelvale rooms', () => {
   });
 
   it('saves open worlds on graceful shutdown so they survive a restart', async () => {
+    // Players still in rooms at shutdown get no reconnection seat, so nothing is left rejected.
+    const rejections: unknown[] = [];
+    const onRejection = (err: unknown) => rejections.push(err);
+    process.on('unhandledRejection', onRejection);
+    onTestFinished(() => void process.off('unhandledRejection', onRejection));
     const a = await track(await ts.client().create('voxel', { nickname: 'Stayer', mode: 'sandbox', private: true, seed: SEED }));
     const code = a.room.roomId;
     const pillar = { ...surface, y: surface.y + 2, id: Block.Stone };
@@ -655,6 +660,8 @@ describe('persistent Voxelvale rooms', () => {
     const restarted = new FileWorldStore(dir);
     const saved = await restarted.load(code);
     expect(saved).not.toBeNull();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(rejections).toEqual([]);
     expect(decodeEdits(saved!.edits, true)).toEqual([pillar]);
 
     ts = await startTestServer({ worldStore: restarted });

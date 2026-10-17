@@ -5,7 +5,7 @@
 import http from 'node:http';
 import { matchMaker, Server } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
-import { corsHeaders, createRoutes, stampPeerAddress } from './http/routes';
+import { corsHeaders, createRoutes, guardRequests } from './http/routes';
 import { ArenaRoom } from './rooms/ArenaRoom';
 import { VoxelRoom } from './rooms/VoxelRoom';
 import { getWorldStore, setWorldStore, type WorldStore } from './voxel/WorldStore';
@@ -47,8 +47,8 @@ export function createGameServer(options: GameServerOptions = {}): GameServer {
     httpServer,
     listen: async (port, host) => {
       await gameServer.listen(port, host);
-      // Colyseus prepends its request listener while listening; this one goes in front of it.
-      httpServer.prependListener('request', stampPeerAddress);
+      // Colyseus adds its request listener while listening; ours goes in front of it.
+      guardRequests(httpServer);
     },
     // Disposes every room first (voxel rooms save their world as it starts and on dispose).
     shutdown: () => gameServer.gracefullyShutdown(false),

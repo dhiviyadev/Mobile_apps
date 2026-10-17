@@ -450,7 +450,7 @@ In the mesh workers, a chunk takes about 1.5 ms to light and about 12 ms to ligh
 
 ### How to test
 ```bash
-npm test && npm run e2e            # 169 + 26 automated tests (6 e2e skipped by design)
+npm test && npm run e2e            # 176 + 26 automated tests (6 e2e skipped by design)
 VITE_BASE=/Mobile_apps/ VITE_SERVER_URL=none npm run build -w client
 VITE_BASE=/Mobile_apps/ npx vite preview -c client/vite.config.ts   # → http://localhost:4173/Mobile_apps/
 ```

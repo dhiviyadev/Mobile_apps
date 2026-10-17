@@ -6,6 +6,9 @@ import { isWorldOpen } from './rooms/VoxelRoom';
 import { openWorldStore, setWorldStore } from './voxel/WorldStore';
 
 const log = logger('server');
+
+// A stray rejected promise must not take the server (and every room) down: log it.
+process.on('unhandledRejection', (err) => log.error('unhandled promise rejection', err));
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PRUNE_INTERVAL_MS = 6 * 60 * 60 * 1000;
 

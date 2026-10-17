@@ -152,14 +152,19 @@ export class NetSession {
 
   /** Leaves on purpose (no reconnect attempts). */
   async leave(): Promise<void> {
+    const wasConnected = this._status === 'connected';
     this.leaving = true;
     clearResumeToken();
     window.clearInterval(this.pingTimer);
     window.clearInterval(this.retryTimer);
-    try {
-      await this.room.leave(true);
-    } catch {
-      /* already closed */
+    // No more retries; an attempt already under way leaves again as soon as it lands (handleReconnect).
+    this.room.reconnection.enabled = false;
+    if (wasConnected) {
+      try {
+        await this.room.leave(true);
+      } catch {
+        /* already closed */
+      }
     }
     this.setStatus('closed', 'left');
   }
@@ -187,7 +192,8 @@ export class NetSession {
     });
     this.pingTimer = window.setInterval(() => {
       this.send('ping', performance.now());
-      touchResumeToken();
+      // Only while connected: once dropped, the seat is held for a limited time only.
+      if (this._status === 'connected') touchResumeToken();
     }, 2000);
     this.send('ping', performance.now());
     saveResumeToken(room);
@@ -204,7 +210,8 @@ export class NetSession {
 
   /** The SDK lost the connection and is retrying (same room, handlers stay attached). */
   private handleDrop(): void {
-    if (this.leaving) return;
+    // The SDK reports a drop again for every failed retry; the poll below keeps counting.
+    if (this.leaving || this._status === 'reconnecting') return;
     let shown = 1;
     this.setStatus('reconnecting', shown);
     window.clearInterval(this.retryTimer);
@@ -216,8 +223,15 @@ export class NetSession {
 
   private handleReconnect(): void {
     window.clearInterval(this.retryTimer);
-    if (this.leaving) return;
-    saveResumeToken(this.room); // the token changes with every connection
+    if (this.leaving) {
+      // Left while this attempt was under way: give the seat up properly.
+      void this.room.leave(true).catch(() => undefined);
+      return;
+    }
+    // The token changes with every connection; the SDK stores the new one right after this event.
+    queueMicrotask(() => {
+      if (!this.leaving) saveResumeToken(this.room);
+    });
     this.setStatus('connected');
     this.send('ping', performance.now());
   }

@@ -1,3 +1,4 @@
+import net from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { matchMaker } from '@colyseus/core';
 import { isValidRoomCode, type RoomListResponse } from '@hub/shared';
@@ -104,6 +105,39 @@ describe('lobby & room system', () => {
     r.send('ping', 1234.5);
     expect(await got).toBe(1234.5);
     await r.leave();
+  });
+});
+
+/** Sends a raw HTTP request and returns the status line ('' if the server never answers). */
+function rawRequest(head: string): Promise<string> {
+  return new Promise((resolve) => {
+    const socket = net.connect(ts.port, '127.0.0.1', () => socket.write(head));
+    let data = '';
+    socket.setTimeout(2000, () => {
+      socket.destroy();
+      resolve(data.split('\r\n')[0]);
+    });
+    socket.on('data', (chunk) => {
+      data += chunk.toString();
+      if (data.includes('\r\n')) {
+        socket.destroy();
+        resolve(data.split('\r\n')[0]);
+      }
+    });
+    socket.on('error', () => resolve(''));
+  });
+}
+
+describe('HTTP robustness', () => {
+  it('answers requests the router cannot handle with 400 and keeps serving', async () => {
+    expect(await rawRequest('TRACE /health HTTP/1.1\r\nHost: localhost\r\n\r\n')).toMatch(/ 400 /);
+    expect(await rawRequest('GET /health HTTP/1.1\r\nHost: a b\r\n\r\n')).toMatch(/ 400 /);
+    expect(await rawRequest('GET /health HTTP/1.1\r\nHost: localhost\r\nX-Forwarded-Proto: bogus scheme\r\n\r\n')).toMatch(/ 200 /);
+    // Proxies that chain schemes still work.
+    const chained = await fetch(`http://127.0.0.1:${ts.port}/health`, { headers: { 'X-Forwarded-Proto': 'https, http' } });
+    expect(chained.status).toBe(200);
+    const res = await fetch(`http://127.0.0.1:${ts.port}/health`);
+    expect(res.status).toBe(200);
   });
 });
 

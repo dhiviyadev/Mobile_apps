@@ -69,7 +69,7 @@ Voxelvale sandbox worlds you build online are saved to `server/data/` (gitignore
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Server and client in watch mode |
-| `npm test` | 168 unit and integration tests (Vitest): world generation, lighting, meshing, flowing water, saved worlds, physics, combat rules, lag compensation, full bot matches, real Colyseus rooms over WebSockets |
+| `npm test` | 176 unit and integration tests (Vitest): world generation, lighting, meshing, flowing water, saved worlds, physics, combat rules, lag compensation, full bot matches, real Colyseus rooms over WebSockets |
 | `npm run e2e` | 26 browser tests (Playwright, desktop and emulated Android tablet), incl. multi-touch and two-browser multiplayer |
 | `npm run typecheck` | `tsc --noEmit` for all three packages |
 | `npm run build` | Production builds: `server/dist/index.js` and `client/dist/` |
@@ -155,7 +155,7 @@ Every push to this branch (or `main`) that touches `game-hub/` runs the typechec
 1. Deploy the game server on Render's free plan. On [Render](https://render.com), choose *New → Blueprint* and pick this repository and branch. [`render.yaml`](../render.yaml) creates `cobalt-hub-server`.
    - Free instances sleep after 15 minutes without players and take about a minute to wake.
    - Worlds are kept in memory until the next restart.
-2. Copy the server's address, e.g. `wss://cobalt-hub-server.onrender.com`. Add it as a repository variable: [Settings → Secrets and variables → Actions → Variables](https://github.com/dhiviyadev/Mobile_apps/settings/variables/actions) → `GAME_SERVER_URL`.
+2. Copy the server's address, e.g. `wss://cobalt-hub-server.onrender.com`. Keep its `ALLOWED_ORIGINS` at `*`, or list `https://dhiviyadev.github.io` (plus any custom domain). Add the address as a repository variable: [Settings → Secrets and variables → Actions → Variables](https://github.com/dhiviyadev/Mobile_apps/settings/variables/actions) → `GAME_SERVER_URL`.
 3. Re-run *Publish website*. The site now lists rooms and offers Quick Match, private rooms and codes.
 
 ### Free custom domain (optional)
@@ -188,7 +188,7 @@ The client is a static site; the server is one Node process holding game rooms i
 cd game-hub
 fly launch --no-deploy --copy-config   # pick a unique app name, keep the Dockerfile
 fly volumes create hub_data --size 1 --region iad   # once; same region as primary_region
-fly secrets set ALLOWED_ORIGINS=https://your-client.example   # optional, defaults to "*"
+fly secrets set ALLOWED_ORIGINS=https://dhiviyadev.github.io   # optional, defaults to "*"; list every site serving the client
 fly deploy
 # → wss://<app>.fly.dev
 ```
@@ -231,7 +231,7 @@ You can also point any build at another server with `?server=wss://host` in the 
 | `VITE_BASE` | client build | `/` | Path the site is served under (e.g. `/Mobile_apps/` on GitHub Pages) |
 | `PORT` | server | `2567` | Listen port |
 | `HOST` | server | `0.0.0.0` | Listen address |
-| `ALLOWED_ORIGINS` | server | `*` | Comma-separated origins allowed to call `/api/rooms` |
+| `ALLOWED_ORIGINS` | server | `*` | Comma-separated web origins allowed to use the server over HTTP: matchmaking (joining rooms) and `/api/rooms`. If you restrict it, include every site that serves the client, e.g. `https://dhiviyadev.github.io` and your custom domain |
 | `LOG_LEVEL` | server | `info` | `debug`, `info`, `warn`, `error` |
 | `DATA_DIR` | server | `./data` (`/data` in the image) | Where saved Voxelvale worlds are written (`worlds/<id>.cvw`) |
 | `PERSIST_WORLDS` | server | on | `false`/`0` keeps saved worlds in memory only (until restart) |
