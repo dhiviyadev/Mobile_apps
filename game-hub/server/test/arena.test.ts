@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Room } from 'colyseus.js';
+import type { Room } from '@colyseus/sdk';
 import { matchMaker } from '@colyseus/core';
 import { type ArenaEvent, ArenaMsg, Buttons, type Command, decodeSnapshot, encodeCommands, type SnapshotMsg } from '@hub/shared';
 import type { ArenaRoom } from '../src/rooms/ArenaRoom';

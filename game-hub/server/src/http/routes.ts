@@ -1,28 +1,34 @@
 /**
- * Tiny REST surface next to the Colyseus matchmaker:
+ * Tiny REST surface next to the Colyseus matchmaker, served by Colyseus' own
+ * router (which handles every HTTP request on the server):
  *   GET /health      liveness probe for Fly.io / Render
  *   GET /api/rooms   public room list + online counts for the hub UI
  */
-import type { IncomingMessage, ServerResponse } from 'node:http';
-import { matchMaker } from '@colyseus/core';
+import type { IncomingMessage } from 'node:http';
+import { createEndpoint, createRouter, matchMaker } from '@colyseus/core';
 import { GAME_IDS, type GameId, isGameId, type RoomListResponse, type RoomMeta } from '@hub/shared';
 import { config } from '../config';
 
-function corsHeaders(req: IncomingMessage): Record<string, string> {
-  const origin = req.headers.origin ?? '';
-  const allowAll = config.allowedOrigins.includes('*');
-  const allowed = allowAll || config.allowedOrigins.includes(origin);
-  return {
-    'Access-Control-Allow-Origin': allowAll ? '*' : allowed ? origin : 'null',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    Vary: 'Origin',
-  };
+/**
+ * Header carrying the TCP peer address of an HTTP request. stampPeerAddress()
+ * sets it on every request before Colyseus reads the request, replacing any
+ * value the client sent, so code behind the router (onAuth) can trust it.
+ */
+export const PEER_ADDRESS_HEADER = 'x-hub-peer-address';
+
+export function stampPeerAddress(req: IncomingMessage): void {
+  req.headers[PEER_ADDRESS_HEADER] = req.socket.remoteAddress ?? '';
 }
 
-function json(req: IncomingMessage, res: ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders(req) });
-  res.end(JSON.stringify(body));
+/**
+ * CORS headers for every HTTP request (matchmaking included), following
+ * ALLOWED_ORIGINS. Colyseus adds its defaults (methods, allowed headers).
+ */
+export function corsHeaders(headers: Headers): Record<string, string> {
+  const origin = headers.get('origin') ?? '';
+  const allowAll = config.allowedOrigins.includes('*');
+  const allowed = allowAll || config.allowedOrigins.includes(origin);
+  return { 'Access-Control-Allow-Origin': allowed ? origin || '*' : 'null', Vary: 'Origin' };
 }
 
 export async function buildRoomList(): Promise<RoomListResponse> {
@@ -48,25 +54,20 @@ export async function buildRoomList(): Promise<RoomListResponse> {
   return { rooms, online };
 }
 
-/** Request handler for everything that is not a matchmaking call. */
-export async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
-  const url = new URL(req.url ?? '/', 'http://localhost');
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204, corsHeaders(req));
-    res.end();
-    return;
+const health = createEndpoint('/health', { method: 'GET' }, async (ctx) => {
+  ctx.setHeader('Cache-Control', 'no-store');
+  return { ok: true, uptime: Math.round(process.uptime()) };
+});
+
+const rooms = createEndpoint('/api/rooms', { method: 'GET' }, async (ctx) => {
+  ctx.setHeader('Cache-Control', 'no-store');
+  try {
+    return await buildRoomList();
+  } catch {
+    throw ctx.error(500, { error: 'room query failed' });
   }
-  if (req.method === 'GET' && url.pathname === '/health') {
-    json(req, res, 200, { ok: true, uptime: Math.round(process.uptime()) });
-    return;
-  }
-  if (req.method === 'GET' && url.pathname === '/api/rooms') {
-    try {
-      json(req, res, 200, await buildRoomList());
-    } catch (err) {
-      json(req, res, 500, { error: 'room query failed' });
-    }
-    return;
-  }
-  json(req, res, 404, { error: 'not found' });
+});
+
+export function createRoutes() {
+  return createRouter({ health, rooms });
 }

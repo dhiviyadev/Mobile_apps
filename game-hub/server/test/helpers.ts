@@ -1,6 +1,6 @@
 /** Boots a real server on a random port for integration tests. */
 import type { AddressInfo } from 'node:net';
-import { Client } from 'colyseus.js';
+import { Client } from '@colyseus/sdk';
 import { createGameServer, type GameServer, type GameServerOptions } from '../src/app';
 
 export interface TestServer {

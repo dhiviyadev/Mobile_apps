@@ -11,14 +11,14 @@
     "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
-    "@colyseus/core": "0.16.26",
-    "@colyseus/schema": "3.0.76",
-    "@colyseus/ws-transport": "0.16.5",
+    "@colyseus/core": "0.18.19",
+    "@colyseus/schema": "5.0.40",
+    "@colyseus/ws-transport": "0.18.4",
     "@hub/shared": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "colyseus.js": "0.16.22",
+    "@colyseus/sdk": "0.18.5",
     "esbuild": "^0.25.0",
     "tsx": "^4.20.0"
   }

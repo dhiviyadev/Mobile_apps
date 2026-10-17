@@ -38,9 +38,9 @@ export const ROOM_CODE_SET = 'hub:room-codes';
  */
 const pendingClaims = new Set<string>();
 
-export abstract class HubRoom<S extends HubState<P>, P extends HubPlayer> extends Room<S, RoomMeta> {
+export abstract class HubRoom<S extends HubState<P>, P extends HubPlayer> extends Room<{ state: S; metadata: RoomMeta }> {
   protected abstract readonly gameId: GameId;
-  protected readonly log = logger(this.constructor.name);
+  protected readonly log = logger(this.constructor.name.replace(/^_+/, ''));
   protected isPrivate = false;
   protected mode = '';
   /** Set in setup() to enable text chat (rate limited, sanitised) with join/leave notices. */
@@ -109,25 +109,32 @@ export abstract class HubRoom<S extends HubState<P>, P extends HubPlayer> extend
     this.log.info(`${name} (${client.sessionId}) joined ${this.roomId}`);
   }
 
-  override async onLeave(client: Client, consented: boolean): Promise<void> {
+  /**
+   * Unexpected drop (tablet went to sleep, wifi hiccup...): keep the seat. The
+   * client SDK retries on its own (and a reloaded page can rejoin with its
+   * reconnection token); Colyseus then calls onReconnect(), or onLeave() once
+   * the window has passed.
+   */
+  override onDrop(client: Client): void {
     const player = this.state.players.get(client.sessionId);
     if (!player) return;
-    if (consented) {
-      this.removePlayer(client.sessionId);
-      return;
-    }
-    // Unexpected drop (tablet went to sleep, wifi hiccup...): keep the seat.
     player.connected = false;
     this.onPlayerDropped(client.sessionId, player);
     this.log.info(`${player.name} dropped from ${this.roomId}, holding seat ${RECONNECT_WINDOW_SECONDS}s`);
-    try {
-      const newClient = await this.allowReconnection(client, RECONNECT_WINDOW_SECONDS);
-      player.connected = true;
-      this.onPlayerReconnected(newClient, player);
-      this.log.info(`${player.name} reconnected to ${this.roomId}`);
-    } catch {
-      this.removePlayer(client.sessionId);
-    }
+    this.allowReconnection(client, RECONNECT_WINDOW_SECONDS);
+  }
+
+  override onReconnect(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    if (!player) return;
+    player.connected = true;
+    this.onPlayerReconnected(client, player);
+    this.log.info(`${player.name} reconnected to ${this.roomId}`);
+  }
+
+  /** Left for good: on purpose, kicked, or not back within the reconnection window. */
+  override onLeave(client: Client): void {
+    this.removePlayer(client.sessionId);
   }
 
   override async onDispose(): Promise<void> {

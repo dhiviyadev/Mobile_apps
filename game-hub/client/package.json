@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@hub/shared": "0.1.0",
-    "colyseus.js": "0.16.22",
+    "@colyseus/sdk": "0.18.5",
     "three": "^0.180.0"
   },
   "devDependencies": {

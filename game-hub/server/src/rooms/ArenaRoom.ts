@@ -88,7 +88,8 @@ export class ArenaRoom extends HubRoom<ArenaState, ArenaPlayer> {
     this.state.minHumans = ARENA_MODE_INFO[mode].minHumansToStart;
     this.sim = new ArenaSimulation(arenaMap(this.state.mapIndex), mode, { seed: (Math.random() * 1e9) | 0 });
 
-    this.onMessage(ArenaMsg.Input, (client, data) => this.handleInput(client, data));
+    // Binary messages have their own handlers (sent with sendBytes on the client).
+    this.onMessageBytes(ArenaMsg.Input, (client, data) => this.handleInput(client, data));
     this.onMessage(ArenaMsg.Loadout, (client, data: { weapon?: unknown }) => {
       if (typeof data?.weapon === 'number') this.sim.setLoadout(client.sessionId, data.weapon);
       this.syncState();
@@ -100,7 +101,7 @@ export class ArenaRoom extends HubRoom<ArenaState, ArenaPlayer> {
     this.patchRate = 100;
     this.lastTime = performance.now();
     this.warmupSince = Date.now();
-    this.setSimulationInterval(() => this.update(), TICK_MS);
+    this.setTimestep(() => this.update(), TICK_MS);
   }
 
   protected createPlayer(_client: Client, options: JoinOptions): ArenaPlayer {

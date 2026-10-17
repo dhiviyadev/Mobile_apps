@@ -3,9 +3,9 @@
  * boot a server on a random port.
  */
 import http from 'node:http';
-import { Server } from '@colyseus/core';
+import { matchMaker, Server } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
-import { handleHttp } from './http/routes';
+import { corsHeaders, createRoutes, stampPeerAddress } from './http/routes';
 import { ArenaRoom } from './rooms/ArenaRoom';
 import { VoxelRoom } from './rooms/VoxelRoom';
 import { getWorldStore, setWorldStore, type WorldStore } from './voxel/WorldStore';
@@ -25,12 +25,15 @@ export interface GameServerOptions {
 
 export function createGameServer(options: GameServerOptions = {}): GameServer {
   if (options.worldStore) setWorldStore(options.worldStore);
-  const httpServer = http.createServer((req, res) => void handleHttp(req, res));
+  // Colyseus' router answers every HTTP request: matchmaking plus our routes.
+  const httpServer = http.createServer();
   const gameServer = new Server({
     transport: new WebSocketTransport({ server: httpServer, pingInterval: 4000, pingMaxRetries: 3 }),
     greet: false,
     gracefullyShutdown: options.gracefulShutdown ?? true,
   });
+  gameServer.router = createRoutes() as unknown as typeof gameServer.router;
+  matchMaker.controller.getCorsHeaders = corsHeaders;
 
   // filterBy(['mode']) makes quick match only pair players asking for the same mode.
   gameServer.define('voxel', VoxelRoom).filterBy(['mode']);
@@ -42,7 +45,11 @@ export function createGameServer(options: GameServerOptions = {}): GameServer {
   return {
     gameServer,
     httpServer,
-    listen: (port, host) => gameServer.listen(port, host),
+    listen: async (port, host) => {
+      await gameServer.listen(port, host);
+      // Colyseus prepends its request listener while listening; this one goes in front of it.
+      httpServer.prependListener('request', stampPeerAddress);
+    },
     // Disposes every room first (voxel rooms save their world as it starts and on dispose).
     shutdown: () => gameServer.gracefullyShutdown(false),
   };

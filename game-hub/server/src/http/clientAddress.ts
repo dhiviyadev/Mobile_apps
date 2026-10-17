@@ -6,7 +6,9 @@
  *    value the client sent);
  *  - behind TRUST_PROXY_HOPS reverse proxies, the X-Forwarded-For entry that
  *    many places from the right (the one the outermost proxy appended);
- *  - otherwise the TCP peer address of the request.
+ *  - otherwise the TCP peer address of the request (stamped on every request
+ *    by stampPeerAddress() in routes.ts, since Colyseus hands onAuth a Fetch
+ *    Request without the socket).
  * X-Real-IP and the leftmost X-Forwarded-For entries are never used: a client
  * can put anything there.
  *
@@ -14,11 +16,11 @@
  * prefix (a single host is usually handed a whole /64), IPv4-mapped IPv6 as
  * plain IPv4.
  */
-import type { IncomingHttpHeaders } from 'node:http';
 import { isIP } from 'node:net';
 import type { AuthContext } from '@colyseus/core';
 import type { TokenBucket } from '@hub/shared';
 import { config } from '../config';
+import { PEER_ADDRESS_HEADER } from './routes';
 
 export interface AddressTrust {
   /** Trust Fly-Client-IP (only when running on Fly.io). */
@@ -29,18 +31,15 @@ export interface AddressTrust {
 
 const configuredTrust = (): AddressTrust => ({ fly: config.onFly, proxyHops: config.trustProxyHops });
 
-function header(headers: IncomingHttpHeaders | undefined, name: string): string {
-  const value = headers?.[name];
-  return (Array.isArray(value) ? value.join(',') : value) ?? '';
-}
+const header = (headers: Headers | undefined, name: string): string => headers?.get(name) ?? '';
 
 /**
- * Rate-limit key for the client behind a matchmaking request. Colyseus passes
- * the HTTP request as context.req; a context without one (server code calling
- * the matchmaker directly) is keyed "unknown".
+ * Rate-limit key for the client behind a matchmaking request. A context
+ * without the stamped peer address (server code calling the matchmaker
+ * directly) is keyed "unknown".
  */
-export function clientAddress(context: Pick<AuthContext, 'headers' | 'req'> | undefined, trust: AddressTrust = configuredTrust()): string {
-  const headers = context?.req?.headers ?? context?.headers;
+export function clientAddress(context: Pick<AuthContext, 'headers'> | undefined, trust: AddressTrust = configuredTrust()): string {
+  const headers = context?.headers;
   if (trust.fly) {
     const fly = header(headers, 'fly-client-ip').trim();
     if (fly) return addressKey(fly);
@@ -54,7 +53,7 @@ export function clientAddress(context: Pick<AuthContext, 'headers' | 'req'> | un
     const entry = forwarded[forwarded.length - trust.proxyHops];
     if (entry) return addressKey(entry);
   }
-  return addressKey(context?.req?.socket?.remoteAddress ?? '');
+  return addressKey(header(headers, PEER_ADDRESS_HEADER));
 }
 
 /** Canonical key for an address: IPv4 as is, IPv6 as its /64 prefix, anything unparseable as "unknown". */

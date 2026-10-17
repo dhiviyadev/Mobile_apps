@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { matchMaker } from '@colyseus/core';
-import type { Room } from 'colyseus.js';
+import type { Room } from '@colyseus/sdk';
 import {
   Block,
   type BlockEdit,
@@ -680,7 +680,7 @@ describe('graceful shutdown with a pending seat reservation', () => {
     const a = await track(await server.client().create('voxel', { nickname: 'Holder', mode: 'sandbox', private: true, seed: SEED }));
     const code = a.room.roomId;
     // A seat reserved for someone who never connects keeps the room from disposing until it expires.
-    matchMaker.getLocalRoomById(code).setSeatReservationTime(4);
+    matchMaker.getLocalRoomById(code).seatReservationTimeout = 4;
     const res = await fetch(`http://127.0.0.1:${server.port}/matchmake/joinById/${code}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

@@ -1,14 +1,16 @@
 /**
  * NetSession: a Colyseus room connection that survives network drops.
  *
- * Game code talks to the session, never to the raw Room, because a reconnect
- * produces a brand-new Room object. The session re-binds every handler to the
- * new room, buffers messages that arrive before a handler is registered
- * (the game bundle is lazy-loaded *after* joining), and measures ping.
+ * The Colyseus SDK reconnects a dropped room by itself (same Room object, so
+ * handlers stay attached); the session turns that into a status for the UI,
+ * tunes the retries to the server's reconnection window, buffers messages
+ * that arrive before a handler is registered (the game bundle is lazy-loaded
+ * *after* joining), measures ping, and keeps a resume token so a reloaded
+ * page (iOS Safari) can rejoin its seat.
  *
- * colyseus.js is imported dynamically so the hub's first paint doesn't pay for it.
+ * The SDK is imported dynamically so the hub's first paint doesn't pay for it.
  */
-import type { Client, Room } from 'colyseus.js';
+import type { Client, Room } from '@colyseus/sdk';
 import { CLOSE_KICKED, type GameId, type JoinOptions, RECONNECT_WINDOW_SECONDS, REVIVE_ERRORS } from '@hub/shared';
 import { serverWsUrl } from './serverUrl';
 
@@ -27,12 +29,26 @@ export type CloseReason = 'left' | 'lost' | 'kicked' | 'room-closed';
 type MessageHandler = (message: any) => void;
 
 const RESUME_KEY = 'cobalt-hub.resume';
+/** Colyseus close codes: the server ended our seat (client.leave()) / is shutting down. */
 const CLOSE_CONSENTED = 4000;
-const CLOSE_DEVMODE_RESTART = 4010;
+const CLOSE_SERVER_SHUTDOWN = 4001;
 
 async function createClient(): Promise<Client> {
-  const { Client } = await import('colyseus.js');
+  const { Client } = await import('@colyseus/sdk');
   return new Client(serverWsUrl());
+}
+
+/**
+ * Automatic reconnection settings: keep retrying (backing off to 4 s) for
+ * about as long as the server holds a dropped player's seat, also for drops
+ * soon after joining.
+ */
+function tuneReconnection(room: Room): void {
+  const r = room.reconnection;
+  r.maxDelay = 4000;
+  r.minUptime = 1000;
+  // ~6 s of quick retries, then one every maxDelay until the seat is gone.
+  r.maxRetries = 6 + Math.ceil(Math.max(0, RECONNECT_WINDOW_SECONDS * 1000 - 6000) / r.maxDelay);
 }
 
 export class NetSession {
@@ -43,14 +59,13 @@ export class NetSession {
   private boundTypes = new Set<string | number>();
   private leaving = false;
   private pingTimer = 0;
+  /** Polls the SDK's retry count while reconnecting, for the banner. */
+  private retryTimer = 0;
   private _status: SessionStatus = 'connected';
   /** Smoothed round-trip time in milliseconds. */
   ping = 0;
 
-  private constructor(
-    private readonly client: Client,
-    private room: Room,
-  ) {
+  private constructor(private readonly room: Room) {
     this.bind(room);
   }
 
@@ -76,7 +91,7 @@ export class NetSession {
     } catch (err) {
       throw new Error(describeJoinError(err, req));
     }
-    return new NetSession(client, room);
+    return new NetSession(room);
   }
 
   // ---- accessors --------------------------------------------------------------
@@ -91,7 +106,7 @@ export class NetSession {
   get game(): GameId {
     return this.room.name as GameId;
   }
-  /** Current replicated state. Re-read it after a reconnect; the object changes. */
+  /** Current replicated state. */
   get state(): any {
     return this.room.state;
   }
@@ -139,6 +154,7 @@ export class NetSession {
     this.leaving = true;
     clearResumeToken();
     window.clearInterval(this.pingTimer);
+    window.clearInterval(this.retryTimer);
     try {
       await this.room.leave(true);
     } catch {
@@ -150,11 +166,13 @@ export class NetSession {
   // ---- internals -------------------------------------------------------------
 
   private bind(room: Room): void {
-    this.boundTypes.clear();
+    tuneReconnection(room);
     room.onStateChange((state) => {
       for (const l of this.stateListeners) l(state);
     });
-    room.onLeave((code) => void this.handleLeave(code));
+    room.onDrop(() => this.handleDrop());
+    room.onReconnect(() => this.handleReconnect());
+    room.onLeave((code) => this.handleLeave(code));
     room.onError((code, message) => console.warn(`[net] room error ${code}: ${message}`));
     room.onMessage('pong', (sentAt: number) => {
       const rtt = performance.now() - sentAt;
@@ -166,8 +184,6 @@ export class NetSession {
       if (!q) this.buffered.set(type, (q = []));
       if (q.length < 256) q.push(message);
     });
-    for (const type of this.handlers.keys()) this.bindType(room, type);
-    window.clearInterval(this.pingTimer);
     this.pingTimer = window.setInterval(() => {
       this.send('ping', performance.now());
       touchResumeToken();
@@ -185,36 +201,35 @@ export class NetSession {
     });
   }
 
-  private async handleLeave(code: number): Promise<void> {
-    window.clearInterval(this.pingTimer);
+  /** The SDK lost the connection and is retrying (same room, handlers stay attached). */
+  private handleDrop(): void {
     if (this.leaving) return;
-    const recoverable = code < 4000 || code === CLOSE_DEVMODE_RESTART;
-    if (!recoverable) {
-      clearResumeToken();
-      this.setStatus('closed', code === CLOSE_KICKED ? 'kicked' : code === CLOSE_CONSENTED ? 'room-closed' : 'lost');
-      return;
-    }
-    const token = this.room.reconnectionToken;
-    const deadline = performance.now() + (RECONNECT_WINDOW_SECONDS - 2) * 1000;
-    let attempt = 0;
-    while (!this.leaving && performance.now() < deadline) {
-      attempt++;
-      this.setStatus('reconnecting', attempt);
-      if (navigator.onLine === false) await waitForOnline(4000);
-      try {
-        const room = await this.client.reconnect(token);
-        this.room = room;
-        this.bind(room);
-        this.setStatus('connected');
-        return;
-      } catch {
-        await sleep(Math.min(4000, 400 * 2 ** (attempt - 1)));
-      }
-    }
-    if (!this.leaving) {
-      clearResumeToken();
-      this.setStatus('closed', 'lost');
-    }
+    let shown = 1;
+    this.setStatus('reconnecting', shown);
+    window.clearInterval(this.retryTimer);
+    this.retryTimer = window.setInterval(() => {
+      const attempt = Math.max(1, this.room.reconnection.retryCount);
+      if (attempt !== shown && this._status === 'reconnecting') this.setStatus('reconnecting', (shown = attempt));
+    }, 300);
+  }
+
+  private handleReconnect(): void {
+    window.clearInterval(this.retryTimer);
+    if (this.leaving) return;
+    saveResumeToken(this.room); // the token changes with every connection
+    this.setStatus('connected');
+    this.send('ping', performance.now());
+  }
+
+  /** The room is gone for good: left, kicked, closed, or reconnecting gave up. */
+  private handleLeave(code: number): void {
+    window.clearInterval(this.pingTimer);
+    window.clearInterval(this.retryTimer);
+    if (this.leaving) return;
+    clearResumeToken();
+    const reason: CloseReason =
+      code === CLOSE_KICKED ? 'kicked' : code === CLOSE_CONSENTED || code === CLOSE_SERVER_SHUTDOWN ? 'room-closed' : 'lost';
+    this.setStatus('closed', reason);
   }
 
   private setStatus(status: SessionStatus, detail?: number | CloseReason): void {
@@ -226,18 +241,7 @@ export class NetSession {
 // ---- helpers -------------------------------------------------------------------
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((r) => window.setTimeout(r, ms));
-}
-
-function waitForOnline(timeoutMs: number): Promise<void> {
-  return new Promise((resolve) => {
-    const done = () => {
-      window.removeEventListener('online', done);
-      resolve();
-    };
-    window.addEventListener('online', done);
-    window.setTimeout(done, timeoutMs);
-  });
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 const NOT_FOUND = /not found|no rooms found|not exist/i;

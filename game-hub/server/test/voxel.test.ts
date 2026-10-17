@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Room } from 'colyseus.js';
+import type { Room } from '@colyseus/sdk';
 import {
   Block,
   type ChatMessage,

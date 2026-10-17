@@ -34,7 +34,7 @@ npm run dev       # then open http://localhost:5173 in two browser windows
 Manual check: pick a nickname, open Arcfire Arena, choose **Private room**, then type the code shown into the second window's "Have a room code?" box. Both windows list both players. Kill the server's network (or close the laptop lid briefly) to see the reconnect banner.
 
 ### Known issues / notes
-- Colyseus is pinned to the **0.16** line (stable API). 0.17/0.18 have since shipped; upgrading is mostly a client package rename (`@colyseus/sdk`) and should be its own change.
+- Colyseus is pinned to the **0.16** line (stable API). 0.17/0.18 have since shipped; upgrading is mostly a client package rename (`@colyseus/sdk`) and should be its own change. *(Done later: see Follow-up 2.)*
 - The room list polls over HTTP rather than using Colyseus' LobbyRoom. That is simpler and works behind any proxy, but it can lag a few seconds.
 - Fullscreen and orientation lock are best-effort: iPhone Safari has neither, so the rotate overlay covers that case. iPadOS Safari supports element fullscreen.
 

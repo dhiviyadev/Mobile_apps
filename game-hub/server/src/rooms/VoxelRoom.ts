@@ -200,11 +200,12 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     this.state.saveDays = this.saveId && getWorldStore().durable ? Math.min(65535, Math.floor(config.worldTtlDays)) : 0;
     this.state.privateRoom = this.isPrivate;
     this.patchRate = TICK_MS;
-    this.setSimulationInterval((dt) => this.tick(dt), TICK_MS);
+    this.setTimestep((dt) => this.tick(dt), TICK_MS);
     if (this.saveId) this.clock.setInterval(() => void this.saveWorld(false), VoxelRoom.autosaveMs);
 
-    this.onMessage(VoxelMsg.Edit, (client, data) => this.handleEdit(client, data));
-    this.onMessage(VoxelMsg.Move, (client, data) => this.handleMove(client, data));
+    // Binary messages have their own handlers (sent with sendBytes on the client).
+    this.onMessageBytes(VoxelMsg.Edit, (client, data) => this.handleEdit(client, data));
+    this.onMessageBytes(VoxelMsg.Move, (client, data) => this.handleMove(client, data));
     this.onMessage(VoxelMsg.Parkour, (client, data: ParkourEventMsg) => this.handleParkour(client, data));
   }
 

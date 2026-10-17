@@ -7,12 +7,12 @@ import type { AuthContext } from '@colyseus/core';
 import { TokenBucket } from '@hub/shared';
 import { config } from '../src/config';
 import { AddressBuckets, addressKey, clientAddress } from '../src/http/clientAddress';
+import { PEER_ADDRESS_HEADER } from '../src/http/routes';
 import { startTestServer, type TestServer } from './helpers';
 
-/** A matchmaking auth context as Colyseus builds it for an HTTP request from peer. */
-function context(peer: string, headers: Record<string, string> = {}): Pick<AuthContext, 'headers' | 'req'> {
-  const req = { headers, socket: { remoteAddress: peer } } as unknown as NonNullable<AuthContext['req']>;
-  return { headers, req };
+/** A matchmaking auth context as onAuth gets it for an HTTP request from peer (stamped by the server). */
+function context(peer: string, headers: Record<string, string> = {}): Pick<AuthContext, 'headers'> {
+  return { headers: new Headers({ ...headers, [PEER_ADDRESS_HEADER]: peer }) };
 }
 
 describe('client addresses', () => {
@@ -23,7 +23,7 @@ describe('client addresses', () => {
     expect(clientAddress(context('198.51.100.7', forged), direct)).toBe('198.51.100.7');
     expect(clientAddress(context('::ffff:198.51.100.7', forged), direct)).toBe('198.51.100.7');
     // Without the HTTP request (server code calling the matchmaker) there is no address.
-    expect(clientAddress({ headers: forged }, direct)).toBe('unknown');
+    expect(clientAddress({ headers: new Headers(forged) }, direct)).toBe('unknown');
     expect(clientAddress(undefined, direct)).toBe('unknown');
   });
 
@@ -111,6 +111,8 @@ describe('reopen rate limit', () => {
           'Fly-Client-IP': `192.0.2.${i}`,
           'X-Real-IP': `198.51.100.${i}`,
           'X-Forwarded-For': `203.0.113.${i}, 2001:db8:${i}::1`,
+          // The header the server stamps the peer address into: replaced, never trusted.
+          [PEER_ADDRESS_HEADER]: `10.9.9.${i}`,
         }),
       );
     }

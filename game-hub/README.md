@@ -20,7 +20,7 @@ All names, art, music and sound are original. Textures are painted in code, audi
 | Package | What it is |
 | --- | --- |
 | [`client/`](client) | TypeScript, Vite, Three.js; plain DOM UI (no framework) |
-| [`server/`](server) | Node.js, Colyseus 0.16: authoritative rooms over WebSockets |
+| [`server/`](server) | Node.js, Colyseus 0.18: authoritative rooms over WebSockets |
 | [`shared/`](shared) | Deterministic game logic and types used by **both** sides: terrain generation, meshing, physics, weapons, the arena simulation, bots, binary protocols |
 
 ```
@@ -47,7 +47,7 @@ game-hub/
 - **Seeded worlds.** Voxelvale terrain is generated identically on every client and on the server from a seed; only edits travel over the network, and only edits are saved (a seed plus a compact edit list per world).
 - **Lighting in the mesher.** Sky light and lamp light are flood-filled per chunk in the mesh workers and baked into vertices with smooth (per-corner) averaging, so caves are dark, lamps light their surroundings, and the GPU still does one texture fetch per pixel.
 - **Server authority where it matters.** Arena: movement, fire rate, ammo, line of sight and hits are all decided on the server, with lag compensation. Voxelvale: block edits are validated by the server; movement is client-simulated but speed-checked (it's a co-op sandbox).
-- **Small first download.** The hub is ~21 KB gzipped JS + ~7 KB CSS. Three.js (~124 KB gz) and each game (~20–25 KB gz) load only when you open one; the network library (~41 KB gz) loads only when you join a room.
+- **Small first download.** The hub is ~21 KB gzipped JS + ~7 KB CSS. Three.js (~124 KB gz) and each game (~20–25 KB gz) load only when you open one; the network library (Colyseus SDK, ~54 KB gz) loads only when you join a room.
 
 ---
 
@@ -218,6 +218,5 @@ Online, the server runs the water and sends changes as ordinary edits; offline, 
 
 Remaining limitations:
 - The arena trusts client aim angles (inherent to FPS games); everything else is validated on the server.
-- Colyseus is pinned to the 0.16 line; 0.17/0.18 have since been released. Upgrading changes the room and schema APIs, so it is left as a separate step.
 - Water is a simple 7-level model: no new sources form, currents don't push players, and a flood cut off by the edit budget resumes only when something nearby changes.
 - Other players' avatars are lit by daylight only, not by lamps or cave darkness.

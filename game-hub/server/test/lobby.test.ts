@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { matchMaker } from '@colyseus/core';
 import { isValidRoomCode, type RoomListResponse } from '@hub/shared';
 import { startTestServer, type TestServer, until, wait } from './helpers';
 
@@ -103,5 +104,35 @@ describe('lobby & room system', () => {
     r.send('ping', 1234.5);
     expect(await got).toBe(1234.5);
     await r.leave();
+  });
+});
+
+describe('dropped connections', () => {
+  it('holds a dropped player\'s seat while the SDK reconnects by itself', async () => {
+    const room = await ts.client().create('voxel', { nickname: 'Wobbly', mode: 'sandbox', private: true });
+    room.reconnection.minUptime = 0; // the game allows early reconnects too (session.ts)
+    let dropped = 0;
+    let reconnected = 0;
+    room.onDrop(() => dropped++);
+    room.onReconnect(() => reconnected++);
+    await until(() => room.state.players?.get(room.sessionId) !== undefined);
+    const live = matchMaker.getLocalRoomById(room.roomId) as unknown as {
+      clients: { getById(id: string): { ref: { terminate(): void } } | undefined };
+      state: { players: Map<string, { connected: boolean }> };
+    };
+
+    // The socket dies without a close handshake, as when a tablet loses wifi.
+    live.clients.getById(room.sessionId)!.ref.terminate();
+    await until(() => dropped === 1);
+    await until(() => reconnected === 1, 8000);
+    expect(live.state.players.get(room.sessionId)?.connected).toBe(true);
+    expect(room.state.players.get(room.sessionId)?.connected).toBe(true);
+
+    // Same room object, and messages still flow both ways.
+    let pong = 0;
+    room.onMessage('pong', () => pong++);
+    room.send('ping', 1);
+    await until(() => pong === 1);
+    await room.leave();
   });
 });
