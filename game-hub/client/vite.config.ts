@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  // Path the site is served under: "/" by default, "/<repo>/" on GitHub Pages project sites.
+  base: process.env.VITE_BASE || '/',
   server: { port: 5173, host: true },
   preview: { port: 4173, host: true },
   build: {
@@ -12,7 +14,7 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules/three')) return 'three';
-          if (id.includes('node_modules/colyseus.js') || id.includes('node_modules/@colyseus')) return 'net';
+          if (id.includes('node_modules/@colyseus')) return 'net';
           return undefined;
         },
       },

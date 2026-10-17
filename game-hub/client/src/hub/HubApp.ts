@@ -18,6 +18,7 @@ import { AVATAR_COLORS, settings } from '../core/settings';
 import { h, hexColor, svg } from '../core/ui/dom';
 import { toast } from '../core/ui/overlays';
 import { openSettings } from '../core/ui/settingsMenu';
+import { hasGameServer } from '../net/serverUrl';
 import { pendingResume } from '../net/session';
 import { arenaArt, ICONS, voxelArt } from './art';
 import { GameSheet, type SheetAction } from './GameSheet';
@@ -244,7 +245,8 @@ export class HubApp {
 
   private updateCounts(data: RoomListResponse | null, error: boolean): void {
     if (error) {
-      this.serverPill.textContent = 'Server offline';
+      // A build without a game server (static hosting) is offline by design, not down.
+      this.serverPill.textContent = hasGameServer() ? 'Server offline' : 'Offline mode';
       this.serverPill.className = 'server-pill offline';
     } else if (data) {
       const total = data.online.voxel + data.online.arena;

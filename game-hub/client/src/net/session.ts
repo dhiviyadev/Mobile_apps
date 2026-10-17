@@ -12,7 +12,7 @@
  */
 import type { Client, Room } from '@colyseus/sdk';
 import { CLOSE_KICKED, type GameId, type JoinOptions, RECONNECT_WINDOW_SECONDS, REVIVE_ERRORS } from '@hub/shared';
-import { serverWsUrl } from './serverUrl';
+import { hasGameServer, serverWsUrl } from './serverUrl';
 
 export type JoinRequest =
   | { kind: 'quick'; game: GameId; options: JoinOptions }
@@ -71,6 +71,7 @@ export class NetSession {
 
   /** Joins or creates a room. Throws a user-presentable Error on failure. */
   static async connect(req: JoinRequest): Promise<NetSession> {
+    if (!hasGameServer()) throw new Error('Online play is not set up on this site yet. Play offline instead.');
     const client = await createClient();
     let room: Room;
     try {

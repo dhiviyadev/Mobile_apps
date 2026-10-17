@@ -1,9 +1,13 @@
 # Render Blueprint (https://render.com/docs/blueprint-spec) for the Cobalt Game Hub.
-# New → Blueprint → pick this repository. Update VITE_SERVER_URL after the first deploy.
+# New → Blueprint → pick this repository (and the branch with game-hub/). Both services
+# use Render's free plan. After the first deploy, put the server's wss:// address in
+# VITE_SERVER_URL below (and in the GAME_SERVER_URL variable for the GitHub Pages site).
 services:
   - type: web
     name: cobalt-hub-server
     runtime: docker
+    # Free instances sleep after 15 minutes without traffic and take about a minute to wake.
+    plan: free
     rootDir: game-hub
     dockerfilePath: ./server/Dockerfile
     dockerContext: .

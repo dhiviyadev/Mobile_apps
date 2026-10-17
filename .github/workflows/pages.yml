@@ -1,0 +1,68 @@
+# Publishes the Cobalt Game Hub client (game-hub/client) to GitHub Pages:
+#   https://<owner>.github.io/<repo>/
+#
+# Optional repository variables (Settings → Secrets and variables → Actions → Variables):
+#   GAME_SERVER_URL      wss:// address of a deployed game server (see render.yaml).
+#                        Without it the site is built for offline play only.
+#   PAGES_CUSTOM_DOMAIN  set when a custom domain is configured in Settings → Pages,
+#                        so the site is built to be served from the domain's root.
+name: Publish website
+
+on:
+  push:
+    branches: [main, claude/web-game-hub-multiplayer-vs7eqq]
+    paths: ['game-hub/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; let a running one finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Test and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: game-hub
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: game-hub/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npx vitest run
+      - name: Build the client
+        env:
+          VITE_BASE: ${{ vars.PAGES_CUSTOM_DOMAIN && '/' || format('/{0}/', github.event.repository.name) }}
+          VITE_SERVER_URL: ${{ vars.GAME_SERVER_URL || 'none' }}
+        run: npm run build -w client
+      # Turns Pages on (source: GitHub Actions) if the token is allowed to; otherwise
+      # enable it once in Settings → Pages and run this workflow again.
+      - uses: actions/configure-pages@v5
+        continue-on-error: true
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: game-hub/client/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

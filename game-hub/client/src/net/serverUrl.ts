@@ -1,7 +1,8 @@
 /**
  * Resolves the game server address.
  *
- * - VITE_SERVER_URL (build-time) wins, e.g. "wss://cobalt-hub.fly.dev".
+ * - VITE_SERVER_URL (build-time) wins, e.g. "wss://cobalt-hub.fly.dev";
+ *   "none" builds a static site without a game server (offline play only).
  * - Otherwise use the page's hostname on port 2567, so a tablet on the same
  *   Wi-Fi as a dev machine running `npm run dev` connects automatically.
  * - `?server=` query param overrides both (handy for testing deployments).
@@ -12,9 +13,15 @@ export function serverWsUrl(): string {
   const fromQuery = new URLSearchParams(location.search).get('server');
   if (fromQuery) return fromQuery;
   const fromEnv = import.meta.env.VITE_SERVER_URL as string | undefined;
+  if (fromEnv === 'none') return '';
   if (fromEnv) return fromEnv;
   const secure = location.protocol === 'https:';
   return `${secure ? 'wss' : 'ws'}://${location.hostname}:${DEFAULT_SERVER_PORT}`;
+}
+
+/** False when this build has no game server (VITE_SERVER_URL=none and no ?server=). */
+export function hasGameServer(): boolean {
+  return serverWsUrl() !== '';
 }
 
 /** HTTP(S) base URL of the same server, for REST calls. */
