@@ -4,8 +4,8 @@
 # Optional repository variables (Settings → Secrets and variables → Actions → Variables):
 #   GAME_SERVER_URL      wss:// address of a deployed game server (see render.yaml).
 #                        Without it the site is built for offline play only.
-#   PAGES_CUSTOM_DOMAIN  set when a custom domain is configured in Settings → Pages,
-#                        so the site is built to be served from the domain's root.
+#   PAGES_CUSTOM_DOMAIN  the custom domain set in Settings → Pages (e.g. cobalt-hub.js.org):
+#                        the site is then built for the domain's root and ships a CNAME file.
 name: Publish website
 
 on:
@@ -32,8 +32,8 @@ jobs:
       run:
         working-directory: game-hub
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -46,13 +46,18 @@ jobs:
           VITE_BASE: ${{ vars.PAGES_CUSTOM_DOMAIN && '/' || format('/{0}/', github.event.repository.name) }}
           VITE_SERVER_URL: ${{ vars.GAME_SERVER_URL || 'none' }}
         run: npm run build -w client
+      - name: Add the custom domain
+        if: vars.PAGES_CUSTOM_DOMAIN != ''
+        env:
+          DOMAIN: ${{ vars.PAGES_CUSTOM_DOMAIN }}
+        run: printf '%s\n' "$DOMAIN" > client/dist/CNAME
       # Turns Pages on (source: GitHub Actions) if the token is allowed to; otherwise
       # enable it once in Settings → Pages and run this workflow again.
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
         continue-on-error: true
         with:
           enablement: true
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: game-hub/client/dist
 
@@ -65,4 +70,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

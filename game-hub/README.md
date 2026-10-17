@@ -10,6 +10,7 @@ that run in the browser, on iPad and Android tablets as well as keyboard and mou
 
 All names, art, music and sound are original. Textures are painted in code, audio is synthesised with WebAudio, and maps and terrain are generated, so there are **no third-party assets** to license and the download stays small.
 
+- **Play it:** https://dhiviyadev.github.io/Mobile_apps/ (GitHub Pages; see [Public website](#public-website-free))
 - Build log with per-phase summaries, test instructions and known issues: [`docs/PHASES.md`](docs/PHASES.md)
 - More screenshots: [hub](docs/screenshots/hub.png), [parkour](docs/screenshots/voxel-parkour.png), [arena loadout](docs/screenshots/arena-loadout.png)
 
@@ -136,6 +137,46 @@ These figures were captured with software rendering, so they show CPU and scene 
 
 ---
 
+## Public website (free)
+
+The hub is published to **GitHub Pages** by [`.github/workflows/pages.yml`](../.github/workflows/pages.yml):
+
+> **https://dhiviyadev.github.io/Mobile_apps/**
+
+Every push to this branch (or `main`) that touches `game-hub/` runs the typecheck and unit tests, builds the client for that path and deploys it.
+
+**One-time setup:**
+1. Turn Pages on: [Settings → Pages](https://github.com/dhiviyadev/Mobile_apps/settings/pages) → *Build and deployment* → Source: **GitHub Actions**. Then re-run the latest *Publish website* run (Actions tab → the run → *Re-run all jobs*).
+2. Only if the deploy then reports that the branch "is not allowed to deploy to github-pages": [Settings → Environments → github-pages](https://github.com/dhiviyadev/Mobile_apps/settings/environments) → *Deployment branches* → add `claude/web-game-hub-multiplayer-vs7eqq`, or merge the branch into `main`.
+
+**Without a game server**, the site is built for offline play. Voxelvale offline (sandbox and parkour) and Arcfire Arena against bots work fully, the hub shows "Offline mode", and online buttons explain that online play isn't set up.
+
+**Adding online play (free):**
+1. Deploy the game server on Render's free plan. On [Render](https://render.com), choose *New → Blueprint* and pick this repository and branch. [`render.yaml`](../render.yaml) creates `cobalt-hub-server`.
+   - Free instances sleep after 15 minutes without players and take about a minute to wake.
+   - Worlds are kept in memory until the next restart.
+2. Copy the server's address, e.g. `wss://cobalt-hub-server.onrender.com`. Add it as a repository variable: [Settings → Secrets and variables → Actions → Variables](https://github.com/dhiviyadev/Mobile_apps/settings/variables/actions) → `GAME_SERVER_URL`.
+3. Re-run *Publish website*. The site now lists rooms and offers Quick Match, private rooms and codes.
+
+### Free custom domain (optional)
+
+`dhiviyadev.github.io/Mobile_apps` is already a free address. For a shorter name, [js.org](https://js.org) gives JavaScript projects a free `*.js.org` subdomain with HTTPS.
+- At the time of writing, `cobalt-hub.js.org` was free.
+- The request is a pull request from your own GitHub account.
+
+1. Fork [js-org/js.org](https://github.com/js-org/js.org). In `cnames_active.js`, add this line in alphabetical order (just before `"cobalt-kit"`):
+   ```js
+     "cobalt-hub": "dhiviyadev.github.io/Mobile_apps",
+   ```
+   Then open the pull request, linking the live site.
+2. In this repository:
+   - Add the variable `PAGES_CUSTOM_DOMAIN` = `cobalt-hub.js.org`.
+   - Re-run *Publish website*. The site is then built for the domain's root, with a `CNAME` file, as js.org checks for.
+   - Set the same domain in [Settings → Pages → Custom domain](https://github.com/dhiviyadev/Mobile_apps/settings/pages).
+3. Once js.org merges the request (usually within a few days), tick *Enforce HTTPS*. The game is then at **https://cobalt-hub.js.org**.
+
+If you prefer, any domain you own works the same way: point a `CNAME` record at `dhiviyadev.github.io` and set `PAGES_CUSTOM_DOMAIN`.
+
 ## Deploy
 
 The client is a static site; the server is one Node process holding game rooms in memory. Voxelvale sandbox worlds are also written to disk (`DATA_DIR`, `/data` in the image), so give the server a persistent volume if worlds should survive deploys and restarts.
@@ -186,7 +227,8 @@ You can also point any build at another server with `?server=wss://host` in the 
 
 | Variable | Where | Default | Purpose |
 | --- | --- | --- | --- |
-| `VITE_SERVER_URL` | client build | `ws(s)://<page host>:2567` | Game server WebSocket URL |
+| `VITE_SERVER_URL` | client build | `ws(s)://<page host>:2567` | Game server WebSocket URL; `none` builds a static site for offline play only |
+| `VITE_BASE` | client build | `/` | Path the site is served under (e.g. `/Mobile_apps/` on GitHub Pages) |
 | `PORT` | server | `2567` | Listen port |
 | `HOST` | server | `0.0.0.0` | Listen address |
 | `ALLOWED_ORIGINS` | server | `*` | Comma-separated origins allowed to call `/api/rooms` |

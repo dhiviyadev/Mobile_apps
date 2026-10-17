@@ -422,3 +422,44 @@ In the mesh workers, a chunk takes about 1.5 ms to light and about 12 ms to ligh
 - **Still open:**
   - The arena trusts client aim angles (left as is, as agreed).
   - The Colyseus upgrade has not been done.
+
+---
+
+## Follow-up 2: Colyseus 0.18 and a public website ✅
+
+### What was built
+
+**Colyseus 0.16 → 0.18**
+- **Packages:** `@colyseus/core` 0.18.19, `@colyseus/ws-transport` 0.18.4 and `@colyseus/schema` 5.0.40. The client SDK moved from `colyseus.js` to `@colyseus/sdk` 0.18.5, as did the server tests.
+- **Room lifecycle:**
+  - `Room<{ state, metadata }>` generics.
+  - A dropped player's seat is held in `onDrop()` via `allowReconnection()` and restored in `onReconnect()`; `onLeave()` now means gone for good.
+  - `setTimestep()` replaces `setSimulationInterval()`.
+- **Binary messages:** client `sendBytes` messages now reach only handlers registered with `onMessageBytes()`, so edits, movement and arena input use it. Without that change, every binary message from players was silently ignored, which the room tests caught.
+- **HTTP:** Colyseus answers every request through its own router, so `/health` and `/api/rooms` became router endpoints. CORS follows `ALLOWED_ORIGINS` through `matchMaker.controller.getCorsHeaders`.
+- **Revive rate limit:** `onAuth` now receives a Fetch `Request` without the socket. The server stamps each request's TCP peer address into its own header, overwriting anything the client sent, before Colyseus reads it.
+- **Client reconnection:** the SDK reconnects a dropped room by itself, keeping the same `Room` object. `NetSession` maps `onDrop` / `onReconnect` / `onLeave` to the reconnect banner, tunes the retries to the server's 25 s seat window, and keeps the resume token current for page reloads.
+- **Bundle size:** the network chunk is about 54 KB gzipped, up from 41 KB.
+
+**Public website**
+- **Workflow:** `.github/workflows/pages.yml` runs the typecheck and unit tests on GitHub, builds the client and deploys it to GitHub Pages at `https://dhiviyadev.github.io/Mobile_apps/`.
+- **Base path:** `VITE_BASE` sets Vite's base path, and the web manifest uses relative URLs.
+- **No-server builds:** `VITE_SERVER_URL=none` builds a static site without a game server. The hub shows "Offline mode", and online actions explain themselves instead of timing out.
+- **Game server:** `render.yaml` puts it on Render's free plan. The `GAME_SERVER_URL` repository variable connects the website to it.
+- **Custom domain:** `PAGES_CUSTOM_DOMAIN` builds for a custom domain such as a free `cobalt-hub.js.org`. The README has the steps.
+
+### How to test
+```bash
+npm test && npm run e2e            # 169 + 26 automated tests (6 e2e skipped by design)
+VITE_BASE=/Mobile_apps/ VITE_SERVER_URL=none npm run build -w client
+VITE_BASE=/Mobile_apps/ npx vite preview -c client/vite.config.ts   # → http://localhost:4173/Mobile_apps/
+```
+Verified here:
+- **Server image:** the image built, and its health check, matchmaking and room lifecycle were smoke-tested on 0.18.
+- **Static site:** loaded under `/Mobile_apps/` in headless Chromium, with both games playable offline and no failed requests.
+- **GitHub Actions:** typecheck, tests and build pass.
+
+### Known issues / notes
+- **Pages switch:** GitHub Pages must be switched on once in the repository settings; the workflow's token isn't allowed to do it. The first deploy failed for exactly that reason.
+- **Free server sleeps:** Render's free server sleeps when idle, so the first player after a quiet spell waits about a minute.
+- **Container user switch:** the `su-exec` package the container uses to drop to the `node` user couldn't be fetched in this sandbox (the Alpine mirror is blocked here). That step was skipped for the local image check; Render and Fly fetch it normally.
