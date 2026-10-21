@@ -1,7 +1,7 @@
 # Render Blueprint (https://render.com/docs/blueprint-spec) for the Cobalt Game Hub's
 # game server, on Render's free plan. New → Blueprint → pick this repository (and the
 # branch with game-hub/). The website itself is published on GitHub Pages
-# (.github/workflows/pages.yml); point it at this server's wss:// address.
+# (.github/workflows/pages.yml), which connects to wss://cobalt-hub-server.onrender.com.
 services:
   - type: web
     name: cobalt-hub-server

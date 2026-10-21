@@ -2,8 +2,9 @@
 #   https://<owner>.github.io/<repo>/
 #
 # Optional repository variables (Settings → Secrets and variables → Actions → Variables):
-#   GAME_SERVER_URL      wss:// address of a deployed game server (see render.yaml).
-#                        Without it the site is built for offline play only.
+#   GAME_SERVER_URL      wss:// address of the game server. Defaults to the Render server
+#                        from render.yaml (wss://cobalt-hub-server.onrender.com); set it to
+#                        `none` to build a site for offline play only.
 #   PAGES_CUSTOM_DOMAIN  the custom domain set in Settings → Pages (e.g. cobalt-hub.js.org):
 #                        the site is then built for the domain's root and ships a CNAME file.
 name: Publish website
@@ -44,7 +45,7 @@ jobs:
       - name: Build the client
         env:
           VITE_BASE: ${{ vars.PAGES_CUSTOM_DOMAIN && '/' || format('/{0}/', github.event.repository.name) }}
-          VITE_SERVER_URL: ${{ vars.GAME_SERVER_URL || 'none' }}
+          VITE_SERVER_URL: ${{ vars.GAME_SERVER_URL || 'wss://cobalt-hub-server.onrender.com' }}
         run: npm run build -w client
       - name: Add the custom domain
         if: vars.PAGES_CUSTOM_DOMAIN != ''

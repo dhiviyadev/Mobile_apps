@@ -3,8 +3,13 @@
  */
 import type { RoomListResponse } from '@hub/shared';
 import { fetchRooms } from '../net/api';
+import { hasGameServer } from '../net/serverUrl';
 
-export type RoomPollListener = (data: RoomListResponse | null, error: boolean) => void;
+/** How long a server that has not answered yet counts as starting up (free hosts sleep when idle). */
+export const WAKE_GRACE_MS = 90_000;
+
+/** `waking`: the server has not answered since the hub opened, but may still be starting up. */
+export type RoomPollListener = (data: RoomListResponse | null, error: boolean, waking: boolean) => void;
 
 export class RoomPoller {
   private timer = 0;
@@ -13,6 +18,8 @@ export class RoomPoller {
   private lastError = false;
   private running = false;
   private inflight: AbortController | null = null;
+  private reached = false;
+  private firstStart = 0;
 
   constructor(private readonly intervalMs = 4000) {
     document.addEventListener('visibilitychange', () => {
@@ -22,18 +29,23 @@ export class RoomPoller {
 
   subscribe(listener: RoomPollListener): () => void {
     this.listeners.add(listener);
-    listener(this.last, this.lastError);
+    listener(this.last, this.lastError, this.waking());
     return () => this.listeners.delete(listener);
   }
 
   /** Latest result without subscribing. */
-  snapshot(): { data: RoomListResponse | null; error: boolean } {
-    return { data: this.last, error: this.lastError };
+  snapshot(): { data: RoomListResponse | null; error: boolean; waking: boolean } {
+    return { data: this.last, error: this.lastError, waking: this.waking() };
+  }
+
+  private waking(): boolean {
+    return this.lastError && !this.reached && hasGameServer() && performance.now() - this.firstStart < WAKE_GRACE_MS;
   }
 
   start(): void {
     if (this.running) return;
     this.running = true;
+    this.firstStart ||= performance.now();
     void this.poll();
   }
 
@@ -57,13 +69,15 @@ export class RoomPoller {
     try {
       this.last = await fetchRooms(ctrl.signal);
       this.lastError = false;
+      this.reached = true;
     } catch {
       if (ctrl.signal.aborted && !this.running) return;
       this.lastError = true;
     } finally {
       window.clearTimeout(timeout);
     }
-    for (const l of this.listeners) l(this.last, this.lastError);
+    const waking = this.waking();
+    for (const l of this.listeners) l(this.last, this.lastError, waking);
     if (this.running && document.visibilityState === 'visible') {
       this.timer = window.setTimeout(() => void this.poll(), this.intervalMs);
     }

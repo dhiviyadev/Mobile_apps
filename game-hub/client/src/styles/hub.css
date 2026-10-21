@@ -48,6 +48,7 @@
   color: var(--muted);
 }
 .server-pill.online::before,
+.server-pill.waking::before,
 .server-pill.offline::before {
   content: '';
   display: inline-block;
@@ -59,6 +60,9 @@
 }
 .server-pill.online::before { background: var(--success); box-shadow: 0 0 8px var(--success); }
 .server-pill.offline::before { background: var(--danger); }
+.server-pill.waking::before { background: var(--accent); animation: pill-pulse 1.2s ease-in-out infinite; }
+@keyframes pill-pulse { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .server-pill.waking::before { animation: none; } }
 
 .profile {
   display: flex;

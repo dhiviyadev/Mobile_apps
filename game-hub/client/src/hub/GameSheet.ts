@@ -126,8 +126,12 @@ export class GameSheet {
   }
 
   private renderRooms(poller: RoomPoller): void {
-    const { data, error } = poller.snapshot();
+    const { data, error, waking } = poller.snapshot();
     clear(this.list);
+    if (waking) {
+      this.list.appendChild(h('div', { class: 'room-empty' }, 'The game server is waking up. This can take up to a minute; Quick Match will wait for it.'));
+      return;
+    }
     if (error && !data) {
       this.list.appendChild(h('div', { class: 'room-empty' }, svg(ICONS.wifiOff), 'Game server unreachable. Offline play still works.'));
       return;

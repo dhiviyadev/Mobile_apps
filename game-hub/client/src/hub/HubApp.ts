@@ -42,7 +42,7 @@ export class HubApp {
     this.root = h('div', { class: 'hub' });
     mount.appendChild(this.root);
     this.render();
-    this.poller.subscribe((data, error) => this.updateCounts(data, error));
+    this.poller.subscribe((data, error, waking) => this.updateCounts(data, error, waking));
     this.poller.start();
     void this.tryResume();
   }
@@ -243,8 +243,11 @@ export class HubApp {
     await this.start({ online: true, join: { kind: 'resume', token: info.token }, mode: '' });
   }
 
-  private updateCounts(data: RoomListResponse | null, error: boolean): void {
-    if (error) {
+  private updateCounts(data: RoomListResponse | null, error: boolean, waking: boolean): void {
+    if (waking) {
+      this.serverPill.textContent = 'Waking server…';
+      this.serverPill.className = 'server-pill waking';
+    } else if (error) {
       // A build without a game server (static hosting) is offline by design, not down.
       this.serverPill.textContent = hasGameServer() ? 'Server offline' : 'Offline mode';
       this.serverPill.className = 'server-pill offline';
@@ -254,7 +257,8 @@ export class HubApp {
       this.serverPill.className = 'server-pill online';
     }
     for (const [game, badge] of this.onlineBadges) {
-      if (error) badge.textContent = 'Offline play only';
+      if (waking) badge.textContent = 'Starting online play…';
+      else if (error) badge.textContent = 'Offline play only';
       else if (data) {
         const n = data.online[game] ?? 0;
         const rooms = data.rooms.filter((r) => r.game === game).length;

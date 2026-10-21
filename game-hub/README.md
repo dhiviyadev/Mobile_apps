@@ -69,7 +69,7 @@ Voxelvale sandbox worlds you build online are saved to `server/data/` (gitignore
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Server and client in watch mode |
-| `npm test` | 176 unit and integration tests (Vitest): world generation, lighting, meshing, flowing water, saved worlds, physics, combat rules, lag compensation, full bot matches, real Colyseus rooms over WebSockets |
+| `npm test` | 179 unit and integration tests (Vitest): world generation, lighting, meshing, flowing water, saved worlds, physics, combat rules, lag compensation, full bot matches, real Colyseus rooms over WebSockets |
 | `npm run e2e` | 26 browser tests (Playwright, desktop and emulated Android tablet), incl. multi-touch and two-browser multiplayer |
 | `npm run typecheck` | `tsc --noEmit` for all three packages |
 | `npm run build` | Production builds: `server/dist/index.js` and `client/dist/` |
@@ -149,14 +149,17 @@ Every push to this branch (or `main`) that touches `game-hub/` runs the typechec
 1. Turn Pages on: [Settings → Pages](https://github.com/dhiviyadev/Mobile_apps/settings/pages) → *Build and deployment* → Source: **GitHub Actions**. Then re-run the latest *Publish website* run (Actions tab → the run → *Re-run all jobs*).
 2. Only if the deploy then reports that the branch "is not allowed to deploy to github-pages": [Settings → Environments → github-pages](https://github.com/dhiviyadev/Mobile_apps/settings/environments) → *Deployment branches* → add `claude/web-game-hub-multiplayer-vs7eqq`, or merge the branch into `main`.
 
-**Without a game server**, the site is built for offline play. Voxelvale offline (sandbox and parkour) and Arcfire Arena against bots work fully, the hub shows "Offline mode", and online buttons explain that online play isn't set up.
+**Online play** goes through the game server on Render's free plan:
 
-**Adding online play (free):**
-1. Deploy the game server on Render's free plan. On [Render](https://render.com), choose *New → Blueprint* and pick this repository and branch. [`render.yaml`](../render.yaml) creates `cobalt-hub-server`.
-   - Free instances sleep after 15 minutes without players and take about a minute to wake.
-   - Worlds are kept in memory until the next restart.
-2. Copy the server's address, e.g. `wss://cobalt-hub-server.onrender.com`. Keep its `ALLOWED_ORIGINS` at `*`, or list `https://dhiviyadev.github.io` (plus any custom domain). Add the address as a repository variable: [Settings → Secrets and variables → Actions → Variables](https://github.com/dhiviyadev/Mobile_apps/settings/variables/actions) → `GAME_SERVER_URL`.
-3. Re-run *Publish website*. The site now lists rooms and offers Quick Match, private rooms and codes.
+> **https://cobalt-hub-server.onrender.com** (health check: [`/health`](https://cobalt-hub-server.onrender.com/health))
+
+- **Server setup:** it was created from [`render.yaml`](../render.yaml) with *New → Blueprint* on [Render](https://render.com), using this repository and branch. Render redeploys it on every push.
+- **Sleeping:** free instances sleep after 15 minutes without players. The first visitor after that sees "Waking server…" for up to a minute; Quick Match waits for it.
+- **Worlds:** kept in memory until the next restart.
+- **Where the address is set:** the website workflow uses `wss://cobalt-hub-server.onrender.com` by default. To use another server, set the repository variable `GAME_SERVER_URL` ([Settings → Secrets and variables → Actions → Variables](https://github.com/dhiviyadev/Mobile_apps/settings/variables/actions)) and re-run *Publish website*. Set it to `none` for an offline-only site.
+- **Origins:** keep the server's `ALLOWED_ORIGINS` at `*`, or list `https://dhiviyadev.github.io` plus any custom domain.
+
+**Offline play** works whether or not the server is up. Voxelvale offline (sandbox and parkour) and Arcfire Arena against bots run fully in the browser. A build with `GAME_SERVER_URL=none` shows "Offline mode", and its online buttons explain that online play isn't set up.
 
 ### Free custom domain (optional)
 
@@ -194,7 +197,7 @@ fly deploy
 ```
 `fly.toml` keeps one machine running (`auto_stop_machines = "off"`) because rooms live in memory, mounts the `hub_data` volume at `/data` for saved worlds, and gives a stopping server 20 s (`kill_timeout`) to save them. Fly volumes are root-owned, so the container's entrypoint takes ownership of `/data` and then runs the server as the unprivileged `node` user.
 
-**Render** (Blueprint: [`../render.yaml`](../render.yaml)): New → Blueprint → select this repository. It creates the game server as a free Docker web service (`game-hub/server/Dockerfile`, health check `/health`). The client is published on GitHub Pages (see [Public website](#public-website-free)), so point that at `wss://<server>.onrender.com`. Render disks need a paid instance, so the blueprint sets `PERSIST_WORLDS=false`: worlds survive rooms emptying but not restarts, and players are told so. To keep them, uncomment the `disk` block in `render.yaml` and delete `PERSIST_WORLDS`. The blueprint also sets `TRUST_PROXY_HOPS=1`, because Render's proxy appends the client address to `X-Forwarded-For`. It's worth confirming on a live deploy that the server logs your real address.
+**Render** (Blueprint: [`../render.yaml`](../render.yaml)): New → Blueprint → select this repository. It creates the game server as a free Docker web service (`game-hub/server/Dockerfile`, health check `/health`). The client is published on GitHub Pages (see [Public website](#public-website-free)), which connects to `wss://cobalt-hub-server.onrender.com` by default. Render disks need a paid instance, so the blueprint sets `PERSIST_WORLDS=false`: worlds survive rooms emptying but not restarts, and players are told so. To keep them, uncomment the `disk` block in `render.yaml` and delete `PERSIST_WORLDS`. The blueprint also sets `TRUST_PROXY_HOPS=1`, because Render's proxy appends the client address to `X-Forwarded-For`. It's worth confirming on a live deploy that the server logs your real address.
 
 **Any Docker host**
 ```bash

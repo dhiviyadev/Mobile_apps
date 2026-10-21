@@ -445,14 +445,15 @@ In the mesh workers, a chunk takes about 1.5 ms to light and about 12 ms to ligh
 - **Workflow:** `.github/workflows/pages.yml` runs the typecheck and unit tests on GitHub, builds the client and deploys it to GitHub Pages at `https://dhiviyadev.github.io/Mobile_apps/`.
 - **Base path:** `VITE_BASE` sets Vite's base path, and the web manifest uses relative URLs.
 - **No-server builds:** `VITE_SERVER_URL=none` builds a static site without a game server. The hub shows "Offline mode", and online actions explain themselves instead of timing out.
-- **Game server:** `render.yaml` puts it on Render's free plan. The `GAME_SERVER_URL` repository variable connects the website to it.
+- **Game server:** `render.yaml` puts it on Render's free plan, live at `https://cobalt-hub-server.onrender.com`. The website connects to it by default; the `GAME_SERVER_URL` repository variable overrides that.
+- **Waking server:** until the server first answers (up to 90 s after the hub opens), the hub shows "Waking server…" instead of "Server offline", because a sleeping free server takes about a minute to start.
 - **Custom domain:** `PAGES_CUSTOM_DOMAIN` builds for a custom domain such as a free `cobalt-hub.js.org`. The README has the steps.
 
 ### How to test
 ```bash
-npm test && npm run e2e            # 176 + 26 automated tests (6 e2e skipped by design)
+npm test && npm run e2e            # 179 + 26 automated tests (6 e2e skipped by design)
 VITE_BASE=/Mobile_apps/ VITE_SERVER_URL=none npm run build -w client
-VITE_BASE=/Mobile_apps/ npx vite preview -c client/vite.config.ts   # → http://localhost:4173/Mobile_apps/
+(cd client && VITE_BASE=/Mobile_apps/ npx vite preview)   # → http://localhost:4173/Mobile_apps/
 ```
 Verified here:
 - **Server image:** the image built, and its health check, matchmaking and room lifecycle were smoke-tested on 0.18.
