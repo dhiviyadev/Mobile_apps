@@ -1,7 +1,7 @@
-# Render Blueprint (https://render.com/docs/blueprint-spec) for the Cobalt Game Hub.
-# New → Blueprint → pick this repository (and the branch with game-hub/). Both services
-# use Render's free plan. After the first deploy, put the server's wss:// address in
-# VITE_SERVER_URL below (and in the GAME_SERVER_URL variable for the GitHub Pages site).
+# Render Blueprint (https://render.com/docs/blueprint-spec) for the Cobalt Game Hub's
+# game server, on Render's free plan. New → Blueprint → pick this repository (and the
+# branch with game-hub/). The website itself is published on GitHub Pages
+# (.github/workflows/pages.yml); point it at this server's wss:// address.
 services:
   - type: web
     name: cobalt-hub-server
@@ -35,21 +35,3 @@ services:
     #   name: hub-data
     #   mountPath: /data
     #   sizeGB: 1
-
-  - type: web
-    name: cobalt-hub-client
-    runtime: static
-    rootDir: game-hub
-    buildCommand: npm ci --no-audit --no-fund && npm run build -w client
-    staticPublishPath: client/dist
-    envVars:
-      - key: VITE_SERVER_URL
-        value: wss://cobalt-hub-server.onrender.com
-    headers:
-      - path: /assets/*
-        name: Cache-Control
-        value: public, max-age=31536000, immutable
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
