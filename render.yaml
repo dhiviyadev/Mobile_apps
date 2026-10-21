@@ -12,15 +12,31 @@ services:
     dockerfilePath: ./server/Dockerfile
     dockerContext: .
     healthCheckPath: /health
+    # Redeploy only when the server's own inputs change: every redeploy restarts it and
+    # drops the worlds it keeps in memory, and website or docs pushes don't need one.
+    # Build filter paths are relative to the repository root, not rootDir.
+    buildFilter:
+      paths:
+        - game-hub/server/**
+        - game-hub/shared/**
+        - game-hub/package.json
+        - game-hub/package-lock.json
+        - game-hub/tsconfig.base.json
+        - game-hub/client/package.json
+      ignoredPaths:
+        - game-hub/server/test/**
+        - game-hub/shared/test/**
     envVars:
       - key: ALLOWED_ORIGINS
         value: "*"
-      # Render's proxy appends the client address to X-Forwarded-For (and keeps whatever the
-      # client sent to the left of it). The rate limit on reopening worlds by code trusts
-      # only entries proxies appended: the rightmost 1 here. Never set it higher than the
-      # number of proxies that really append, or clients can choose their own address.
+      # Render's proxies (Cloudflare, then Render's own) append to X-Forwarded-For and keep
+      # whatever the client sent to the left. The rate limit on reopening worlds by code
+      # trusts only the entries proxies appended: the client is 3 from the right on Render,
+      # as reported by Render users (Render doesn't document it). The server logs
+      # "X-Forwarded-For with N entries seen"; for browser traffic N should equal this
+      # value. Never set it higher than that N, or clients can choose their own address.
       - key: TRUST_PROXY_HOPS
-        value: "1"
+        value: "3"
       # Saved Voxelvale worlds are written here.
       - key: DATA_DIR
         value: /data

@@ -8,6 +8,9 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { createEndpoint, createRouter, matchMaker } from '@colyseus/core';
 import { GAME_IDS, type GameId, isGameId, type RoomListResponse, type RoomMeta } from '@hub/shared';
 import { config } from '../config';
+import { logger } from '../log';
+
+const log = logger('http');
 
 /**
  * Header carrying the TCP peer address of an HTTP request. stampPeerAddress()
@@ -42,6 +45,23 @@ function normaliseForwardedProto(req: IncomingMessage): void {
   else delete req.headers['x-forwarded-proto'];
 }
 
+const forwardedCounts = new Set<number>();
+
+/**
+ * Logs each new number of X-Forwarded-For entries (a few at most), so that
+ * TRUST_PROXY_HOPS can be checked on a live deploy without logging addresses:
+ * browsers send none themselves, so on their requests the count is the number
+ * of proxies that append one.
+ */
+export function reportForwardedFor(req: IncomingMessage, report: (msg: string) => void = log.info): void {
+  const raw = req.headers['x-forwarded-for'];
+  if (raw === undefined || forwardedCounts.size >= 4) return;
+  const entries = (Array.isArray(raw) ? raw.join(',') : raw).split(',').filter((s) => s.trim()).length;
+  if (forwardedCounts.has(entries)) return;
+  forwardedCounts.add(entries);
+  report(`X-Forwarded-For with ${entries} entr${entries === 1 ? 'y' : 'ies'} seen (TRUST_PROXY_HOPS=${config.trustProxyHops})`);
+}
+
 /**
  * Puts one listener in front of the server's request listeners (Colyseus'
  * router among them): it stamps the peer address, turns away requests the
@@ -52,6 +72,7 @@ export function guardRequests(server: Server): void {
   server.removeAllListeners('request');
   server.on('request', (req: IncomingMessage, res: ServerResponse) => {
     stampPeerAddress(req);
+    reportForwardedFor(req);
     normaliseForwardedProto(req);
     if (!isRoutable(req)) {
       res.writeHead(400, { 'Content-Type': 'text/plain' }).end('bad request');

@@ -69,7 +69,7 @@ Voxelvale sandbox worlds you build online are saved to `server/data/` (gitignore
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Server and client in watch mode |
-| `npm test` | 179 unit and integration tests (Vitest): world generation, lighting, meshing, flowing water, saved worlds, physics, combat rules, lag compensation, full bot matches, real Colyseus rooms over WebSockets |
+| `npm test` | 188 unit and integration tests (Vitest): world generation, lighting, meshing, flowing water, saved worlds, physics, combat rules, lag compensation, full bot matches, real Colyseus rooms over WebSockets |
 | `npm run e2e` | 26 browser tests (Playwright, desktop and emulated Android tablet), incl. multi-touch and two-browser multiplayer |
 | `npm run typecheck` | `tsc --noEmit` for all three packages |
 | `npm run build` | Production builds: `server/dist/index.js` and `client/dist/` |
@@ -153,8 +153,8 @@ Every push to this branch (or `main`) that touches `game-hub/` runs the typechec
 
 > **https://cobalt-hub-server.onrender.com** (health check: [`/health`](https://cobalt-hub-server.onrender.com/health))
 
-- **Server setup:** it was created from [`render.yaml`](../render.yaml) with *New → Blueprint* on [Render](https://render.com), using this repository and branch. Render redeploys it on every push.
-- **Sleeping:** free instances sleep after 15 minutes without players. The first visitor after that sees "Waking server…" for up to a minute; Quick Match waits for it.
+- **Server setup:** it was created from [`render.yaml`](../render.yaml) with *New → Blueprint* on [Render](https://render.com), using this repository and branch. Render redeploys it when a push changes the server, the shared code or the dependencies; website-only and docs-only pushes leave it running.
+- **Sleeping:** free instances sleep after 15 minutes without players and take a minute or two to wake. The hub then shows "Waking server…". Quick Match, private rooms and codes wait for the server: the loading screen counts the seconds and has a Cancel button.
 - **Worlds:** kept in memory until the next restart.
 - **Where the address is set:** the website workflow uses `wss://cobalt-hub-server.onrender.com` by default. To use another server, set the repository variable `GAME_SERVER_URL` ([Settings → Secrets and variables → Actions → Variables](https://github.com/dhiviyadev/Mobile_apps/settings/variables/actions)) and re-run *Publish website*. Set it to `none` for an offline-only site.
 - **Origins:** keep the server's `ALLOWED_ORIGINS` at `*`, or list `https://dhiviyadev.github.io` plus any custom domain.
@@ -197,7 +197,7 @@ fly deploy
 ```
 `fly.toml` keeps one machine running (`auto_stop_machines = "off"`) because rooms live in memory, mounts the `hub_data` volume at `/data` for saved worlds, and gives a stopping server 20 s (`kill_timeout`) to save them. Fly volumes are root-owned, so the container's entrypoint takes ownership of `/data` and then runs the server as the unprivileged `node` user.
 
-**Render** (Blueprint: [`../render.yaml`](../render.yaml)): New → Blueprint → select this repository. It creates the game server as a free Docker web service (`game-hub/server/Dockerfile`, health check `/health`). The client is published on GitHub Pages (see [Public website](#public-website-free)), which connects to `wss://cobalt-hub-server.onrender.com` by default. Render disks need a paid instance, so the blueprint sets `PERSIST_WORLDS=false`: worlds survive rooms emptying but not restarts, and players are told so. To keep them, uncomment the `disk` block in `render.yaml` and delete `PERSIST_WORLDS`. The blueprint also sets `TRUST_PROXY_HOPS=1`, because Render's proxy appends the client address to `X-Forwarded-For`. It's worth confirming on a live deploy that the server logs your real address.
+**Render** (Blueprint: [`../render.yaml`](../render.yaml)): New → Blueprint → select this repository. It creates the game server as a free Docker web service (`game-hub/server/Dockerfile`, health check `/health`). The client is published on GitHub Pages (see [Public website](#public-website-free)), which connects to `wss://cobalt-hub-server.onrender.com` by default. Render disks need a paid instance, so the blueprint sets `PERSIST_WORLDS=false`: worlds survive rooms emptying but not restarts, and players are told so. To keep them, uncomment the `disk` block in `render.yaml` and delete `PERSIST_WORLDS`. The blueprint also sets `TRUST_PROXY_HOPS=3`: Render's proxies (Cloudflare, then Render's own) append to `X-Forwarded-For`, and Render users report the client 3 entries from the right. Render doesn't document it, so check on a live deploy: the server logs `X-Forwarded-For with N entries seen` (counts only, no addresses), and for browser traffic `N` should equal `TRUST_PROXY_HOPS`. The blueprint's build filter limits redeploys to server, shared and dependency changes, because each redeploy drops the worlds kept in memory.
 
 **Any Docker host**
 ```bash
@@ -242,7 +242,7 @@ You can also point any build at another server with `?server=wss://host` in the 
 | `MAX_SAVED_WORLDS` | server | `500` | Most saved worlds kept; a new save evicts the least recently saved world that isn't open |
 | `MAX_SAVED_WORLD_BYTES` | server | 850 MiB | Byte budget for world files on disk (same eviction rule) |
 | `MAX_MEMORY_WORLD_BYTES` | server | 128 MiB | Byte budget when worlds are kept in memory (`PERSIST_WORLDS=false`) |
-| `TRUST_PROXY_HOPS` | server | `0` | Reverse proxies that append to `X-Forwarded-For` (Render: `1`). Used for the rate limit on reopening worlds by code. On Fly.io `Fly-Client-IP` is used automatically; otherwise the TCP peer address is used. Client-supplied headers are never trusted |
+| `TRUST_PROXY_HOPS` | server | `0` | Reverse proxies that append to `X-Forwarded-For` (Render: `3`; the server logs the entry counts it sees). Used for the rate limit on reopening worlds by code. On Fly.io `Fly-Client-IP` is used automatically; otherwise the TCP peer address is used. Client-supplied headers are never trusted |
 
 ---
 

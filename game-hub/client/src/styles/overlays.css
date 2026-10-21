@@ -43,6 +43,7 @@
   color: var(--muted);
   font-size: 0.95rem;
 }
+.loading-cancel { margin-top: 18px; }
 .cube-spinner {
   display: inline-block;
   width: 46px;

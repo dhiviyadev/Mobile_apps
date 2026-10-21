@@ -10,6 +10,8 @@ import { h } from '../core/ui/dom';
 import { LoadingScreen, ReconnectBanner, toast } from '../core/ui/overlays';
 import { audio } from '../core/audio/audio';
 import { type JoinRequest, NetSession } from '../net/session';
+import { isAbortError, serverSeenRecently, waitForServer } from '../net/api';
+import { hasGameServer } from '../net/serverUrl';
 import { gameLoaders } from '../games/registry';
 import { runBenchmark } from '../core/render/benchmark';
 import type { GameInstance } from '../games/types';
@@ -73,6 +75,20 @@ export async function launchGame(req: LaunchRequest, hooks: LaunchHooks): Promis
       settings.update({ detectedQuality: result.preset });
       console.info(`[quality] ${result.gpu}: ${result.msPerFrame.toFixed(2)} ms → ${result.preset}`);
     }
+    // A free server sleeps when nobody plays: wake it before joining, or the join fails.
+    if (req.online && hasGameServer() && !serverSeenRecently()) {
+      const cancel = new AbortController();
+      const hideCancel = loading.showCancel(() => cancel.abort());
+      try {
+        await waitForServer({
+          signal: cancel.signal,
+          onWait: (s) => loading.set(0.02, `Waking the game server… ${s} s`),
+        });
+      } finally {
+        hideCancel();
+      }
+      loading.set(0.03, 'Connecting…');
+    }
     // Join and download in parallel; the room tells us which game a code belongs to.
     const sessionPromise = req.online ? NetSession.connect(req.join) : Promise.resolve(null);
     let game = knownGame;
@@ -130,6 +146,6 @@ export async function launchGame(req: LaunchRequest, hooks: LaunchHooks): Promis
     loading.done();
     void session?.leave();
     finish();
-    toast(err instanceof Error ? err.message : 'Something went wrong.', 'error', 4500);
+    if (!isAbortError(err)) toast(err instanceof Error ? err.message : 'Something went wrong.', 'error', 4500);
   }
 }

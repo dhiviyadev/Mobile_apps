@@ -446,12 +446,16 @@ In the mesh workers, a chunk takes about 1.5 ms to light and about 12 ms to ligh
 - **Base path:** `VITE_BASE` sets Vite's base path, and the web manifest uses relative URLs.
 - **No-server builds:** `VITE_SERVER_URL=none` builds a static site without a game server. The hub shows "Offline mode", and online actions explain themselves instead of timing out.
 - **Game server:** `render.yaml` puts it on Render's free plan, live at `https://cobalt-hub-server.onrender.com`. The website connects to it by default; the `GAME_SERVER_URL` repository variable overrides that.
-- **Waking server:** until the server first answers (up to 90 s after the hub opens), the hub shows "Waking server…" instead of "Server offline", because a sleeping free server takes about a minute to start.
+- **Waking server:** a sleeping free server takes a minute or two to start.
+  - **Hub:** when the server stops answering after a long silence (the first visit, a hidden tab, an offline game), the hub shows "Waking server…" for up to 3 minutes instead of "Server offline". A server that fails while being polled still shows as offline. Rooms from before an outage are no longer offered.
+  - **Joins:** online joins first wait for `GET /health`. They try at most every 3 s, give up after 3 minutes, and show the seconds and a Cancel button.
+- **Render redeploys:** a build filter in `render.yaml` limits them to server, shared and dependency changes, so website and docs pushes no longer restart the server and drop in-memory worlds.
+- **Client addresses on Render:** `TRUST_PROXY_HOPS` is now 3, as Render users report. The server logs each new `X-Forwarded-For` entry count (counts only), so the value can be checked on the live service.
 - **Custom domain:** `PAGES_CUSTOM_DOMAIN` builds for a custom domain such as a free `cobalt-hub.js.org`. The README has the steps.
 
 ### How to test
 ```bash
-npm test && npm run e2e            # 179 + 26 automated tests (6 e2e skipped by design)
+npm test && npm run e2e            # 188 + 26 automated tests (6 e2e skipped by design)
 VITE_BASE=/Mobile_apps/ VITE_SERVER_URL=none npm run build -w client
 (cd client && VITE_BASE=/Mobile_apps/ npx vite preview)   # → http://localhost:4173/Mobile_apps/
 ```

@@ -129,10 +129,11 @@ export class GameSheet {
     const { data, error, waking } = poller.snapshot();
     clear(this.list);
     if (waking) {
-      this.list.appendChild(h('div', { class: 'room-empty' }, 'The game server is waking up. This can take up to a minute; Quick Match will wait for it.'));
+      this.list.appendChild(h('div', { class: 'room-empty' }, 'The game server is waking up, which can take a minute or two. Quick Match will wait for it.'));
       return;
     }
-    if (error && !data) {
+    // Rooms from before the server stopped answering may be gone: don't offer them.
+    if (error) {
       this.list.appendChild(h('div', { class: 'room-empty' }, svg(ICONS.wifiOff), 'Game server unreachable. Offline play still works.'));
       return;
     }

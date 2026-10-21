@@ -19,22 +19,20 @@ export class LoadingScreen {
   private bar: HTMLElement;
   private label: HTMLElement;
   private pct: HTMLElement;
+  private card: HTMLElement;
 
   constructor(title: string, accent = 'var(--accent)') {
     this.bar = h('div', { class: 'loading-bar-fill' });
     this.label = h('div', { class: 'loading-label' }, 'Starting…');
     this.pct = h('div', { class: 'loading-pct' }, '0%');
-    this.el = h(
-      'div',
-      { class: 'loading-screen entering', style: `--loading-accent:${accent}` },
-      h('div', { class: 'loading-card' },
-        h('div', { class: 'loading-logo' }, h('span', { class: 'cube-spinner' })),
-        h('h2', null, title),
-        h('div', { class: 'loading-bar' }, this.bar),
-        h('div', { class: 'loading-row' }, this.label, this.pct),
-        h('p', { class: 'loading-tip' }, TIPS[Math.floor(Math.random() * TIPS.length)]),
-      ),
+    this.card = h('div', { class: 'loading-card' },
+      h('div', { class: 'loading-logo' }, h('span', { class: 'cube-spinner' })),
+      h('h2', null, title),
+      h('div', { class: 'loading-bar' }, this.bar),
+      h('div', { class: 'loading-row' }, this.label, this.pct),
+      h('p', { class: 'loading-tip' }, TIPS[Math.floor(Math.random() * TIPS.length)]),
     );
+    this.el = h('div', { class: 'loading-screen entering', style: `--loading-accent:${accent}` }, this.card);
     document.body.appendChild(this.el);
     requestAnimationFrame(() => this.el.classList.remove('entering'));
   }
@@ -45,6 +43,20 @@ export class LoadingScreen {
     this.bar.style.transform = `scaleX(${p})`;
     this.pct.textContent = `${Math.round(p * 100)}%`;
     if (label) this.label.textContent = label;
+  }
+
+  /** Shows a Cancel button until the returned function is called. */
+  showCancel(onCancel: () => void): () => void {
+    const button = h('button', {
+      class: 'btn btn-ghost btn-sm loading-cancel',
+      'data-testid': 'loading-cancel',
+      onclick: () => {
+        button.disabled = true;
+        onCancel();
+      },
+    }, 'Cancel');
+    this.card.appendChild(button);
+    return () => button.remove();
   }
 
   done(): void {
