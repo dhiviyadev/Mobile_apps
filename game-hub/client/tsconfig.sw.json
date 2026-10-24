@@ -1,0 +1,10 @@
+{
+  // The service worker (src/platform/sw), checked against the WebWorker lib instead of the DOM.
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2022", "WebWorker"],
+    "types": []
+  },
+  "include": ["src/platform/sw/sw.ts", "src/platform/sw/routing.ts", "src/platform/sw/globals.d.ts"]
+}

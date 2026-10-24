@@ -13,20 +13,60 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Cobalt Hub" />
     <meta name="format-detection" content="telephone=no" />
-    <meta name="description" content="Two original multiplayer 3D games in your browser, built for tablets." />
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/icon-180.png" />
-    <title>Cobalt Game Hub</title>
+    <!-- Title, description, manifest, icons and search/social tags are added by tools/pwa (cobalt-pwa plugin). -->
+    <style>
+      /* Boot shell: shown until the hub script replaces it (and to crawlers and link previews). */
+      .boot-shell {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 24px;
+        text-align: center;
+        background: #10162a;
+        color: #eef2ff;
+        font-family: ui-rounded, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      }
+      .boot-shell h1 { margin: 0; font-size: 1.8rem; }
+      .boot-shell p { margin: 0; max-width: 34rem; color: #9aa6c8; line-height: 1.45; }
+      .boot-shell a { color: #ffd166; }
+      .boot-shell .boot-status { font-weight: 700; }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <main class="boot-shell" aria-busy="true">
+        <svg class="boot-mark" viewBox="0 0 128 128" width="72" height="72" aria-hidden="true">
+          <polygon points="64,26 98,46 64,66 30,46" fill="#5fd17a" /><polygon points="30,46 64,66 64,106 30,86" fill="#2fb3a6" /><polygon points="98,46 64,66 64,106 98,86" fill="#ff7a45" />
+        </svg>
+        <h1>Cobalt Game Hub</h1>
+        <p>
+          Two original 3D games you can play free in your browser or install as an app: build and explore in Voxelvale,
+          or fight fast rounds in Arcfire Arena. Made for tablets, with keyboard and mouse support, and playable offline.
+        </p>
+        <p class="boot-status" id="boot-status">Loading…</p>
+      </main>
+    </div>
     <!-- Shown by CSS only while a game is running on a touch device held in portrait. -->
     <div class="rotate-overlay" aria-hidden="true">
       <div class="rotate-phone"></div>
       <p>Rotate your device to landscape to play</p>
     </div>
     <noscript>This hub needs JavaScript enabled.</noscript>
+    <script nomodule>
+      document.getElementById('boot-status').textContent =
+        'This browser is too old to run the games. Open this page in an up-to-date Chrome, Safari, Edge or Firefox.';
+    </script>
+    <script>
+      // Watchdog: if the hub hasn't started after 12 s (a broken offline copy, an old in-app browser), say so.
+      setTimeout(function () {
+        if (document.documentElement.getAttribute('data-booted')) return;
+        var s = document.getElementById('boot-status');
+        if (s) s.innerHTML = 'Still loading… If nothing happens, <a href="?sw=off">reload without the offline copy</a> or open this page in Chrome or Safari.';
+      }, 12000);
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

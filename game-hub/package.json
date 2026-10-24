@@ -15,7 +15,7 @@
     "dev:client": "npm run dev -w client",
     "build": "npm run build -w server && npm run build -w client",
     "start": "npm run start -w server",
-    "typecheck": "tsc --noEmit -p shared && tsc --noEmit -p server && tsc --noEmit -p client",
+    "typecheck": "tsc --noEmit -p shared && tsc --noEmit -p server && tsc --noEmit -p client && tsc --noEmit -p client/tsconfig.sw.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test -c client/playwright.config.ts"

@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# Built by client/e2e/pwa.spec.ts
+dist-e2e/
 *.log
 .DS_Store
 test-results/

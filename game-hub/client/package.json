@@ -6,9 +6,9 @@
   "description": "Tablet-first browser client for the Cobalt Game Hub.",
   "scripts": {
     "dev": "vite --host",
-    "build": "tsc --noEmit -p . && vite build",
+    "build": "tsc --noEmit -p . && tsc --noEmit -p tsconfig.sw.json && vite build",
     "preview": "vite preview --host",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p tsconfig.sw.json"
   },
   "dependencies": {
     "@hub/shared": "0.1.0",
