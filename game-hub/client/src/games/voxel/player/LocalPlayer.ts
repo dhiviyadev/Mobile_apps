@@ -70,23 +70,27 @@ export class LocalPlayer {
   update(dt: number, input: Omit<MoveInput, 'yaw'>, get: BlockQuery, frozen: boolean): void {
     this.accumulator = Math.min(this.accumulator + dt, PHYSICS_DT * 5);
     this.crouching = input.crouch;
-    this.sprinting = input.sprint && !input.crouch && (input.forward > 0.3 || Math.abs(input.strafe) > 0.3);
+    this.sprinting = input.sprint && !input.noSprint && !input.crouch && (input.forward > 0.3 || Math.abs(input.strafe) > 0.3);
     while (this.accumulator >= PHYSICS_DT) {
       this.accumulator -= PHYSICS_DT;
       this.prev.set(this.body.x, this.body.y, this.body.z);
       if (frozen) continue;
       stepBody(this.body, { ...input, sprint: this.sprinting, yaw: this.yaw }, get, PHYSICS_DT, this.eye);
       this.afterStep();
+      this.onStep?.(this.body);
     }
     this.updateCamera(dt);
   }
+
+  /** Called after every fixed physics step (offline survival: fall tracking, hazards). */
+  onStep: ((body: PlayerBody) => void) | null = null;
 
   private afterStep(): void {
     const b = this.body;
     const hSpeed = Math.hypot(b.vx, b.vz);
     if (b.onGround && hSpeed > 0.5) {
       this.stepDistance += hSpeed * PHYSICS_DT;
-      if (this.stepDistance > 1.7) {
+      if (this.stepDistance > 1.95) {
         this.stepDistance = 0;
         audio.play('step', { volume: this.crouching ? 0.4 : 1, pitch: 0.9 + Math.random() * 0.2 });
       }
@@ -115,7 +119,7 @@ export class LocalPlayer {
     this.camera.position.set(x + bobX * Math.cos(this.yaw), y + this.eye + bobY, z - bobX * Math.sin(this.yaw));
     this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
 
-    const targetFov = BASE_FOV + (this.sprinting && hSpeed > 4.5 ? 8 : 0);
+    const targetFov = BASE_FOV + (this.sprinting && hSpeed > 5.3 ? 8 : 0);
     this.fov += (targetFov - this.fov) * Math.min(1, dt * 8);
     if (Math.abs(this.camera.fov - this.fov) > 0.01) {
       this.camera.fov = this.fov;

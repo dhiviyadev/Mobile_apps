@@ -13,29 +13,60 @@
  * cycle is applied in the shader: sky light stores "how open to the sky", not
  * the current brightness, so time of day never needs a remesh.
  */
-import { Block, IS_LIQUID, IS_TRANSPARENT } from './blocks';
+import { BLOCKS } from './blocks';
+import type { BlockQuery } from './physics';
 
 export const MAX_LIGHT = 15;
 
-/** Light emitted by each block id. */
+/** Light emitted by each block id (BlockDef.light). */
 export const LIGHT_EMISSION = new Uint8Array(256);
-LIGHT_EMISSION[Block.Lamp] = 15;
-LIGHT_EMISSION[Block.Checkpoint] = 10;
-LIGHT_EMISSION[Block.Finish] = 10;
-
-/** 1 for blocks that stop light. */
+/** 1 for blocks that stop light (BlockDef.lightOpaque). */
 export const LIGHT_OPAQUE = new Uint8Array(256);
-/** Extra levels lost when light enters a block, on top of 1 per step. */
+/** Extra levels lost when light enters a block, on top of 1 per step (BlockDef.lightCost). */
 export const LIGHT_COST = new Uint8Array(256);
 /** Levels lost stepping into a block (opaque blocks lose everything). */
 const STEP_LOSS = new Uint8Array(256);
 /** Packed for the full-volume pass: sky light lost falling into a block (low 4 bits), emission << 4. */
 const FALL = new Uint8Array(256);
+for (const d of BLOCKS) {
+  if (!d) continue;
+  LIGHT_EMISSION[d.id] = d.light;
+  LIGHT_OPAQUE[d.id] = d.lightOpaque ? 1 : 0;
+  LIGHT_COST[d.id] = d.lightCost;
+}
 for (let id = 0; id < 256; id++) {
-  LIGHT_OPAQUE[id] = IS_TRANSPARENT[id] ? 0 : 1;
-  LIGHT_COST[id] = IS_LIQUID[id] || id === Block.Leaves || id === Block.Ice ? 1 : 0;
   STEP_LOSS[id] = LIGHT_OPAQUE[id] ? MAX_LIGHT + 1 : 1 + LIGHT_COST[id];
   FALL[id] = (LIGHT_OPAQUE[id] ? MAX_LIGHT : LIGHT_COST[id]) | (LIGHT_EMISSION[id] << 4);
+}
+
+/**
+ * Approximate light at a cell without a region pass (server spawn checks; the
+ * server has no mesher light): `sky` if no light-opaque block is above the cell
+ * in its column, else 0; maxed with the best emitter estimate within Chebyshev
+ * radius 7 (emission - Manhattan distance). About 2.2k block reads.
+ */
+export function approxLight(get: BlockQuery, x: number, y: number, z: number, sky = MAX_LIGHT): number {
+  let best = 0;
+  let open = true;
+  for (let yy = y + 1; yy < 64; yy++) {
+    if (LIGHT_OPAQUE[get(x, yy, z)]) {
+      open = false;
+      break;
+    }
+  }
+  if (open) best = sky;
+  if (best >= MAX_LIGHT) return best;
+  for (let dy = -7; dy <= 7; dy++) {
+    for (let dz = -7; dz <= 7; dz++) {
+      for (let dx = -7; dx <= 7; dx++) {
+        const e = LIGHT_EMISSION[get(x + dx, y + dy, z + dz)];
+        if (!e) continue;
+        const l = e - Math.abs(dx) - Math.abs(dy) - Math.abs(dz);
+        if (l > best) best = l;
+      }
+    }
+  }
+  return best;
 }
 
 /** True when replacing block `a` with `b` can change light in other cells. */

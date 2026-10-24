@@ -17,9 +17,15 @@ export type Action =
   | 'menu'
   | 'chat'
   | 'scoreboard'
-  | 'loadout'
+  | 'loadout' // arena loadout · Voxelvale sandbox block picker (B)
   /** Arcfire Arena: toggles the auto-shoot setting. */
-  | 'autoShoot';
+  | 'autoShoot'
+  // ---- Voxelvale survival / world ----
+  | 'inventory' // open/close the bag (E, I; touch Bag button)
+  | 'drop' // drop 1 of the selected item, whole stack with crouch (Q)
+  | 'swapHands' // selected item <-> off-hand (F)
+  | 'guard' // hold to raise the shield (Z; touch Guard button)
+  | 'pickBlock'; // sandbox: copy the targeted block into the selected slot (middle mouse)
 
 export interface InputFrame {
   /** Strafe (-1 left .. 1 right). */

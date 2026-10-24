@@ -4,6 +4,7 @@
  * colour, which the terrain shader uses for lighting and fog.
  */
 import * as THREE from 'three';
+import { daylightAt } from '@hub/shared';
 import { mulberry32 } from '@hub/shared';
 
 const DAY_TOP = new THREE.Color(0x5aa9f5);
@@ -82,7 +83,7 @@ export class Sky {
     this.time = (this.time + dtDays) % 1;
     const sunAngle = (this.time - 0.25) * Math.PI * 2; // 0 at sunrise
     const elevation = Math.sin(sunAngle);
-    this.daylight = THREE.MathUtils.smoothstep(elevation, -0.18, 0.25);
+    this.daylight = daylightAt(this.time); // == smoothstep(elevation, -0.18, 0.25), shared with mobs and survival
     const dusk = Math.max(0, 1 - Math.abs(elevation) * 4);
 
     this.zenith.copy(NIGHT_TOP).lerp(DAY_TOP, this.daylight).lerp(DUSK_TOP, dusk * 0.4);

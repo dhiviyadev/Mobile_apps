@@ -80,8 +80,15 @@ export class VoxelNet implements VoxelNetHooks {
   private idleResend = 0;
   private time = { value: 0.3, at: 0 };
 
+  /**
+   * Survival (WP-B) adds its fields to remote avatars (held, offhand, swing,
+   * guard, draw, flash, alpha) from the schema player (eid, hp, held, offhand, act, swing).
+   */
+  poseDecorator: ((id: string, pose: AvatarPose) => void) | null = null;
+
   constructor(
-    private readonly session: NetSession,
+    /** Modules register their own message handlers here (buffered until registered). */
+    readonly session: NetSession,
     private readonly game: VoxelGame,
     container: HTMLElement,
   ) {
@@ -207,6 +214,11 @@ export class VoxelNet implements VoxelNetHooks {
     return false;
   }
 
+  /** Interpolated positions of the other players (melee targets, occupancy), by sessionId. */
+  remoteBodies(): ReadonlyMap<string, { readonly x: number; readonly y: number; readonly z: number }> {
+    return this.remotes;
+  }
+
   update(dt: number, camera: THREE.Camera): void {
     const renderT = performance.now() - INTERP_DELAY_MS;
     const poses: AvatarPose[] = [];
@@ -229,11 +241,11 @@ export class VoxelNet implements VoxelNetHooks {
       const ny = a.y + (b.y - a.y) * k;
       const nz = a.z + (b.z - a.z) * k;
       const speed = dt > 0 ? Math.hypot(nx - r.x, nz - r.z) / dt : 0;
-      r.speed += (Math.min(8, speed) - r.speed) * Math.min(1, dt * 10);
+      r.speed += (Math.min(9, speed) - r.speed) * Math.min(1, dt * 10);
       r.x = nx;
       r.y = ny;
       r.z = nz;
-      poses.push({
+      const pose: AvatarPose = {
         id,
         x: nx,
         y: ny,
@@ -244,7 +256,9 @@ export class VoxelNet implements VoxelNetHooks {
         speed: r.speed,
         crouch: (b.flags & MoveFlags.Crouch) !== 0,
         name: r.name,
-      });
+      };
+      this.poseDecorator?.(id, pose);
+      poses.push(pose);
     }
     this.avatars.setBrightness(0.35 + this.game.sky.daylight * 0.65);
     this.avatars.update(poses, dt, camera);

@@ -116,6 +116,13 @@ export class World {
     return c.blocks[blockIndex(toLocal(x), y, toLocal(z))];
   };
 
+  // ---- fast reader for the offline creature sim (WP-C may replace this body; keep the region) ----
+  /** Hot-loop block reader. WP0: getBlock. */
+  reader(): (x: number, y: number, z: number) => number {
+    return this.getBlock;
+  }
+  // ---- end fast reader ----
+
   isLoaded(x: number, z: number): boolean {
     return !!this.chunks.get(chunkKey(toChunkCoord(x), toChunkCoord(z)))?.blocks;
   }

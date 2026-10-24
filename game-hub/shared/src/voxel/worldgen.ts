@@ -12,14 +12,30 @@ import { Block } from './blocks';
 import { blockIndex } from './chunk';
 import { CHUNK_HEIGHT, CHUNK_SIZE, CHUNK_VOLUME, SEA_LEVEL } from './constants';
 
+/**
+ * Biome ids (sent nowhere, but used by mob spawn tables and banners). 0..6 are
+ * produced by the v1 generator; 7..17 only by v2 (world area). Display names:
+ * BIOME_INFO (world area). Never renumber.
+ */
 export enum Biome {
-  Plains = 0,
-  Forest = 1,
-  Desert = 2,
-  Snow = 3,
-  Beach = 4,
-  Mountains = 5,
+  Plains = 0, // "Grasslands"
+  Forest = 1, // "Oakwood"
+  Desert = 2, // "Dunes"
+  Snow = 3, // "Tundra"
+  Beach = 4, // "Shore"
+  Mountains = 5, // "Highlands"
   Ocean = 6,
+  AspenGrove = 7,
+  Duskwood = 8,
+  Pinewood = 9,
+  Frostpine = 10,
+  Savanna = 11,
+  Redrock = 12,
+  Marshland = 13,
+  Rainforest = 14,
+  GlacierPeaks = 15,
+  IcySea = 16,
+  FrozenShore = 17,
 }
 
 export interface Column {

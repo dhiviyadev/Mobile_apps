@@ -21,12 +21,14 @@ export type SheetAction =
 
 const MODE_LABELS: Record<string, string> = {
   sandbox: 'Sandbox',
+  survival: 'Survival',
   parkour: 'Parkour',
   ...Object.fromEntries(ARENA_MODES.map((m) => [m, ARENA_MODE_INFO[m].label])),
 };
 
 const MODE_HINTS: Record<string, string> = {
   sandbox: 'Build together in an endless procedurally generated world.',
+  survival: 'Gather, craft and fight to stay alive. Creatures roam at night; bosses guard rare ruins.',
   parkour: 'Race through a floating obstacle course. Checkpoints and a timer.',
   '1v1': 'Duel. First to 5 rounds wins.',
   '2v2': 'Two teams of two. First to 5 rounds wins.',
@@ -34,6 +36,8 @@ const MODE_HINTS: Record<string, string> = {
 };
 
 const LAST_MODE_KEY = 'cobalt-hub.last-mode.';
+/** Voxelvale tab order (VOXEL_MODES is ordered by save-file mode byte). */
+const VOXEL_MODE_ORDER: readonly string[] = ['sandbox', 'survival', 'parkour'];
 
 export class GameSheet {
   readonly el: HTMLElement;
@@ -48,7 +52,7 @@ export class GameSheet {
     private readonly onAction: (action: SheetAction) => void,
     private readonly onClose: () => void,
   ) {
-    const modes: readonly string[] = game === 'voxel' ? VOXEL_MODES : ARENA_MODES;
+    const modes: readonly string[] = game === 'voxel' ? VOXEL_MODE_ORDER.filter((m) => (VOXEL_MODES as readonly string[]).includes(m)) : ARENA_MODES;
     this.mode = localStorage.getItem(LAST_MODE_KEY + game) ?? modes[0];
     if (!modes.includes(this.mode)) this.mode = modes[0];
 

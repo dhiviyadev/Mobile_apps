@@ -31,6 +31,17 @@ export interface JoinOptions {
   protocol?: number;
   /** Arcfire Arena: bot difficulty ('easy' | 'normal' | 'hard') for a room this client creates. Ignored on join. */
   botDifficulty?: string;
+  /**
+   * Voxelvale survival: random per-browser secret (base64url, 22 chars) that
+   * lets a saved world give a returning player their inventory back. The server
+   * only stores a SHA-256 prefix of it. Optional; ignored when malformed.
+   */
+  playerKey?: string;
+}
+
+/** Shape check for JoinOptions.playerKey (the server ignores anything else). */
+export function isPlayerKey(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{16,32}$/.test(value);
 }
 
 /** Markers in join errors caused by a protocol mismatch. Old pages show the whole message as is. */

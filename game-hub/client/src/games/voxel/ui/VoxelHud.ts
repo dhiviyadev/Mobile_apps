@@ -3,16 +3,38 @@
  * it on touch, wheel / number keys on desktop), selected-block label, parkour
  * timer and checkpoint counter.
  */
-import { blockDef, HOTBAR_BLOCKS } from '@hub/shared';
 import { h } from '../../../core/ui/dom';
-import { drawBlockIcon } from '../world/atlas';
 
 const SLOT_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='];
+const LONG_PRESS_MS = 450;
+
+/** What one hotbar slot shows. Sandbox: 12 block/item ids; survival: 9 inventory stacks. */
+export interface SlotView {
+  /** Item id (block ids < 256), 0 = empty. */
+  item: number;
+  /** Name for the selection label. */
+  name: string;
+  /** Stack size (hidden when <= 1). */
+  count?: number;
+  /** Remaining durability 0..1 (bar hidden when undefined or 1). */
+  wear?: number;
+  /** Loaded crossbow dot. */
+  loaded?: boolean;
+}
+
+/** Draws an item icon (WP0: ui/itemIcons.ts). */
+export type IconFor = (item: number, size: number) => HTMLCanvasElement;
 
 export class VoxelHud {
   readonly el: HTMLElement;
   private readonly hotbar: HTMLElement;
-  private readonly slots: HTMLElement[] = [];
+  private slots: HTMLElement[] = [];
+  private views: SlotView[] = [];
+  private readonly offhandSlot: HTMLElement;
+  private readonly placeBanner: HTMLElement;
+  private placeTimer = 0;
+  /** Long-press on a hotbar slot (sandbox: picker for that slot; survival: drop/off-hand popover). */
+  onLongPress: ((index: number) => void) | null = null;
   private readonly blockLabel: HTMLElement;
   private readonly timerEl: HTMLElement;
   private readonly cpEl: HTMLElement;
@@ -26,19 +48,15 @@ export class VoxelHud {
 
   constructor(
     parent: HTMLElement,
-    atlas: HTMLCanvasElement,
+    private readonly iconFor: IconFor,
     private readonly onSelect: (index: number) => void,
     parkour: boolean,
   ) {
     this.hotbar = h('div', { class: 'hotbar', 'data-testid': 'hotbar' });
-    HOTBAR_BLOCKS.forEach((b, i) => {
-      const icon = drawBlockIcon(atlas, b, 64);
-      icon.className = 'slot-icon';
-      const slot = h('div', { class: 'slot', dataset: { index: String(i) } }, icon, h('span', { class: 'slot-key' }, SLOT_KEYS[i] ?? ''));
-      this.slots.push(slot);
-      this.hotbar.appendChild(slot);
-    });
+    this.offhandSlot = h('div', { class: 'offhand-slot empty', 'data-testid': 'offhand-slot', hidden: true });
+    this.hotbar.appendChild(this.offhandSlot);
     this.bindHotbarTouch();
+    this.placeBanner = h('div', { class: 'place-banner', 'data-testid': 'place-banner' });
 
     this.blockLabel = h('div', { class: 'block-label' });
     this.timerEl = h('div', { class: 'pk-timer', 'data-testid': 'parkour-timer' }, '00:00.00');
@@ -53,19 +71,76 @@ export class VoxelHud {
       h('div', { class: 'crosshair' }),
       parkour ? h('div', { class: 'pk-panel' }, this.timerEl, this.cpEl, this.bestEl, this.roomBestEl) : null,
       this.centerMsg,
+      this.placeBanner,
       this.blockLabel,
       parkour ? null : this.hotbar,
     );
     parent.appendChild(this.el);
-    this.select(0, false);
+  }
+
+  /** Mount point for package overlays (vitals, boss bar, target label...). */
+  get root(): HTMLElement {
+    return this.el;
+  }
+
+  /** The current slot contents. */
+  get slotViews(): readonly SlotView[] {
+    return this.views;
+  }
+
+  /** Sets the hotbar contents; rebuilds the DOM when the slot count changes, else patches changed slots. */
+  setSlots(views: readonly SlotView[]): void {
+    if (views.length !== this.slots.length) {
+      for (const el of this.slots) el.remove();
+      this.slots = views.map((_, i) => h('div', { class: 'slot', dataset: { index: String(i) } }));
+      this.views = [];
+      for (const el of this.slots) this.hotbar.appendChild(el);
+    }
+    views.forEach((v, i) => {
+      const old = this.views[i];
+      if (old && old.item === v.item && old.count === v.count && old.wear === v.wear && old.loaded === v.loaded) return;
+      this.renderSlot(this.slots[i], v, SLOT_KEYS[i] ?? '');
+    });
+    this.views = views.map((v) => ({ ...v }));
+    if (this.selected >= views.length) this.selected = 0;
+    this.slots.forEach((s, i) => s.classList.toggle('active', i === this.selected));
+  }
+
+  /** Off-hand slot left of the hotbar (survival); undefined hides it. */
+  setOffhand(view: SlotView | null | undefined): void {
+    this.offhandSlot.hidden = view === undefined;
+    if (view !== undefined) this.renderSlot(this.offhandSlot, view ?? { item: 0, name: '' }, '');
+  }
+
+  /** Banner at the top centre: biome and ruin names, boss awakening. */
+  showPlace(title: string, subtitle?: string, ms = 2800): void {
+    this.placeBanner.replaceChildren(h('div', { class: 'pb-title' }, title), ...(subtitle ? [h('div', { class: 'pb-sub' }, subtitle)] : []));
+    this.placeBanner.classList.add('show');
+    window.clearTimeout(this.placeTimer);
+    this.placeTimer = window.setTimeout(() => this.placeBanner.classList.remove('show'), ms);
+  }
+
+  private renderSlot(el: HTMLElement, v: SlotView, key: string): void {
+    const icon = v.item ? this.iconFor(v.item, 64) : h('div');
+    icon.classList.add('slot-icon');
+    const dur = v.wear !== undefined && v.wear < 1
+      ? h('div', { class: 'slot-dur' }, h('i', { style: `width:${Math.round(v.wear * 100)}%;background:hsl(${Math.round(120 * v.wear)},70%,50%)` }))
+      : null;
+    const parts: Node[] = [icon];
+    if (key) parts.push(h('span', { class: 'slot-key' }, key));
+    if (v.count && v.count > 1) parts.push(h('span', { class: 'slot-count' }, String(v.count)));
+    if (dur) parts.push(dur);
+    if (v.loaded) parts.push(h('span', { class: 'slot-loaded' }));
+    el.replaceChildren(...parts);
+    el.classList.toggle('empty', !v.item);
   }
 
   select(index: number, announce = true): void {
-    const n = HOTBAR_BLOCKS.length;
+    const n = Math.max(1, this.slots.length);
     this.selected = ((index % n) + n) % n;
     this.slots.forEach((s, i) => s.classList.toggle('active', i === this.selected));
     if (announce) {
-      this.blockLabel.textContent = blockDef(HOTBAR_BLOCKS[this.selected]).name;
+      this.blockLabel.textContent = this.views[this.selected]?.name ?? '';
       this.blockLabel.classList.add('show');
       window.clearTimeout(this.labelTimer);
       this.labelTimer = window.setTimeout(() => this.blockLabel.classList.remove('show'), 1100);
@@ -101,21 +176,31 @@ export class VoxelHud {
   dispose(): void {
     window.clearTimeout(this.labelTimer);
     window.clearTimeout(this.msgTimer);
+    window.clearTimeout(this.placeTimer);
     this.el.remove();
   }
 
   /** Tap a slot, or keep the finger down and slide across the bar to scrub. */
   private bindHotbarTouch(): void {
     let activePointer: number | null = null;
-    const pick = (e: PointerEvent) => {
+    let pressIndex = -1;
+    let pressTimer = 0;
+    const slotAt = (e: PointerEvent) => {
       const el = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('.slot');
-      const idx = el ? Number(el.dataset.index) : -1;
+      return el?.dataset.index !== undefined ? Number(el.dataset.index) : -1;
+    };
+    const pick = (e: PointerEvent) => {
+      const idx = slotAt(e);
+      if (idx !== pressIndex) window.clearTimeout(pressTimer); // scrubbing cancels a long-press
       if (idx >= 0 && idx !== this.selected) this.onSelect(idx);
     };
     this.hotbar.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       e.stopPropagation();
       activePointer = e.pointerId;
+      pressIndex = slotAt(e);
+      window.clearTimeout(pressTimer);
+      if (pressIndex >= 0) pressTimer = window.setTimeout(() => this.onLongPress?.(pressIndex), LONG_PRESS_MS);
       pick(e);
     });
     this.hotbar.addEventListener('pointermove', (e) => {
@@ -123,6 +208,7 @@ export class VoxelHud {
     });
     const end = (e: PointerEvent) => {
       if (e.pointerId === activePointer) activePointer = null;
+      window.clearTimeout(pressTimer);
     };
     this.hotbar.addEventListener('pointerup', end);
     this.hotbar.addEventListener('pointercancel', end);

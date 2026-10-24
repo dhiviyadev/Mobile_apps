@@ -5,7 +5,11 @@
 import { supportsPointerLock } from '../device';
 import type { Action, InputManager } from './InputManager';
 
-const KEY_ACTIONS: Record<string, Action> = {
+/**
+ * Keys -> actions. A key may press several actions; each game reads only its own
+ * (E is weaponNext in the arena and inventory in Voxelvale).
+ */
+const KEY_ACTIONS: Record<string, Action | readonly Action[]> = {
   Space: 'jump',
   ShiftLeft: 'sprint',
   ShiftRight: 'sprint',
@@ -13,15 +17,22 @@ const KEY_ACTIONS: Record<string, Action> = {
   KeyC: 'crouch',
   KeyR: 'reload',
   KeyV: 'melee',
-  KeyF: 'melee',
-  KeyQ: 'weaponPrev',
-  KeyE: 'weaponNext',
+  KeyF: ['melee', 'swapHands'],
+  KeyQ: ['weaponPrev', 'drop'],
+  KeyE: ['weaponNext', 'inventory'],
+  KeyI: 'inventory',
+  KeyZ: 'guard',
   Tab: 'scoreboard',
   KeyT: 'chat',
   Enter: 'chat',
   KeyB: 'loadout',
   KeyX: 'autoShoot',
 };
+
+function actionsFor(code: string): readonly Action[] {
+  const a = KEY_ACTIONS[code];
+  return a === undefined ? [] : typeof a === 'string' ? [a] : a;
+}
 
 const SLOT_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Minus', 'Equal'];
 
@@ -59,6 +70,10 @@ export class KeyboardMouse {
       if (this.isLocked() || !supportsPointerLock() || this.lockFailed) {
         if (e.button === 0) this.input.press('primary');
         if (e.button === 2) this.input.press('secondary');
+        if (e.button === 1) {
+          e.preventDefault();
+          this.input.tap('pickBlock');
+        }
       } else {
         this.lock();
       }
@@ -77,6 +92,9 @@ export class KeyboardMouse {
       this.input.scrollSlot(e.deltaY > 0 ? 1 : -1);
     }, { passive: false });
     on(target, 'contextmenu', (e: Event) => e.preventDefault());
+    on(target, 'auxclick', (e: MouseEvent) => {
+      if (e.button === 1) e.preventDefault(); // no middle-click autoscroll / paste
+    });
     on(document, 'pointerlockchange', () => {
       if (this.isLocked()) {
         this.lockWorked = true;
@@ -131,12 +149,10 @@ export class KeyboardMouse {
       this.down.add(e.code);
       const slot = SLOT_KEYS.indexOf(e.code);
       if (slot >= 0) this.input.selectSlot(slot);
-      const action = KEY_ACTIONS[e.code];
-      if (action) this.input.press(action);
+      for (const action of actionsFor(e.code)) this.input.press(action);
     } else {
       this.down.delete(e.code);
-      const action = KEY_ACTIONS[e.code];
-      if (action) this.input.release(action);
+      for (const action of actionsFor(e.code)) this.input.release(action);
     }
     this.updateMove();
   }

@@ -100,14 +100,14 @@ class AudioEngine {
    * Plays a positional sound: volume by distance, pan by direction relative
    * to the listener's yaw.
    */
-  playAt(name: SfxName, dx: number, dz: number, listenerYaw: number, maxDist = 40, volume = 1): void {
+  playAt(name: SfxName, dx: number, dz: number, listenerYaw: number, maxDist = 40, volume = 1, pitch = 1): void {
     const d = Math.hypot(dx, dz);
     if (d > maxDist) return;
     const falloff = 1 / (1 + d * 0.12);
     // Right vector of a camera with yaw y is (cos y, 0, -sin y).
     const right = dx * Math.cos(listenerYaw) - dz * Math.sin(listenerYaw);
     const pan = d > 0.001 ? (right / d) * 0.8 : 0;
-    this.play(name, { volume: volume * falloff, pan });
+    this.play(name, { volume: volume * falloff, pan, pitch });
   }
 
   playMusic(mood: MusicMood): void {

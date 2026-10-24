@@ -25,8 +25,17 @@ export interface InteractionHost {
   canEdit(): boolean;
   /** Requests a block change (applied locally and/or sent to the server). */
   edit(x: number, y: number, z: number, id: number): void;
-  /** True if any player's body overlaps this block cell. */
+  /** True if any player's (or creature's) body overlaps this block cell. */
   isOccupied(x: number, y: number, z: number): boolean;
+  // ---- optional package hooks (wired by VoxelGame; defaults keep sandbox behaviour) ----
+  /** Seconds to break `block` with what is held (survival: breakSeconds; default: hardness). */
+  breakSeconds?(block: number): number;
+  /** First frame of digging a new cell (survival: DigStart message). */
+  onDigStart?(x: number, y: number, z: number): void;
+  /** Distance to the creature/player under the crosshair (Infinity if none). Closer than the block: no dig/place (attack/feed instead). */
+  entityDistance?(): number;
+  /** Secondary on this block (or nothing): return true when consumed (chest, bedroll, workbench, item use). Not called while an entity is closer. */
+  onSecondary?(target: VoxelHit | null, pressed: boolean): boolean;
 }
 
 const PLACE_REPEAT = 0.28;
@@ -47,11 +56,29 @@ export class BlockInteraction {
     private readonly fx: BlockFx,
   ) {}
 
-  update(dt: number, frame: InputFrame, eye: THREE.Vector3, dir: THREE.Vector3, selected: Block, feet: { x: number; y: number; z: number }): void {
+  /**
+   * `selected`: block id to place, or null when placing is disabled (survival: no
+   * block item selected). `yaw`: camera yaw (WP-A: ladder orientation).
+   */
+  update(dt: number, frame: InputFrame, eye: THREE.Vector3, dir: THREE.Vector3, selected: Block | null, feet: { x: number; y: number; z: number }, yaw = 0): void {
+    void yaw;
     this.swing = Math.max(0, this.swing - dt * 4);
     this.breakCooldown -= dt;
     const get = this.host.getBlock;
     this.target = raycastVoxels(get, eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, REACH);
+    const entityFirst = (this.host.entityDistance?.() ?? Infinity) < (this.target?.distance ?? Infinity);
+    if (entityFirst) {
+      this.fx.hideHighlight();
+      this.progress = 0;
+      this.progressKey = '';
+      this.fx.setCrack(0, 0, 0, 0);
+      return;
+    }
+    const wantSecondary = frame.pressed.has('secondary') || frame.held.has('secondary');
+    if (wantSecondary && this.host.onSecondary?.(this.target, frame.pressed.has('secondary'))) {
+      if (this.target) this.fx.showHighlight(this.target.x, this.target.y, this.target.z);
+      return;
+    }
     const t = this.target;
     if (!t || !this.host.canEdit()) {
       this.fx.hideHighlight();
@@ -68,8 +95,9 @@ export class BlockInteraction {
       if (key !== this.progressKey) {
         this.progressKey = key;
         this.progress = 0;
+        this.host.onDigStart?.(t.x, t.y, t.z);
       }
-      this.progress += dt / Math.max(0.05, def.hardness);
+      this.progress += dt / Math.max(0.05, this.host.breakSeconds?.(t.block) ?? def.hardness);
       this.swing = Math.max(this.swing, 0.6);
       this.digSoundTimer -= dt;
       if (this.digSoundTimer <= 0) {
@@ -96,7 +124,7 @@ export class BlockInteraction {
     // ---- placing -----------------------------------------------------------------
     this.placeTimer -= dt;
     const wantPlace = frame.pressed.has('secondary') || (frame.held.has('secondary') && this.placeTimer <= 0);
-    if (wantPlace) {
+    if (wantPlace && selected !== null) {
       this.placeTimer = PLACE_REPEAT;
       const px = t.x + t.nx;
       const py = t.y + t.ny;

@@ -6,11 +6,14 @@
  */
 import {
   type BlockEdit,
+  type BlockQuery,
   blockIndex,
   blockInWorld,
   CHUNK_HEIGHT,
   chunkKey,
   createWorldGenerator,
+  type GenVersion,
+  LATEST_GEN_VERSION,
   packPos,
   toChunkCoord,
   toLocal,
@@ -19,13 +22,15 @@ import {
   type WorldGenerator,
 } from '@hub/shared';
 
-const MAX_CACHED_CHUNKS = 256;
+/** Chunk cache floor (v2 generation costs about 2x v1, so more is kept). WP-C's setCacheBudget may raise it. */
+const MAX_CACHED_CHUNKS = 384;
 
 export class ServerVoxelWorld {
   readonly generator: WorldGenerator;
   /** packPos -> block id; the full history needed by late joiners. */
   private readonly edits = new Map<number, number>();
   private readonly cache = new Map<string, Uint8Array>();
+  private cacheBudget = MAX_CACHED_CHUNKS;
   private _dirty = false;
   /** encodedEdits() result, dropped whenever the edit list changes. */
   private encoded: Uint8Array | null = null;
@@ -34,8 +39,32 @@ export class ServerVoxelWorld {
     readonly seed: number,
     readonly mode: VoxelMode,
     readonly maxEdits = 200_000,
+    readonly genVersion: GenVersion = LATEST_GEN_VERSION,
   ) {
-    this.generator = createWorldGenerator(seed, mode);
+    this.generator = createWorldGenerator(seed, mode, genVersion);
+  }
+
+  // ---- fast access for the creature sim (WP-C replaces these bodies with chunk views) ----
+
+  /** Hot-loop block reader. WP0: same as getBlock (generates on demand). WP-C: cached views, Bedrock where no view. */
+  reader(): BlockQuery {
+    return (x, y, z) => this.getBlock(x, y, z);
+  }
+
+  /** Chunk data (with edits) is ready for the column. WP0: always true (getBlock generates). */
+  hasChunkView(_x: number, _z: number): boolean {
+    return true;
+  }
+
+  /** Queue generation of a chunk (time-budgeted by pumpWarm). WP0: no-op. */
+  warm(_cx: number, _cz: number): void {}
+
+  /** Generate queued chunks for up to maxMs (called every tick by VoxelRoom). WP0: no-op. */
+  pumpWarm(_maxMs = 3): void {}
+
+  /** Cache size in chunks (never below MAX_CACHED_CHUNKS). */
+  setCacheBudget(chunks: number): void {
+    this.cacheBudget = Math.max(MAX_CACHED_CHUNKS, Math.floor(chunks));
   }
 
   get editCount(): number {
@@ -145,7 +174,7 @@ export class ServerVoxelWorld {
     }
     c = this.generator.generateChunk(cx, cz);
     this.cache.set(key, c);
-    if (this.cache.size > MAX_CACHED_CHUNKS) {
+    if (this.cache.size > this.cacheBudget) {
       const oldest = this.cache.keys().next().value as string;
       this.cache.delete(oldest);
     }
