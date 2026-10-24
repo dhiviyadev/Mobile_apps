@@ -10,6 +10,7 @@ describe('service worker build', () => {
     expect(code).toContain('test12345678');
     expect(code).toContain('cobalt-hub-');
     expect(code).toContain('assets/a.js');
+    expect(code).toContain('ignoreVary'); // hashed files must match even when the host sends Vary: Origin
     expect(code).not.toMatch(/^\s*(import|export)\s/m);
     expect(() => new Function(code)).not.toThrow();
   }, 30_000);

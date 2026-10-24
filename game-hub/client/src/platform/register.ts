@@ -11,6 +11,7 @@
  *
  * Browser objects come in through ServiceWorkerHost so unit tests can fake them.
  */
+import { toast } from '../core/ui/overlays';
 import { CACHE_PREFIX, precacheCacheName, type SwInfo, type SwMessage } from './sw/routing';
 import { pwaPrefs, safeLocal, type SafeStorage, updatePwaPrefs } from './storage';
 
@@ -62,7 +63,7 @@ function browserHost(): ServiceWorkerHost {
         if (document.readyState === 'complete') later();
         else window.addEventListener('load', later, { once: true });
       }),
-    notify: (message) => void import('../core/ui/overlays').then(({ toast }) => toast(message, 'success', 4000)),
+    notify: (message) => toast(message, 'success', 4000),
   };
 }
 

@@ -116,7 +116,7 @@ async function navigate(event: FetchEvent): Promise<Response> {
   } catch {
     /* offline */
   }
-  const cached = (await caches.match(INDEX_URL, { cacheName: PRECACHE })) ?? (await caches.match(INDEX_URL));
+  const cached = (await caches.match(INDEX_URL, { cacheName: PRECACHE, ignoreVary: true })) ?? (await caches.match(INDEX_URL, { ignoreVary: true }));
   if (cached) return cached;
   try {
     return await network;
@@ -126,8 +126,10 @@ async function navigate(event: FetchEvent): Promise<Response> {
 }
 
 async function fromCache(req: Request, store: boolean): Promise<Response> {
-  // All caches: a waiting build's precache counts too.
-  const hit = await caches.match(req, { ignoreSearch: true });
+  // All caches: a waiting build's precache counts too. ignoreVary: hosts may send "Vary: Origin",
+  // and module scripts and crossorigin styles carry an Origin header the precache requests lack;
+  // these files are content-hashed, so the stored copy is always the right one.
+  const hit = await caches.match(req, { ignoreSearch: true, ignoreVary: true });
   if (hit) return hit;
   const res = await fetch(req);
   if (store && res.ok && res.type === 'basic') {

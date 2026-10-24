@@ -30,6 +30,9 @@ const SCREENSHOTS = [
   { file: 'hub.png', label: 'The Cobalt Game Hub' },
 ] as const;
 
+/** The service worker's source files (relative to the client root). */
+const SW_SOURCES = ['src/platform/sw/sw.ts', 'src/platform/sw/routing.ts'];
+
 /** Width and height from a PNG's IHDR chunk (bytes 16-23). */
 export function pngSize(bytes: Uint8Array): { width: number; height: number } {
   const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -95,7 +98,7 @@ export async function buildServiceWorker(o: { root: string; precache: string[]; 
       reportCompressedSize: false,
       minify: 'esbuild',
       target: 'es2017',
-      lib: { entry: path.resolve(o.root, 'src/platform/sw/sw.ts'), formats: ['iife'], name: 'cobaltSw', fileName: () => 'sw.js' },
+      lib: { entry: path.resolve(o.root, SW_SOURCES[0]), formats: ['iife'], name: 'cobaltSw', fileName: () => 'sw.js' },
     },
   });
   const out = (Array.isArray(res) ? res[0] : res) as Rollup.RollupOutput;
@@ -183,13 +186,18 @@ export function cobaltPwa(): Plugin {
         if (total > PRECACHE_MAX_BYTES) this.error(`[pwa] precache is ${kb} KB, over the ${PRECACHE_MAX_BYTES / 1024} KB limit`);
         if (total > PRECACHE_WARN_BYTES) this.warn(`[pwa] precache is ${kb} KB; players download all of it for offline play`);
 
-        buildId = computeBuildId(precache.map((f) => [f, contents.get(f)!] as const));
+        const kill = site.serviceWorker === 'off';
+        // The worker's own code counts too: a worker-only change must not reuse the old cache name.
+        buildId = computeBuildId([
+          ...precache.map((f) => [f, contents.get(f)!] as const),
+          ...SW_SOURCES.map((f) => [`(worker) ${f}`, readFileSync(path.resolve(config.root, f))] as const),
+          ['(worker) kill', String(kill)] as const,
+        ]);
         // The page's entry chunk (its facade is index.html, which imports src/main.ts).
         const entry = Object.values(bundle).find(
           (c): c is Rollup.OutputChunk => c.type === 'chunk' && c.isEntry && /\/(index\.html|src\/main\.ts)$/.test(c.facadeModuleId?.replace(/\\/g, '/') ?? ''),
         )?.fileName;
         if (!entry || !String(contents.get('index.html')).includes(entry)) this.error('[pwa] could not find the entry chunk of index.html');
-        const kill = site.serviceWorker === 'off';
         const code = await buildServiceWorker({ root: config.root, precache, buildId, entry, kill });
         this.emitFile({ type: 'asset', fileName: 'sw.js', source: code });
 

@@ -9,7 +9,6 @@ import { toast } from './overlays';
 import { isTouchDevice } from '../device';
 import { type QualitySetting, type Settings, settings } from '../settings';
 import { clear, h, removeWithTransition, svg } from './dom';
-import { appSettingsRows } from '../../platform/appSettings';
 
 const CLOSE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
@@ -93,8 +92,10 @@ export function openSettings(opts: SettingsMenuOptions = {}): void {
         ),
       );
     } else if (tab === 'app') {
-      // Version, offline play, install, updates (platform/appSettings.ts).
-      body.append(appSettingsRows());
+      // Version, offline play, install, updates (platform/appSettings.ts, loaded on demand).
+      const holder = h('div', { class: 'app-settings' });
+      body.append(holder);
+      void import('../../platform/appSettings').then((m) => holder.replaceWith(m.appSettingsRows()));
     } else {
       body.append(
         sliderRow('Master volume', 'masterVolume', 0, 1, 0.05, pct),
