@@ -15,6 +15,9 @@ import { hasGameServer } from '../net/serverUrl';
 import { gameLoaders } from '../games/registry';
 import { runBenchmark } from '../core/render/benchmark';
 import type { GameInstance } from '../games/types';
+import { isChunkLoadError } from '../platform/chunkErrors';
+import { gameSupport, type UnsupportedReason } from '../platform/detect';
+import { showChunkLoadError, showUnsupported } from './PlatformNotices';
 
 export type LaunchRequest =
   | { online: true; join: JoinRequest; game?: GameId; mode: string }
@@ -28,7 +31,21 @@ export interface LaunchHooks {
 }
 
 let running = false;
+let fullscreenFailed = false;
 const wakeLock = new ScreenWakeLock();
+
+/** True while a game (or its loading screen) is up. */
+export const isGameRunning = (): boolean => running;
+
+/** Whether the last launch on a touch device couldn't go full screen (suggests installing). */
+export const lastLaunchFullscreenFailed = (): boolean => fullscreenFailed;
+
+/** This browser lacks something the game needs (see platform/detect.ts gameSupport). */
+class UnsupportedError extends Error {
+  constructor(readonly reason: UnsupportedReason) {
+    super(`unsupported: ${reason}`);
+  }
+}
 
 /** Builds the join options from the saved profile. */
 export function profileOptions(mode?: string): JoinOptions {
@@ -38,10 +55,17 @@ export function profileOptions(mode?: string): JoinOptions {
 
 export async function launchGame(req: LaunchRequest, hooks: LaunchHooks): Promise<void> {
   if (running) return;
+  // Say so clearly when this browser can't run the game (no WebGL 2, or no module workers for Voxelvale).
+  const support = gameSupport(req.game);
+  if (!support.ok) {
+    void showUnsupported(support.reason);
+    return;
+  }
   running = true;
   // Both of these must start inside the click handler's user gesture.
   audio.unlock();
-  if (isTouchDevice()) void enterFullscreen();
+  fullscreenFailed = false;
+  if (isTouchDevice()) void enterFullscreen().then((ok) => (fullscreenFailed = !ok));
 
   const knownGame = req.game;
   const loading = new LoadingScreen(knownGame ? GAME_TITLES[knownGame] : 'Joining room', knownGame ? ACCENTS[knownGame] : undefined);
@@ -95,6 +119,8 @@ export async function launchGame(req: LaunchRequest, hooks: LaunchHooks): Promis
     if (!game) {
       session = await sessionPromise;
       game = session!.game;
+      const known = gameSupport(game); // a room code turned out to be Voxelvale
+      if (!known.ok) throw new UnsupportedError(known.reason);
     }
     const modulePromise = gameLoaders[game]();
     modulePromise.then(() => loading.set(0.25, 'Game loaded'));
@@ -146,6 +172,8 @@ export async function launchGame(req: LaunchRequest, hooks: LaunchHooks): Promis
     loading.done();
     void session?.leave();
     finish();
-    if (!isAbortError(err)) toast(err instanceof Error ? err.message : 'Something went wrong.', 'error', 4500);
+    if (err instanceof UnsupportedError) void showUnsupported(err.reason);
+    else if (isChunkLoadError(err)) void showChunkLoadError();
+    else if (!isAbortError(err)) toast(err instanceof Error ? err.message : 'Something went wrong.', 'error', 4500);
   }
 }

@@ -30,6 +30,13 @@ export class KeyboardMouse {
   /** Called when pointer lock is lost without us asking (Esc). */
   onUnlock: (() => void) | null = null;
   private wantLock = false;
+  /**
+   * Pointer lock was refused and has never worked here (sandboxed iframes,
+   * WebViews): fall back to drag-to-look. A refusal after it once worked is
+   * just the browser's cooldown after Esc, so it doesn't count.
+   */
+  private lockFailed = false;
+  private lockWorked = false;
 
   constructor(
     private readonly input: InputManager,
@@ -48,7 +55,7 @@ export class KeyboardMouse {
       this.input.releaseAll();
     });
     on(target, 'mousedown', (e: MouseEvent) => {
-      if (this.isLocked() || !supportsPointerLock()) {
+      if (this.isLocked() || !supportsPointerLock() || this.lockFailed) {
         if (e.button === 0) this.input.press('primary');
         if (e.button === 2) this.input.press('secondary');
       } else {
@@ -61,14 +68,19 @@ export class KeyboardMouse {
     });
     on(document, 'mousemove', (e: MouseEvent) => {
       if (this.isLocked()) this.input.addLook(e.movementX, e.movementY, 'mouse');
+      else if (this.lockFailed && e.buttons & 3) this.input.addLook(e.movementX, e.movementY, 'mouse');
     });
+    on(document, 'pointerlockerror', () => this.onLockRefused());
     on(target, 'wheel', (e: WheelEvent) => {
       e.preventDefault();
       this.input.scrollSlot(e.deltaY > 0 ? 1 : -1);
     }, { passive: false });
     on(target, 'contextmenu', (e: Event) => e.preventDefault());
     on(document, 'pointerlockchange', () => {
-      if (!this.isLocked()) {
+      if (this.isLocked()) {
+        this.lockWorked = true;
+        this.lockFailed = false;
+      } else {
         this.input.release('primary');
         this.input.release('secondary');
         if (this.wantLock) this.onUnlock?.();
@@ -85,10 +97,14 @@ export class KeyboardMouse {
     this.wantLock = true;
     try {
       const r = this.target.requestPointerLock() as unknown as Promise<void> | undefined;
-      r?.catch?.(() => undefined);
+      r?.catch?.(() => this.onLockRefused());
     } catch {
       /* ignore */
     }
+  }
+
+  private onLockRefused(): void {
+    if (!this.lockWorked) this.lockFailed = true;
   }
 
   unlock(): void {

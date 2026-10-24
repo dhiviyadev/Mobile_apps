@@ -1,5 +1,5 @@
 /**
- * Settings menu (hub and in-game). Tabs: Graphics, Controls, Audio.
+ * Settings menu (hub and in-game). Tabs: Graphics, Controls, Audio, App.
  * Every control writes straight into the settings store, which notifies the
  * running game, so changes apply live.
  */
@@ -9,10 +9,11 @@ import { toast } from './overlays';
 import { isTouchDevice } from '../device';
 import { type QualitySetting, type Settings, settings } from '../settings';
 import { clear, h, removeWithTransition, svg } from './dom';
+import { appSettingsRows } from '../../platform/appSettings';
 
 const CLOSE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
-type Tab = 'graphics' | 'controls' | 'audio';
+type Tab = 'graphics' | 'controls' | 'audio' | 'app';
 
 export interface SettingsMenuOptions {
   /** Shown as an extra button in the Controls tab (opens the touch layout editor). */
@@ -32,7 +33,7 @@ export function openSettings(opts: SettingsMenuOptions = {}): void {
 
   const renderTabs = () => {
     clear(tabs);
-    for (const [id, label] of [['graphics', 'Graphics'], ['controls', 'Controls'], ['audio', 'Audio']] as [Tab, string][]) {
+    for (const [id, label] of [['graphics', 'Graphics'], ['controls', 'Controls'], ['audio', 'Audio'], ['app', 'App']] as [Tab, string][]) {
       tabs.appendChild(h('button', { class: `seg-btn ${tab === id ? 'active' : ''}`, onclick: () => { tab = id; renderTabs(); renderBody(); } }, label));
     }
   };
@@ -91,6 +92,9 @@ export function openSettings(opts: SettingsMenuOptions = {}): void {
           h('button', { class: 'btn btn-sm btn-ghost', onclick: () => settings.update({ touchLayout: {} }) }, 'Reset'),
         ),
       );
+    } else if (tab === 'app') {
+      // Version, offline play, install, updates (platform/appSettings.ts).
+      body.append(appSettingsRows());
     } else {
       body.append(
         sliderRow('Master volume', 'masterVolume', 0, 1, 0.05, pct),

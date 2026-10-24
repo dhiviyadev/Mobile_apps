@@ -20,9 +20,11 @@ import { toast } from '../core/ui/overlays';
 import { openSettings } from '../core/ui/settingsMenu';
 import { hasGameServer } from '../net/serverUrl';
 import { pendingResume } from '../net/session';
+import { pwa } from '../platform/register';
 import { arenaArt, ICONS, voxelArt } from './art';
 import { GameSheet, type SheetAction } from './GameSheet';
-import { launchGame, type LaunchHooks, profileOptions } from './launcher';
+import { isGameRunning, lastLaunchFullscreenFailed, launchGame, type LaunchHooks, profileOptions } from './launcher';
+import { appPromoCard, installButton, maybeShowFullscreenTip, platformBanner, updateBar } from './PlatformNotices';
 import { RoomPoller } from './roomPoller';
 
 const TAGLINES: Record<GameId, string> = {
@@ -40,11 +42,35 @@ export class HubApp {
 
   constructor(mount: HTMLElement) {
     this.root = h('div', { class: 'hub' });
-    mount.appendChild(this.root);
+    // Replaces the static boot shell from index.html.
+    mount.replaceChildren(this.root);
     this.render();
+    document.body.appendChild(updateBar());
     this.poller.subscribe((data, error, waking) => this.updateCounts(data, error, waking));
     this.poller.start();
+    // Recheck the server as soon as the connection comes back (or goes).
+    window.addEventListener('online', () => this.poller.refresh());
+    window.addEventListener('offline', () => this.poller.refresh());
+    const resuming = pendingResume() !== null;
     void this.tryResume();
+    this.openFromLink(!resuming);
+  }
+
+  /** App shortcuts and shared links: ?open=voxel / ?open=arena opens that game's sheet. */
+  private openFromLink(openNow: boolean): void {
+    const isGame = (g: string | null | undefined): g is GameId => g === 'voxel' || g === 'arena';
+    const url = new URL(location.href);
+    const game = url.searchParams.get('open');
+    if (url.searchParams.has('open')) {
+      url.searchParams.delete('open'); // keeps ?server= and anything else
+      history.replaceState(history.state, '', url.href);
+    }
+    if (openNow && isGame(game)) this.openSheet(game);
+    // An installed app launched again (shortcut or link) while already open: focus-existing hands it over here.
+    window.launchQueue?.setConsumer((params) => {
+      const target = params.targetURL ? new URL(params.targetURL).searchParams.get('open') : null;
+      if (isGame(target) && !isGameRunning()) this.openSheet(target);
+    });
   }
 
   private render(): void {
@@ -125,12 +151,14 @@ export class HubApp {
     this.root.replaceChildren(
       h('header', { class: 'hub-header' },
         h('div', { class: 'brand' }, svg('<svg viewBox="0 0 128 128"><polygon points="64,26 98,46 64,66 30,46" fill="#5fd17a"/><polygon points="30,46 64,66 64,106 30,86" fill="#2fb3a6"/><polygon points="98,46 64,66 64,106 98,86" fill="#ff7a45"/></svg>', 'brand-mark'),
-          h('span', { class: 'brand-name' }, HUB_NAME)),
+          h('h1', { class: 'brand-name' }, HUB_NAME)),
         h('div', { class: 'header-right' },
+          installButton(),
           this.serverPill,
           h('button', { class: 'icon-btn', 'aria-label': 'Settings', 'data-testid': 'open-settings', onclick: () => openSettings() }, svg(ICONS.gear)),
         ),
       ),
+      platformBanner(),
       h('section', { class: 'profile' },
         h('div', { class: 'avatar-preview', style: `--sw:${hexColor(settings.get().color)}` }),
         h('div', { class: 'profile-fields' },
@@ -140,6 +168,7 @@ export class HubApp {
         ),
       ),
       h('section', { class: 'cards' }, this.card('voxel', voxelArt()), this.card('arena', arenaArt())),
+      appPromoCard(),
       h('section', { class: 'join-code' },
         h('label', { class: 'field-label' }, 'Have a room code?'),
         h('div', { class: 'join-code-row' },
@@ -147,7 +176,17 @@ export class HubApp {
           h('button', { class: 'btn btn-primary', 'data-testid': 'join-code', onclick: joinCode }, 'Join'),
         ),
       ),
-      h('footer', { class: 'hub-footer' }, 'All games, art, music and sound are original & generated in your browser.'),
+      h('footer', { class: 'hub-footer' },
+        'All games, art, music and sound are original & generated in your browser.',
+        // Crawlable description of the site (Google renders the hub).
+        h('details', { class: 'about', 'data-testid': 'about' },
+          h('summary', null, 'About Cobalt Game Hub'),
+          h('p', null, 'Cobalt Game Hub is a free collection of two original 3D games that run in your browser and install as an app on Android, iPad, iPhone, Chromebook, Windows and Mac.'),
+          h('p', null, h('strong', null, 'Voxelvale'), ' is a block-building sandbox with survival, creatures, biomes and parkour in generated worlds, alone or with up to 16 players. ',
+            h('strong', null, 'Arcfire Arena'), ' is a fast round-based arena shooter: duels, team fights and free-for-all, online or against bots.'),
+          h('p', null, 'All art, music and sound are made in code. Once installed, both games also work offline.'),
+        ),
+      ),
     );
     settings.subscribe((st, changed) => {
       if (changed.includes('color')) {
@@ -228,6 +267,8 @@ export class HubApp {
       this.poller.start();
       audio.playMusic('menu');
       if (message) toast(message, 'info', 4000);
+      pwa.onGameEnded();
+      maybeShowFullscreenTip(lastLaunchFullscreenFailed());
     },
   };
 
@@ -249,7 +290,7 @@ export class HubApp {
       this.serverPill.className = 'server-pill waking';
     } else if (error) {
       // A build without a game server (static hosting) is offline by design, not down.
-      this.serverPill.textContent = hasGameServer() ? 'Server offline' : 'Offline mode';
+      this.serverPill.textContent = navigator.onLine === false ? "You're offline" : hasGameServer() ? 'Server offline' : 'Offline mode';
       this.serverPill.className = 'server-pill offline';
     } else if (data) {
       const total = data.online.voxel + data.online.arena;

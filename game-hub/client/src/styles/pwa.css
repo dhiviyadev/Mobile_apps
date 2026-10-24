@@ -1,0 +1,173 @@
+/* ---------------------------------------------------------------------------
+   Installable app and limited browsers: Install app button, promo card,
+   platform banner, update bar, install instructions, About text.
+   --------------------------------------------------------------------------- */
+.brand-name {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.install-btn {
+  display: inline-flex;
+  gap: 6px;
+}
+@media (max-width: 519px) {
+  .install-btn .label { display: none; }
+  .install-btn { padding: 0 10px; }
+}
+
+/* ---- promo card ------------------------------------------------------------------ */
+.app-promo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(95, 209, 122, 0.12), rgba(255, 122, 69, 0.12));
+  border: 1px solid var(--line);
+}
+.app-promo-mark {
+  flex: none;
+  width: 44px;
+  height: 44px;
+}
+.app-promo-text {
+  flex: 1;
+  min-width: 0;
+}
+.app-promo-text h2 {
+  margin: 0 0 2px;
+  font-size: 1.1rem;
+}
+.app-promo-text p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.app-promo-actions {
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+@media (max-width: 639px) {
+  .app-promo { flex-wrap: wrap; }
+  .app-promo-actions { width: 100%; }
+  .app-promo-actions .btn { flex: 1; }
+}
+
+/* ---- platform banner -------------------------------------------------------------- */
+.platform-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 0.9rem;
+  background: rgba(255, 209, 102, 0.1);
+  border: 1px solid rgba(255, 209, 102, 0.35);
+}
+.platform-banner.danger {
+  background: rgba(255, 93, 93, 0.12);
+  border-color: rgba(255, 93, 93, 0.45);
+}
+.platform-banner .banner-text {
+  flex: 1 1 260px;
+  font-weight: 600;
+}
+.platform-banner a.btn {
+  color: inherit;
+  text-decoration: none;
+}
+.platform-banner .banner-close {
+  width: 40px;
+  height: 40px;
+}
+
+/* ---- update bar (hub only) ---------------------------------------------------------- */
+.update-bar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + var(--safe-bottom));
+  transform: translateX(-50%);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 24px);
+  padding: 8px 8px 8px 18px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  font-weight: 700;
+}
+body.in-game .update-bar {
+  display: none;
+}
+
+/* ---- install instructions ------------------------------------------------------------- */
+.install-sheet a.btn {
+  color: inherit;
+  text-decoration: none;
+}
+.install-steps {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  counter-reset: step;
+}
+.install-steps li {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 12px;
+  align-items: center;
+  min-height: 44px;
+  color: var(--text);
+}
+.install-steps .step-icon {
+  width: 28px;
+  height: 28px;
+  color: var(--accent);
+}
+.modal-actions {
+  flex-wrap: wrap;
+}
+
+/* ---- toasts with an action -------------------------------------------------------------- */
+.toast .toast-action {
+  pointer-events: auto;
+  margin-left: 8px;
+  min-height: 34px;
+}
+
+/* ---- crawlable About text --------------------------------------------------------------- */
+details.about {
+  max-width: 46rem;
+  margin: 8px auto 0;
+  text-align: left;
+  color: var(--muted);
+}
+details.about summary {
+  cursor: pointer;
+  text-align: center;
+  font-weight: 700;
+  padding: 8px;
+}
+details.about p {
+  margin: 8px 0;
+  line-height: 1.5;
+}
+details.about strong {
+  color: var(--text);
+}
+
+/* Belt and braces for the JS check: an installed app never offers to install itself. */
+html.standalone .install-btn,
+html.standalone .app-promo {
+  display: none;
+}
