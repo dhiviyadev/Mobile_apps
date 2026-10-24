@@ -6,6 +6,10 @@ import './styles/base.css';
 import './styles/hub.css';
 import './styles/overlays.css';
 import './styles/game.css';
+// Arcfire Arena feature styles, after game.css so they may override it.
+import './styles/arena-move.css';
+import './styles/arena-weapons.css';
+import './styles/arena-maps.css';
 import { audio } from './core/audio/audio';
 import { installGestureGuards, isIOS, isTouchDevice } from './core/device';
 import { HubApp } from './hub/HubApp';

@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { primeSettings, Touch, waitForGame } from './helpers';
+import { primeSettings, startArenaPractice as startPractice, Touch } from './helpers';
 
 type A = {
   match: { phase: string; round: number; mode: string; mapIndex: number; players: { id: string; team: number; kills: number }[] };
@@ -8,13 +8,6 @@ type A = {
 };
 
 const arena = (page: Page) => page.evaluate.bind(page);
-
-async function startPractice(page: Page, mode: '1 vs 1' | '2 vs 2' | 'Free-for-all') {
-  await page.getByTestId('card-arena').click();
-  await page.getByRole('tab', { name: mode }).click();
-  await page.getByRole('button', { name: 'Practice vs bots' }).click();
-  await waitForGame(page);
-}
 
 test.describe('Arcfire Arena practice', () => {
   test.beforeEach(async ({ page }) => {

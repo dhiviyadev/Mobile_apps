@@ -1,7 +1,9 @@
 /**
- * Axis-aligned box geometry for arena maps: ray casts, player collision.
+ * Axis-aligned box geometry for arena maps: ray casts, player collision,
+ * and the launch pads players bounce off.
  * Maps are small (a few hundred boxes), so a uniform XZ grid keeps queries cheap.
  */
+import { PAD } from './constants';
 
 export interface Box {
   minX: number;
@@ -19,6 +21,24 @@ export interface RayHit {
   ny: number;
   nz: number;
   index: number;
+}
+
+/** A launch surface (trampoline, launcher, speed strip). Its solid base is a normal map box with maxY = top. */
+export interface LaunchPad {
+  /** XZ footprint of the pad's walkable top, and its height. */
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+  top: number;
+  /** Launch velocity (m/s); vy is SET on contact. */
+  vx: number;
+  vy: number;
+  vz: number;
+  /** 'keep' trampoline (horizontal untouched) · 'set' aimed launcher · 'add' speed strip. */
+  horizontal: 'keep' | 'set' | 'add';
+  /** Trampolines: fraction of landing speed reflected when it beats vy (0 = fixed height). */
+  bounce: number;
 }
 
 /** Slab test. Returns entry distance or -1. Rays starting inside a box hit at t = 0. */
@@ -64,14 +84,17 @@ export function rayBox(ox: number, oy: number, oz: number, dx: number, dy: numbe
 
 const CELL = 4;
 
-/** Static collision world built from a map's boxes. */
+/** Static collision world built from a map's boxes, plus its launch pads. */
 export class BoxWorld {
   private readonly grid = new Map<number, number[]>();
   private readonly cellKey = (cx: number, cz: number) => (cx + 512) * 1024 + (cz + 512);
   private stamp = 0;
   private readonly marks: Uint32Array;
 
-  constructor(readonly boxes: readonly Box[]) {
+  constructor(
+    readonly boxes: readonly Box[],
+    readonly pads: readonly LaunchPad[] = [],
+  ) {
     this.marks = new Uint32Array(boxes.length);
     boxes.forEach((b, i) => {
       for (let cx = Math.floor(b.minX / CELL); cx <= Math.floor(b.maxX / CELL); cx++) {
@@ -159,4 +182,18 @@ export class BoxWorld {
     if (d < 1e-6) return true;
     return this.raycast(ax, ay, az, dx / d, dy / d, dz / d, d) === null;
   }
+
+  /** Index of the pad whose top the feet (footprint ±r) stand on, or -1. Linear scan (≤ 24 pads). */
+  padAt(x: number, y: number, z: number, r: number): number {
+    for (let i = 0; i < this.pads.length; i++) {
+      const p = this.pads[i];
+      if (Math.abs(y - p.top) <= PAD.topTolerance && x + r > p.minX && x - r < p.maxX && z + r > p.minZ && z - r < p.maxZ) return i;
+    }
+    return -1;
+  }
+}
+
+/** The one way to build a map's collision world (server sim, offline sim, client prediction and validators). */
+export function createArenaWorld(map: { boxes: readonly Box[]; pads?: readonly LaunchPad[] }): BoxWorld {
+  return new BoxWorld(map.boxes, map.pads ?? []);
 }

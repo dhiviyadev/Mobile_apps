@@ -7,7 +7,7 @@
  * and interpolates everyone else, so offline play exercises the same code
  * path as online play.
  */
-import type { ArenaEvent, ArenaMode, Command, Phase, PlayerSim, WeaponId } from '@hub/shared';
+import type { ArenaEvent, ArenaMap, ArenaMode, BotDifficulty, Command, Phase, PlayerSim, WeaponId } from '@hub/shared';
 
 export interface PoseData {
   x: number;
@@ -21,6 +21,8 @@ export interface PoseData {
   reloading: boolean;
   hp: number;
   weapon: WeaponId;
+  sliding: boolean;
+  onGround: boolean;
 }
 
 export interface SnapshotFrame {
@@ -46,6 +48,19 @@ export interface PlayerInfo {
   headshots: number;
   roundWins: number;
   primary: WeaponId;
+  secondary: WeaponId;
+  autoShoot: boolean;
+  /** Map index voted for, -1 none. */
+  vote: number;
+}
+
+export interface VoteInfo {
+  stage: 'open' | 'reveal';
+  /** ARENA_MAPS indices in card order. */
+  candidates: number[];
+  /** -1 while open. */
+  winner: number;
+  tie: boolean;
 }
 
 export interface MatchInfo {
@@ -55,11 +70,16 @@ export interface MatchInfo {
   round: number;
   teamWins: [number, number];
   mode: ArenaMode;
+  /** Index in ARENA_MAPS; -1 for a fixture map offline. */
   mapIndex: number;
   players: PlayerInfo[];
   hostId: string;
   lastRoundWinner: { team: number; id: string | null } | null;
   matchWinner: { team: number; id: string | null } | null;
+  vote: VoteInfo | null;
+  /** Per map pickup: authoritative tick at which it is available (0 = now). */
+  pickupReady: readonly number[];
+  botDifficulty: BotDifficulty;
 }
 
 export interface ArenaBackend {
@@ -77,10 +97,18 @@ export interface ArenaBackend {
   serverTick(): number;
   /** How far behind serverTick() remote players should be drawn, in ticks. */
   interpDelayTicks(): number;
-  chooseLoadout(weapon: WeaponId): void;
+  /** Loadout picks; the authority validates them (a missing or invalid slot is ignored). */
+  chooseLoadout(primary: WeaponId, secondary?: WeaponId): void;
+  /** Tells the authority whether auto-shoot is on (scoreboard disclosure only). */
+  setAutoShoot(on: boolean): void;
+  castVote(map: number): void;
+  /** Host (online: warmup or vote) / offline: bot difficulty for this match. */
+  setBotDifficulty(level: BotDifficulty): void;
   /** Host / offline: start the match now (optionally filling empty slots with bots). */
   startMatch(withBots: boolean): void;
   rematch(): void;
+  /** The map the authority is on (object identity changes when the map changes; may be a fixture map offline). */
+  currentMap(): ArenaMap;
   ping(): number | null;
   roomCode(): string | null;
   dispose(): void;

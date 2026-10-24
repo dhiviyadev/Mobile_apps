@@ -1,5 +1,5 @@
 /** Between-rounds loadout picker: one big tappable card per primary weapon. */
-import { PRIMARY_WEAPONS, type WeaponId, weaponDef } from '@hub/shared';
+import { DEFAULT_SECONDARY, PRIMARY_WEAPONS, type WeaponId, weaponDef } from '@hub/shared';
 import { h } from '../../../core/ui/dom';
 
 const BLURB: Record<number, string> = {
@@ -17,8 +17,10 @@ export class LoadoutPicker {
   private readonly cards = new Map<WeaponId, HTMLElement>();
   private readonly countdown: HTMLElement;
   private open = false;
+  /** Secondary shown with the last show(); the primary cards keep it. */
+  private secondary: WeaponId = DEFAULT_SECONDARY;
 
-  constructor(parent: HTMLElement, private readonly onPick: (w: WeaponId) => void) {
+  constructor(parent: HTMLElement, private readonly onPick: (primary: WeaponId, secondary: WeaponId) => void) {
     this.countdown = h('span', { class: 'lo-count' });
     const grid = h('div', { class: 'lo-grid' });
     for (const id of PRIMARY_WEAPONS) {
@@ -48,10 +50,11 @@ export class LoadoutPicker {
     return this.open;
   }
 
-  show(selected: WeaponId, secondsLeft: number | null): void {
+  show(primary: WeaponId, secondary: WeaponId, secondsLeft: number | null): void {
     this.open = true;
+    this.secondary = secondary;
     this.el.classList.remove('hidden');
-    this.highlight(selected);
+    this.highlight(primary);
     this.countdown.textContent = secondsLeft === null ? '' : `Round starts in ${Math.ceil(secondsLeft)}`;
   }
 
@@ -62,7 +65,7 @@ export class LoadoutPicker {
 
   private pick(id: WeaponId): void {
     this.highlight(id);
-    this.onPick(id);
+    this.onPick(id, this.secondary);
   }
 
   private highlight(id: WeaponId): void {

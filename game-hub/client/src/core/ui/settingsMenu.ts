@@ -7,7 +7,7 @@ import { audio } from '../audio/audio';
 import { runBenchmark } from '../render/benchmark';
 import { toast } from './overlays';
 import { isTouchDevice } from '../device';
-import { type QualitySetting, type Settings, settings } from '../settings';
+import { type Settings, settings } from '../settings';
 import { clear, h, removeWithTransition, svg } from './dom';
 
 const CLOSE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
@@ -72,6 +72,13 @@ export function openSettings(opts: SettingsMenuOptions = {}): void {
         toggleRow('Left-handed layout', 'leftHanded', 'Joystick on the right, look and buttons on the left.'),
         toggleRow('Auto-jump (Voxelvale)', 'autoJump', 'Hop up single blocks automatically while walking.'),
         toggleRow('Aim assist (touch only)', 'aimAssist', 'Slightly slows aiming when your crosshair is over an opponent.'),
+        toggleRow('Auto-shoot (Arcfire Arena)', 'autoShoot', 'Fires automatically while your crosshair is on an opponent. Works with touch and mouse.'),
+        toggleRow('Camera motion effects', 'cameraMotion', 'Speed zoom, slide tilt and landing dip in Arcfire Arena. Turn off if motion makes you uncomfortable.'),
+        selectRow('Bot difficulty (Arcfire Arena)', 'arenaBotDifficulty', [
+          ['easy', 'Easy: slow reactions, shaky aim'],
+          ['normal', 'Normal'],
+          ['hard', 'Hard: close to the old bots'],
+        ]),
         sliderRow('Button size', 'touchButtonScale', 0.7, 1.5, 0.05, (v) => `${Math.round(v * 100)}%`),
         sliderRow('Button opacity', 'touchOpacity', 0.3, 1, 0.05, (v) => `${Math.round(v * 100)}%`),
       );
@@ -101,7 +108,7 @@ export function openSettings(opts: SettingsMenuOptions = {}): void {
           h('button', {
             class: 'btn btn-sm btn-danger',
             onclick: () => {
-              settings.reset(['quality', 'detectedQuality', 'renderDistance', 'dynamicResolution', 'fpsCap', 'showStats', 'lookSensitivity', 'mouseSensitivity', 'invertY', 'leftHanded', 'autoJump', 'aimAssist', 'touchButtonScale', 'touchOpacity', 'touchLayout', 'masterVolume', 'musicVolume', 'sfxVolume']);
+              settings.reset(['quality', 'detectedQuality', 'renderDistance', 'dynamicResolution', 'fpsCap', 'showStats', 'lookSensitivity', 'mouseSensitivity', 'invertY', 'leftHanded', 'autoJump', 'aimAssist', 'touchButtonScale', 'touchOpacity', 'touchLayout', 'masterVolume', 'musicVolume', 'sfxVolume', 'autoShoot', 'cameraMotion', 'arenaBotDifficulty']);
               toast('Settings reset', 'success');
               renderBody();
             },
@@ -147,6 +154,7 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 
 type NumericKey = { [K in keyof Settings]: Settings[K] extends number ? K : never }[keyof Settings];
 type BoolKey = { [K in keyof Settings]: Settings[K] extends boolean ? K : never }[keyof Settings];
+type StringKey = { [K in keyof Settings]: Settings[K] extends string ? K : never }[keyof Settings];
 
 function sliderRow(label: string, key: NumericKey, min: number, max: number, step: number, fmt: (v: number) => string, onChange?: () => void): HTMLElement {
   const value = h('span', { class: 'setting-value' }, fmt(settings.get()[key]));
@@ -181,10 +189,11 @@ function batteryRow(): HTMLElement {
   );
 }
 
-function selectRow(label: string, key: 'quality', options: [QualitySetting, string][]): HTMLElement {
+/** Drop-down for a string setting; the values offered are the only ones it writes. */
+function selectRow<K extends StringKey>(label: string, key: K, options: [Settings[K], string][], hint?: string): HTMLElement {
   const select = h('select', { class: 'select' },
     options.map(([v, text]) => h('option', { value: v, selected: settings.get()[key] === v }, text)),
   );
-  select.addEventListener('change', () => settings.update({ [key]: select.value as QualitySetting }));
-  return h('div', { class: 'setting-row' }, h('div', { class: 'setting-label' }, label), select);
+  select.addEventListener('change', () => settings.update({ [key]: select.value } as Partial<Settings>));
+  return h('div', { class: 'setting-row' }, h('div', { class: 'setting-label' }, label, hint ? h('small', null, hint) : null), select);
 }

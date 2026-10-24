@@ -2,6 +2,7 @@
  * Persistent player settings (localStorage). Every module reads from the same
  * reactive store so changes in the settings menu apply immediately in-game.
  */
+import type { BotDifficulty } from '@hub/shared';
 
 export type QualityPreset = 'low' | 'medium' | 'high';
 export type QualitySetting = QualityPreset | 'auto';
@@ -42,6 +43,16 @@ export interface Settings {
   masterVolume: number;
   musicVolume: number;
   sfxVolume: number;
+  // Arcfire Arena
+  /** Speed zoom, slide tilt and landing dip. */
+  cameraMotion: boolean;
+  /** Fire automatically while the crosshair is on an opponent. */
+  autoShoot: boolean;
+  /** Last loadout picks (WeaponId values; validate with isPrimary / isSecondary). */
+  arenaPrimary: number;
+  arenaSecondary: number;
+  /** Practice bots, and bots in rooms this player creates (validate with isBotDifficulty). */
+  arenaBotDifficulty: BotDifficulty;
 }
 
 export const AVATAR_COLORS = [0x4fa3ff, 0x5fd17a, 0xffd166, 0xff7a45, 0xff4f7b, 0xb07cff, 0x2fb3a6, 0xf4f1ea];
@@ -69,6 +80,11 @@ export const DEFAULT_SETTINGS: Settings = {
   masterVolume: 0.8,
   musicVolume: 0.5,
   sfxVolume: 0.8,
+  cameraMotion: true,
+  autoShoot: false,
+  arenaPrimary: 0,
+  arenaSecondary: 3,
+  arenaBotDifficulty: 'normal',
 };
 
 type Listener = (s: Settings, changed: (keyof Settings)[]) => void;

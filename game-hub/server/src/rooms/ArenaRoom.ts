@@ -21,16 +21,21 @@ import {
   ArenaSimulation,
   arenaMap,
   asBytes,
+  BOT_DIFFICULTIES,
+  type BotDifficulty,
+  BUTTON_MASK,
   CLOSE_KICKED,
   decodeCommands,
   encodePoses,
   encodeSnapshot,
   isArenaMode,
+  isBotDifficulty,
   type JoinOptions,
   type NetPose,
   PoseFlags,
   type SimPlayer,
   TICK_RATE,
+  type Tuple3,
 } from '@hub/shared';
 import { HubRoom } from './HubRoom';
 import { ArenaPlayer, ArenaState } from './schema/ArenaState';
@@ -51,17 +56,22 @@ interface ClientRuntime {
 }
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
+const round3 = (p: Tuple3) => p.map(r2) as Tuple3;
+const normal3 = (n: Tuple3 | null) => (n ? (n.map(Math.round) as Tuple3) : null);
 
 /** Rounds coordinates so event batches stay small on the wire. */
 function compactEvents(events: ArenaEvent[]): ArenaEvent[] {
   return events.map((e) => {
-    if (e.type !== 'shot') return e;
-    return {
-      ...e,
-      origin: e.origin.map(r2) as [number, number, number],
-      ends: e.ends.map((p) => p.map(r2) as [number, number, number]),
-      normals: e.normals.map((n) => (n ? (n.map(Math.round) as [number, number, number]) : null)),
-    };
+    switch (e.type) {
+      case 'shot':
+        return { ...e, origin: round3(e.origin), ends: e.ends.map(round3), normals: e.normals.map(normal3) };
+      case 'proj':
+        return { ...e, origin: round3(e.origin), vel: round3(e.vel) };
+      case 'projEnd':
+        return { ...e, pos: round3(e.pos), normal: normal3(e.normal) };
+      default:
+        return e;
+    }
   });
 }
 
@@ -79,19 +89,35 @@ export class ArenaRoom extends HubRoom<ArenaState, ArenaPlayer> {
     return isArenaMode(requested) ? requested : '1v1';
   }
 
-  protected setup(): void {
+  protected setup(options: JoinOptions): void {
     const mode = this.mode as ArenaMode;
     this.maxClients = ARENA_MODE_INFO[mode].maxPlayers;
     this.state = new ArenaState();
     this.chatEnabled = true;
     this.state.mapIndex = Math.floor(Math.random() * ARENA_MAPS.length);
     this.state.minHumans = ARENA_MODE_INFO[mode].minHumansToStart;
-    this.sim = new ArenaSimulation(arenaMap(this.state.mapIndex), mode, { seed: (Math.random() * 1e9) | 0 });
+    // The room creator picks the bot difficulty; the host can change it in warmup / vote.
+    const diff: BotDifficulty = isBotDifficulty(options.botDifficulty) ? options.botDifficulty : 'normal';
+    this.sim = new ArenaSimulation(arenaMap(this.state.mapIndex), mode, { seed: (Math.random() * 1e9) | 0, botDifficulty: diff });
+    this.state.botDifficulty = BOT_DIFFICULTIES.indexOf(diff);
 
     // Binary messages have their own handlers (sent with sendBytes on the client).
     this.onMessageBytes(ArenaMsg.Input, (client, data) => this.handleInput(client, data));
-    this.onMessage(ArenaMsg.Loadout, (client, data: { weapon?: unknown }) => {
-      if (typeof data?.weapon === 'number') this.sim.setLoadout(client.sessionId, data.weapon);
+    this.onMessage(ArenaMsg.Loadout, (client, data: { weapon?: unknown; secondary?: unknown }) => {
+      this.sim.setLoadout(client.sessionId, data?.weapon, data?.secondary);
+      this.syncState();
+    });
+    this.onMessage(ArenaMsg.Prefs, (client, data: { autoShoot?: unknown }) => {
+      this.sim.setAutoShootFlag(client.sessionId, data?.autoShoot === true);
+      this.syncState();
+    });
+    this.onMessage(ArenaMsg.Vote, (client, data: { map?: unknown }) => {
+      if (typeof data?.map === 'number' && this.sim.castVote(client.sessionId, data.map)) this.syncState();
+    });
+    this.onMessage(ArenaMsg.BotSkill, (client, data: { level?: unknown }) => {
+      if (client.sessionId !== this.state.hostId || !isBotDifficulty(data?.level)) return;
+      if (this.sim.phase !== 'warmup' && this.sim.phase !== 'vote') return;
+      this.sim.setBotDifficulty(data.level);
       this.syncState();
     });
     this.onMessage(ArenaMsg.Start, (client, data: { bots?: unknown }) => this.handleStart(client, data?.bots === true));
@@ -239,8 +265,8 @@ export class ArenaRoom extends HubRoom<ArenaState, ArenaPlayer> {
         this.violation(client, rt, 'input flood');
         return;
       }
-      // Only the six defined buttons; anything else is ignored.
-      c.buttons &= 0x3f;
+      // Only the defined buttons; anything else is ignored.
+      c.buttons &= BUTTON_MASK;
       this.sim.queueCommand(client.sessionId, c);
     }
   }
@@ -326,6 +352,26 @@ export class ArenaRoom extends HubRoom<ArenaState, ArenaPlayer> {
     set('roundWinnerId', sim.lastRoundWinner?.id ?? '');
     set('matchWinnerTeam', sim.matchWinner ? sim.matchWinner.team : -2);
     set('matchWinnerId', sim.matchWinner?.id ?? '');
+    // Map vote.
+    const v = sim.vote;
+    const cand = v ? v.candidates : [];
+    if (s.voteMaps.length !== cand.length || cand.some((m, i) => s.voteMaps[i] !== m)) {
+      s.voteMaps.clear();
+      s.voteMaps.push(...cand);
+    }
+    set('voteWinner', v && v.stage === 'reveal' ? v.winner : -1);
+    set('voteTie', !!v && v.tie);
+    set('botDifficulty', BOT_DIFFICULTIES.indexOf(sim.botDifficulty));
+    // Pickup respawn ticks.
+    const ready = sim.pickups.ready;
+    if (s.pickupReady.length !== ready.length) {
+      s.pickupReady.clear();
+      s.pickupReady.push(...ready);
+    } else {
+      ready.forEach((t, i) => {
+        if (s.pickupReady[i] !== t) s.pickupReady[i] = t;
+      });
+    }
 
     for (const p of sim.players.values()) {
       let sp = s.players.get(p.id);
@@ -350,6 +396,9 @@ export class ArenaRoom extends HubRoom<ArenaState, ArenaPlayer> {
       upd('headshots', p.stats.headshots);
       upd('roundWins', p.stats.roundWins);
       upd('primary', p.primary);
+      upd('secondary', p.secondary);
+      upd('autoShoot', p.autoShoot);
+      upd('vote', sim.vote?.votes.get(p.id) ?? -1);
     }
     // Drop bots the simulation no longer has.
     s.players.forEach((sp, id) => {
@@ -372,7 +421,8 @@ function poseOf(p: SimPlayer): NetPose {
       (s.crouching ? PoseFlags.Crouch : 0) |
       (s.aiming ? PoseFlags.Aim : 0) |
       (s.reload > 0 ? PoseFlags.Reload : 0) |
-      (s.onGround ? PoseFlags.Ground : 0),
+      (s.onGround ? PoseFlags.Ground : 0) |
+      (s.sliding ? PoseFlags.Slide : 0),
     hp: s.hp,
     weapon: s.weapons[s.slot].id,
   };

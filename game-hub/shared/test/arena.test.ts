@@ -6,6 +6,7 @@ import {
   BoxWorld,
   Buttons,
   type Command,
+  createMoveState,
   createPlayerSim,
   decodeCommands,
   decodeSnapshot,
@@ -13,6 +14,7 @@ import {
   encodePoses,
   encodeSnapshot,
   hitboxesFor,
+  LOADOUT_TIME,
   MOVE,
   PLAYER,
   resolveShot,
@@ -65,7 +67,7 @@ describe('arena maps', () => {
 describe('arena movement', () => {
   it('accelerates to walk speed and stops with friction', () => {
     const world = flatWorld();
-    const s = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, onGround: true, crouching: false };
+    const s = createMoveState(0, 0, 0);
     for (let i = 0; i < 60; i++) stepMovement(s, { moveX: 0, moveY: 1, yaw: 0, jump: false, crouch: false, speedMul: 1 }, world, 1 / 60);
     expect(Math.hypot(s.vx, s.vz)).toBeCloseTo(MOVE.walkSpeed, 3);
     expect(s.z).toBeLessThan(-4); // yaw 0 looks toward -Z
@@ -75,7 +77,7 @@ describe('arena movement', () => {
 
   it('jumps about 1.2 m and is blocked by walls', () => {
     const world = flatWorld([{ minX: -5, maxX: 5, minY: 0, maxY: 3, minZ: -3, maxZ: -2 }]);
-    const s = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, onGround: true, crouching: false };
+    const s = createMoveState(0, 0, 0);
     let peak = 0;
     stepMovement(s, { moveX: 0, moveY: 0, yaw: 0, jump: true, crouch: false, speedMul: 1 }, world, 1 / 60);
     for (let i = 0; i < 60; i++) {
@@ -90,7 +92,7 @@ describe('arena movement', () => {
   it('climbs the Foundry stairs onto the central deck', () => {
     const map = ARENA_MAPS[0];
     const world = new BoxWorld(map.boxes);
-    const s = { x: -9, y: 0, z: 0, vx: 0, vy: 0, vz: 0, onGround: true, crouching: false };
+    const s = createMoveState(-9, 0, 0);
     // Face east (+X): yaw = -PI/2.
     for (let i = 0; i < 70; i++) stepMovement(s, { moveX: 0, moveY: 1, yaw: -Math.PI / 2, jump: false, crouch: false, speedMul: 1 }, world, 1 / 60);
     expect(s.y).toBeCloseTo(2.4, 2);
@@ -167,7 +169,7 @@ describe('arena simulation', () => {
     const shooter = sim.addPlayer({ id: 'a', name: 'A', color: 1 });
     const target = sim.addPlayer({ id: 'b', name: 'B', color: 2 });
     sim.startMatch();
-    for (let i = 0; i < 6 * TICK_RATE + 2; i++) sim.step(); // through loadout
+    for (let i = 0; i < LOADOUT_TIME * TICK_RATE + 2; i++) sim.step(); // through loadout
     expect(sim.phase).toBe('live');
     // Place both in the open north lane and record history while the target moves.
     Object.assign(shooter.sim, { x: -14, y: 0, z: 7, yaw: -Math.PI / 2, pitch: 0 });

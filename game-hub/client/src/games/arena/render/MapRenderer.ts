@@ -82,7 +82,7 @@ export function buildMapMesh(map: ArenaMap): THREE.Mesh {
 
   const fog = new THREE.Color(map.theme.fog);
   const mat = new THREE.ShaderMaterial({
-    uniforms: { uFogColor: { value: fog }, uFogNear: { value: 30 }, uFogFar: { value: 85 } },
+    uniforms: { uFogColor: { value: fog }, uFogNear: { value: map.theme.fogNear }, uFogFar: { value: map.theme.fogFar } },
     vertexColors: true,
     vertexShader: /* glsl */ `
       varying vec3 vColor;

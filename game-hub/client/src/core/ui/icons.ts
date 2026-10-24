@@ -16,4 +16,7 @@ export const GAME_ICONS = {
   melee: svg('<path d="M5 19l9-9M14 4l6 6-4 1-3-3z"/>'),
   scoreboard: svg('<path d="M4 6h16M4 12h16M4 18h10"/>'),
   sprint: svg('<path d="M13 4l-2 6h5l-6 10 2-7H7z"/>', true),
+  /** Arcfire Arena: the crouch button while a slide is possible. */
+  slide: svg('<path d="M3 19h18M5 15h11M13 12l3 3-3 3"/>'),
+  autofire: svg('<circle cx="12" cy="12" r="8"/><path d="M9 15.5l3-7.5 3 7.5M10.2 13h3.6"/>'),
 };

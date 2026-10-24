@@ -33,7 +33,8 @@ const wakeLock = new ScreenWakeLock();
 /** Builds the join options from the saved profile. */
 export function profileOptions(mode?: string): JoinOptions {
   const s = settings.get();
-  return { nickname: s.nickname, color: s.color, mode };
+  // botDifficulty only matters for an arena room this player creates; the server validates it.
+  return { nickname: s.nickname, color: s.color, mode, botDifficulty: s.arenaBotDifficulty };
 }
 
 export async function launchGame(req: LaunchRequest, hooks: LaunchHooks): Promise<void> {

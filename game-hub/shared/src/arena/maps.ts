@@ -5,47 +5,14 @@
  * Layout conventions: X runs west→east (team 0 spawns west, team 1 east),
  * Z runs north→south, Y is up, the floor top is at y = 0. Cover pieces are
  * declared once and mirrored through the origin, so both sides are identical.
+ * The data model lives in mapTypes.ts.
  */
-import type { Box } from './geometry';
+import type { ArenaMap, BoxKind, MapBox, NavLink, SpawnPoint } from './mapTypes';
 
-export type BoxKind = 'floor' | 'wall' | 'cover' | 'platform' | 'stairs' | 'accent' | 'pillar' | 'trim';
+export * from './mapTypes';
 
-export interface MapBox extends Box {
-  kind: BoxKind;
-}
-
-export interface SpawnPoint {
-  x: number;
-  y: number;
-  z: number;
-  yaw: number;
-}
-
-export interface MapTheme {
-  sky: number;
-  horizon: number;
-  fog: number;
-  floor: number;
-  wall: number;
-  cover: number;
-  platform: number;
-  accent: number;
-  trim: number;
-}
-
-export interface ArenaMap {
-  id: string;
-  name: string;
-  description: string;
-  boxes: MapBox[];
-  spawns: { team: [SpawnPoint[], SpawnPoint[]]; ffa: SpawnPoint[] };
-  /** Bot navigation graph. */
-  waypoints: { x: number; y: number; z: number }[];
-  links: [number, number][];
-  theme: MapTheme;
-  /** Playable bounds (inside the outer walls). */
-  bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
-}
+/** Old-style [a, b] waypoint pairs as walk links. */
+const walkLinks = (pairs: [number, number][]): NavLink[] => pairs.map(([a, b]) => ({ a, b, kind: 'walk' as const }));
 
 // ---- builders ----------------------------------------------------------------------
 
@@ -170,11 +137,14 @@ function foundry(): ArenaMap {
     id: 'foundry',
     name: 'Foundry Yard',
     description: 'Raised central deck, container lanes and corner gantries.',
+    tags: [],
     boxes,
+    pads: [],
+    pickups: [],
     spawns: { team: [westSpawns, mirrorSpawns(westSpawns)], ffa: faceCentre([[-21, 0, -12], [21, 0, 12], [-8, 0, -15.5], [8, 0, 15.5], [-13, 0, 2], [13, 0, -2], [-3, 0, -7], [3, 0, 7]]) },
     waypoints: mirrorWaypoints(wp),
-    links: allLinks,
-    theme: { sky: 0x7fb2e0, horizon: 0xf0d2b0, fog: 0xe2c6a6, floor: 0x5d6472, wall: 0x9aa3b2, cover: 0xe0773a, platform: 0x7c8899, accent: 0x2fb3a6, trim: 0xf2c14e },
+    links: walkLinks(allLinks),
+    theme: { sky: 0x7fb2e0, horizon: 0xf0d2b0, fog: 0xe2c6a6, floor: 0x5d6472, wall: 0x9aa3b2, cover: 0xe0773a, platform: 0x7c8899, accent: 0x2fb3a6, trim: 0xf2c14e, pad: 0x45d7ff, fogNear: 30, fogFar: 85 },
     bounds: { minX: -24, maxX: 24, minZ: -18, maxZ: 18 },
   };
 }
@@ -229,11 +199,14 @@ function courts(): ArenaMap {
     id: 'courts',
     name: 'Sunken Courts',
     description: 'Terraces overlook a pillared court. Control the high ground.',
+    tags: [],
     boxes,
+    pads: [],
+    pickups: [],
     spawns: { team: [westSpawns, mirrorSpawns(westSpawns)], ffa: faceCentre([[-19, 0, 7], [19, 0, -7], [-10, 0, -8], [10, 0, 8], [-14, 2, 13], [14, 2, -13], [-3, 0, -12], [3, 0, 12]]) },
     waypoints: mirrorWaypoints(wp),
-    links: allLinks,
-    theme: { sky: 0x9fd0e6, horizon: 0xf3e2c0, fog: 0xead6b2, floor: 0xcbb38a, wall: 0xb39a74, cover: 0x8a7457, platform: 0xd8c39a, accent: 0x2fb3a6, trim: 0xe8dcc0 },
+    links: walkLinks(allLinks),
+    theme: { sky: 0x9fd0e6, horizon: 0xf3e2c0, fog: 0xead6b2, floor: 0xcbb38a, wall: 0xb39a74, cover: 0x8a7457, platform: 0xd8c39a, accent: 0x2fb3a6, trim: 0xe8dcc0, pad: 0xff9d2e, fogNear: 30, fogFar: 85 },
     bounds: { minX: -21, maxX: 21, minZ: -17, maxZ: 17 },
   };
 }
@@ -289,11 +262,14 @@ function skybridge(): ArenaMap {
     id: 'skybridge',
     name: 'Skybridge',
     description: 'Two towers, one exposed bridge, and tight cover below.',
+    tags: [],
     boxes,
+    pads: [],
+    pickups: [],
     spawns: { team: [westSpawns, mirrorSpawns(westSpawns)], ffa: faceCentre([[-21, 0, -11], [21, 0, 11], [-16, T, -3], [16, T, 3], [-3, 0, -11], [3, 0, 11], [-10, 0, 12], [10, 0, -12]]) },
     waypoints: mirrorWaypoints(wp),
-    links: allLinks,
-    theme: { sky: 0x2a2f5c, horizon: 0x8f6fc4, fog: 0x5b4a8a, floor: 0x343a52, wall: 0x4a4f72, cover: 0xb07cff, platform: 0x5d6488, accent: 0x2fd3c8, trim: 0xff7ac0 },
+    links: walkLinks(allLinks),
+    theme: { sky: 0x2a2f5c, horizon: 0x8f6fc4, fog: 0x5b4a8a, floor: 0x343a52, wall: 0x4a4f72, cover: 0xb07cff, platform: 0x5d6488, accent: 0x2fd3c8, trim: 0xff7ac0, pad: 0x6dff9a, fogNear: 30, fogFar: 85 },
     bounds: { minX: -22, maxX: 22, minZ: -14, maxZ: 14 },
   };
 }

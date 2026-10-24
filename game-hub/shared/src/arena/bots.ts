@@ -11,9 +11,14 @@
 import type { ArenaMap } from './maps';
 import type { BoxWorld } from './geometry';
 import { eyeHeight } from './movement';
-import { Buttons, type Command } from './player';
+import { Buttons, type Command, type PlayerSim } from './player';
 import type { ArenaSimulation, SimPlayer } from './sim';
 import { WeaponId, weaponDef } from './weapons';
+
+export type BotDifficulty = 'easy' | 'normal' | 'hard';
+/** Index = ArenaState.botDifficulty. */
+export const BOT_DIFFICULTIES = ['easy', 'normal', 'hard'] as const;
+export const isBotDifficulty = (v: unknown): v is BotDifficulty => v === 'easy' || v === 'normal' || v === 'hard';
 
 export class NavGraph {
   readonly points: { x: number; y: number; z: number }[];
@@ -27,7 +32,7 @@ export class NavGraph {
       this.adj[a].push(b);
       this.adj[b].push(a);
     };
-    for (const [a, b] of map.links) if (this.points[a] && this.points[b]) link(a, b);
+    for (const l of map.links) if (this.points[l.a] && this.points[l.b]) link(l.a, l.b);
     // Auto-link points on the same level with a clear walk between them.
     for (let i = 0; i < this.points.length; i++) {
       for (let j = i + 1; j < this.points.length; j++) {
@@ -95,12 +100,14 @@ export interface BotBrain {
   jumpUntil: number;
   aimSince: number;
   rnd: () => number;
+  difficulty: BotDifficulty;
 }
 
-export function createBotBrain(rnd: () => number): BotBrain {
+export function createBotBrain(rnd: () => number, difficulty: BotDifficulty = 'normal'): BotBrain {
   // Tuned for touch players: noticeable reaction time and aim that needs a moment to settle.
   const skill = 0.2 + rnd() * 0.4;
   return {
+    difficulty,
     seq: 0,
     skill,
     reaction: 0.6 - skill * 0.3,
@@ -122,6 +129,23 @@ export function createBotBrain(rnd: () => number): BotBrain {
     rnd,
   };
 }
+
+/** Switches a brain to another difficulty profile. */
+export function applyBotProfile(b: BotBrain, d: BotDifficulty): void {
+  b.difficulty = d;
+}
+
+/** Called by sim.changeMap() for every brain. */
+export function resetBotForMap(b: BotBrain): void {
+  b.path = [];
+  b.lastSeen = null;
+}
+
+/** Gunfire at (x, y, z) heard by this bot (the sim calls it for every enemy bot). Not used yet. */
+export function hearNoise(b: BotBrain, self: PlayerSim, x: number, y: number, z: number, now: number): void {}
+
+/** This bot took damage from attackerId. Not used yet. */
+export function botHurt(b: BotBrain, attackerId: string, now: number): void {}
 
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const turnToward = (cur: number, target: number, maxStep: number) => {
@@ -154,13 +178,13 @@ export function botCommand(sim: ArenaSimulation, bot: SimPlayer, brain: BotBrain
     brain.path = [];
     return { ...cmd, yaw: me.yaw };
   }
-  if (sim.phase === 'loadout') {
+  if (sim.phase === 'loadout' || sim.phase === 'vote') {
     brain.yaw = me.yaw;
     brain.pitch = 0;
     return { ...cmd, yaw: me.yaw, pitch: 0 };
   }
 
-  const eyeY = me.y + eyeHeight(me.crouching);
+  const eyeY = me.y + eyeHeight(me.crouching, me.sliding);
   const weapon = me.weapons[me.slot];
   const def = weaponDef(weapon.id);
 

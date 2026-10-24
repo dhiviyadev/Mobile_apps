@@ -3,6 +3,7 @@
  * room code, who's here, auto-start countdown and the host's start buttons.
  * Players can run around and shoot each other during warmup.
  */
+import type { BotDifficulty } from '@hub/shared';
 import { h, svg } from '../../../core/ui/dom';
 import { toast } from '../../../core/ui/overlays';
 import type { NetMatchInfo } from '../net/NetBackend';
@@ -17,7 +18,13 @@ export class WarmupPanel {
   private lastKey = '';
   private lastStatus = '';
 
-  constructor(parent: HTMLElement, code: string, private readonly onStart: (bots: boolean) => void) {
+  /** @param onBots host picks a bot difficulty (the bots row comes with the map vote) */
+  constructor(
+    parent: HTMLElement,
+    code: string,
+    private readonly onStart: (bots: boolean) => void,
+    readonly onBots: (d: BotDifficulty) => void = () => {},
+  ) {
     this.status = h('div', { class: 'wu-status', 'data-testid': 'warmup-status' });
     this.roster = h('div', { class: 'wu-roster' });
     this.actions = h('div', { class: 'wu-actions' });

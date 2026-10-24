@@ -17,7 +17,9 @@ export type Action =
   | 'menu'
   | 'chat'
   | 'scoreboard'
-  | 'loadout';
+  | 'loadout'
+  /** Arcfire Arena: toggles the auto-shoot setting. */
+  | 'autoShoot';
 
 export interface InputFrame {
   /** Strafe (-1 left .. 1 right). */

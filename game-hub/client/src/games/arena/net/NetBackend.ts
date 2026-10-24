@@ -12,14 +12,22 @@
  */
 import {
   type ArenaEvent,
+  type ArenaMap,
+  arenaMap,
   type ArenaMode,
   ArenaMsg,
+  BOT_DIFFICULTIES,
+  type BotDifficulty,
+  type BotSkillMsg,
   type Command,
   decodeSnapshot,
   encodeCommands,
+  type LoadoutMsg,
   type Phase,
   PoseFlags,
+  type PrefsMsg,
   TICK_RATE,
+  type VoteMsg,
   type WeaponId,
 } from '@hub/shared';
 import type { NetSession } from '../../../net/session';
@@ -42,6 +50,9 @@ interface SchemaPlayer {
   headshots: number;
   roundWins: number;
   primary: number;
+  secondary: number;
+  autoShoot: boolean;
+  vote: number;
 }
 
 export interface NetMatchInfo extends MatchInfo {
@@ -109,6 +120,8 @@ export class NetBackend implements ArenaBackend {
         reloading: (p.flags & PoseFlags.Reload) !== 0,
         hp: p.hp,
         weapon: p.weapon,
+        sliding: (p.flags & PoseFlags.Slide) !== 0,
+        onGround: (p.flags & PoseFlags.Ground) !== 0,
       };
       poses.set(id, pose);
       if (id === this.localId) mine = pose;
@@ -160,8 +173,10 @@ export class NetBackend implements ArenaBackend {
         id, name: p.name, color: p.color, team: p.team, bot: p.bot, connected: p.connected,
         kills: p.kills, deaths: p.deaths, damage: p.damage, shots: p.shots, hits: p.hits,
         headshots: p.headshots, roundWins: p.roundWins, primary: p.primary as WeaponId,
+        secondary: p.secondary as WeaponId, autoShoot: !!p.autoShoot, vote: p.vote ?? -1,
       });
     });
+    const voting = s?.phase === 'vote' && s.voteMaps?.length > 0;
     return {
       phase: ((s?.phase as Phase) || 'warmup'),
       timeLeft: s?.phaseEndTick ? Math.max(0, (s.phaseEndTick - tick) / TICK_RATE) : 0,
@@ -172,6 +187,11 @@ export class NetBackend implements ArenaBackend {
       hostId: s?.hostId ?? '',
       lastRoundWinner: s && s.roundWinnerTeam !== -2 ? { team: s.roundWinnerTeam, id: s.roundWinnerId || null } : null,
       matchWinner: s && s.matchWinnerTeam !== -2 ? { team: s.matchWinnerTeam, id: s.matchWinnerId || null } : null,
+      vote: voting
+        ? { stage: s.voteWinner >= 0 ? 'reveal' : 'open', candidates: s.voteMaps.toArray(), winner: s.voteWinner, tie: !!s.voteTie }
+        : null,
+      pickupReady: s?.pickupReady?.toArray?.() ?? [],
+      botDifficulty: (BOT_DIFFICULTIES[s?.botDifficulty ?? 1] as BotDifficulty | undefined) ?? 'normal',
       players,
       startsIn: s?.startTick ? Math.max(0, (s.startTick - tick) / TICK_RATE) : null,
       minHumans: s?.minHumans ?? 2,
@@ -179,8 +199,25 @@ export class NetBackend implements ArenaBackend {
     };
   }
 
-  chooseLoadout(weapon: WeaponId): void {
-    this.session.send(ArenaMsg.Loadout, { weapon });
+  chooseLoadout(primary: WeaponId, secondary?: WeaponId): void {
+    this.session.send(ArenaMsg.Loadout, { weapon: primary, secondary } satisfies LoadoutMsg);
+  }
+
+  setAutoShoot(on: boolean): void {
+    this.session.send(ArenaMsg.Prefs, { autoShoot: on } satisfies PrefsMsg);
+  }
+
+  castVote(map: number): void {
+    this.session.send(ArenaMsg.Vote, { map } satisfies VoteMsg);
+  }
+
+  setBotDifficulty(level: BotDifficulty): void {
+    this.session.send(ArenaMsg.BotSkill, { level } satisfies BotSkillMsg);
+  }
+
+  /** The map named by the replicated state (the same object for the same index). */
+  currentMap(): ArenaMap {
+    return arenaMap(this.session.state?.mapIndex ?? 0);
   }
 
   startMatch(withBots: boolean): void {

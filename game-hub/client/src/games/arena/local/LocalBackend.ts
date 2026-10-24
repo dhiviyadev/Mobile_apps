@@ -3,10 +3,13 @@
  * with bots. Snapshots are produced every tick without serialisation.
  */
 import {
+  ARENA_MAPS,
   arenaMap,
   type ArenaEvent,
+  type ArenaMap,
   type ArenaMode,
   ArenaSimulation,
+  type BotDifficulty,
   clonePlayerSim,
   type Command,
   type SimPlayer,
@@ -19,6 +22,12 @@ export const BOT_NAMES = ['Nova', 'Pike', 'Juno', 'Rook', 'Vex', 'Tala', 'Ember'
 export const BOT_COLORS = [0x9fd8ff, 0xff9fbf, 0xb7f59a, 0xffd28a, 0xc7a8ff, 0x8af2e2, 0xffb08a, 0xe6e6e6];
 const MAX_STEPS_PER_FRAME = 4;
 
+export interface LocalBackendOptions {
+  botDifficulty?: BotDifficulty;
+  primary?: WeaponId;
+  secondary?: WeaponId;
+}
+
 export function posesOf(players: Iterable<SimPlayer>): Map<string, PoseData> {
   const poses = new Map<string, PoseData>();
   for (const p of players) {
@@ -26,7 +35,7 @@ export function posesOf(players: Iterable<SimPlayer>): Map<string, PoseData> {
     poses.set(p.id, {
       x: s.x, y: s.y, z: s.z, yaw: s.yaw, pitch: s.pitch,
       crouching: s.crouching, alive: s.alive, aiming: s.aiming, reloading: s.reload > 0,
-      hp: s.hp, weapon: s.weapons[s.slot].id,
+      hp: s.hp, weapon: s.weapons[s.slot].id, sliding: s.sliding, onGround: s.onGround,
     });
   }
   return poses;
@@ -35,7 +44,8 @@ export function posesOf(players: Iterable<SimPlayer>): Map<string, PoseData> {
 export class LocalBackend implements ArenaBackend {
   readonly online = false;
   readonly localId = 'you';
-  private sim: ArenaSimulation;
+  /** The authority (dev tools and e2e tests reach in through it). */
+  sim: ArenaSimulation;
   private acc = 0;
   private snapshots: SnapshotFrame[] = [];
   private events: ArenaEvent[] = [];
@@ -45,13 +55,14 @@ export class LocalBackend implements ArenaBackend {
     private mapIndex: number,
     private readonly name: string,
     private readonly color: number,
+    private readonly opts: LocalBackendOptions = {},
   ) {
     this.sim = this.createSim();
   }
 
   private createSim(): ArenaSimulation {
-    const sim = new ArenaSimulation(arenaMap(this.mapIndex), this.mode, { seed: (Math.random() * 1e9) | 0 });
-    sim.addPlayer({ id: this.localId, name: this.name, color: this.color });
+    const sim = new ArenaSimulation(arenaMap(this.mapIndex), this.mode, { seed: (Math.random() * 1e9) | 0, botDifficulty: this.opts.botDifficulty ?? 'normal' });
+    sim.addPlayer({ id: this.localId, name: this.name, color: this.color, primary: this.opts.primary, secondary: this.opts.secondary });
     sim.fillWithBots(BOT_NAMES, BOT_COLORS);
     // FFA practice: 6 players feels busy without being chaotic on a tablet.
     if (this.mode === 'ffa') for (const p of [...sim.players.values()].filter((q) => q.bot).slice(5)) sim.removePlayer(p.id);
@@ -100,19 +111,23 @@ export class LocalBackend implements ArenaBackend {
 
   match(): MatchInfo {
     const sim = this.sim;
+    const v = sim.vote;
     return {
       phase: sim.phase,
       timeLeft: Math.max(0, sim.phaseTimer),
       round: sim.round,
       teamWins: [sim.teamWins[0], sim.teamWins[1]],
       mode: this.mode,
-      mapIndex: this.mapIndex,
+      mapIndex: sim.mapIndex,
       hostId: this.localId,
       lastRoundWinner: sim.lastRoundWinner,
       matchWinner: sim.matchWinner,
+      vote: v ? { stage: v.stage, candidates: [...v.candidates], winner: v.winner, tie: v.tie } : null,
+      pickupReady: sim.pickups.ready,
+      botDifficulty: sim.botDifficulty,
       players: [...sim.players.values()].map((p) => ({
         id: p.id, name: p.name, color: p.color, team: p.team, bot: p.bot, connected: true,
-        ...p.stats, primary: p.primary,
+        ...p.stats, primary: p.primary, secondary: p.secondary, autoShoot: p.autoShoot, vote: v?.votes.get(p.id) ?? -1,
       })),
     };
   }
@@ -125,8 +140,21 @@ export class LocalBackend implements ArenaBackend {
     return 1;
   }
 
-  chooseLoadout(weapon: WeaponId): void {
-    this.sim.setLoadout(this.localId, weapon);
+  chooseLoadout(primary: WeaponId, secondary?: WeaponId): void {
+    this.sim.setLoadout(this.localId, primary, secondary);
+  }
+
+  setAutoShoot(on: boolean): void {
+    this.sim.setAutoShootFlag(this.localId, on);
+  }
+
+  castVote(map: number): void {
+    this.sim.castVote(this.localId, map);
+  }
+
+  /** Offline the player is always the host: any phase. */
+  setBotDifficulty(level: BotDifficulty): void {
+    this.sim.setBotDifficulty(level);
   }
 
   startMatch(): void {
@@ -135,10 +163,14 @@ export class LocalBackend implements ArenaBackend {
 
   /** Offline rematch: next map in the rotation, fresh bots. */
   rematch(): void {
-    this.mapIndex = (this.mapIndex + 1) % 3;
+    this.mapIndex = (this.mapIndex + 1) % ARENA_MAPS.length;
     this.sim = this.createSim();
     this.snapshots = [];
     this.events = [{ type: 'phase', phase: this.sim.phase, round: this.sim.round }];
+  }
+
+  currentMap(): ArenaMap {
+    return this.sim.map;
   }
 
   ping(): number | null {

@@ -83,6 +83,9 @@ function noise(v: Voice, o: NoiseOpts): void {
 const notes = (v: Voice, freqs: number[], step: number, type: OscillatorType, vol = 0.25, dur = 0.18) =>
   freqs.forEach((f, i) => tone(v, { type, freq: f, dur, vol, delay: i * step }));
 
+/** Stand-in for Arcfire Arena weapon sounds whose recipes come with the weapons package. */
+const WEAPON_SFX_PLACEHOLDER: SfxDef = { play: (v) => tone(v, { type: 'square', freq: 1500, dur: 0.02, vol: 0.06 }), length: 0.05 };
+
 const defs = {
   click: { play: (v) => tone(v, { freq: 1300, freqEnd: 900, dur: 0.05, vol: 0.18 }), length: 0.1 },
   chat: { play: (v) => notes(v, [880, 1175], 0.06, 'sine', 0.12, 0.08), length: 0.2 },
@@ -187,6 +190,102 @@ const defs = {
   round_start: { play: (v) => notes(v, [440, 554, 659, 880], 0.08, 'square', 0.1, 0.16), length: 0.5 },
   round_win: { play: (v) => notes(v, [523, 659, 784, 1046], 0.1, 'triangle', 0.25, 0.3), length: 0.7 },
   round_lose: { play: (v) => notes(v, [466, 392, 311, 233], 0.12, 'triangle', 0.22, 0.32), length: 0.8 },
+
+  // ---- Arcfire Arena: movement (WP1) ----------------------------------------
+  footstep: {
+    play: (v) => {
+      noise(v, { dur: 0.07, vol: 0.16, freq: 520, freqEnd: 170 });
+      tone(v, { freq: 95, freqEnd: 60, dur: 0.05, vol: 0.12 });
+    },
+    length: 0.1,
+    minGap: 0.05,
+  },
+  slide: {
+    play: (v) => {
+      noise(v, { dur: 0.8, vol: 0.26, type: 'bandpass', freq: 1500, freqEnd: 450, q: 0.9, attack: 0.03 });
+      noise(v, { dur: 0.6, vol: 0.18, freq: 320, freqEnd: 110, attack: 0.02 });
+    },
+    length: 0.9,
+    minGap: 0.25,
+  },
+  pad: {
+    play: (v) => {
+      noise(v, { dur: 0.08, vol: 0.35, freq: 240, freqEnd: 90 });
+      tone(v, { freq: 170, freqEnd: 640, dur: 0.3, vol: 0.28 });
+      tone(v, { type: 'triangle', freq: 340, freqEnd: 1280, dur: 0.18, vol: 0.1, delay: 0.02 });
+    },
+    length: 0.4,
+    minGap: 0.08,
+  },
+
+  // ---- Arcfire Arena: items (WP1) -------------------------------------------
+  pad_launch: {
+    play: (v) => {
+      noise(v, { dur: 0.45, vol: 0.3, type: 'bandpass', freq: 600, freqEnd: 2400, q: 0.8, attack: 0.02 });
+      tone(v, { freq: 140, freqEnd: 420, dur: 0.3, vol: 0.2 });
+    },
+    length: 0.5,
+    minGap: 0.08,
+  },
+  pad_boost: {
+    play: (v) => {
+      tone(v, { type: 'sawtooth', freq: 300, freqEnd: 1200, dur: 0.18, vol: 0.1 });
+      noise(v, { dur: 0.2, vol: 0.18, type: 'highpass', freq: 2000 });
+    },
+    length: 0.25,
+    minGap: 0.08,
+  },
+  pickup_health: {
+    play: (v) => {
+      notes(v, [740, 988, 1318], 0.05, 'sine', 0.2, 0.16);
+      noise(v, { dur: 0.25, vol: 0.06, type: 'highpass', freq: 5000, attack: 0.02 });
+    },
+    length: 0.4,
+    minGap: 0.1,
+  },
+  pickup_ammo: {
+    play: (v) => {
+      noise(v, { dur: 0.05, vol: 0.25, type: 'bandpass', freq: 1800, q: 3 });
+      tone(v, { type: 'square', freq: 420, freqEnd: 300, dur: 0.07, vol: 0.08, delay: 0.05 });
+      noise(v, { dur: 0.05, vol: 0.2, type: 'bandpass', freq: 2400, q: 3, delay: 0.11 });
+    },
+    length: 0.25,
+    minGap: 0.1,
+  },
+  pickup_spawn: { play: (v) => tone(v, { type: 'sine', freq: 520, freqEnd: 1040, dur: 0.25, vol: 0.08 }), length: 0.3, minGap: 0.2 },
+
+  // ---- Arcfire Arena: map vote (WP3) ----------------------------------------
+  vote_cast: { play: (v) => notes(v, [660, 880], 0.05, 'triangle', 0.16, 0.1), length: 0.25 },
+  vote_tick: { play: (v) => tone(v, { type: 'triangle', freq: 1046, dur: 0.06, vol: 0.12 }), length: 0.1, minGap: 0.5 },
+  vote_win: { play: (v) => notes(v, [523, 784, 1046, 1568], 0.08, 'triangle', 0.22, 0.25), length: 0.7 },
+
+  // ---- Arcfire Arena: weapons (WP2) -----------------------------------------
+  // Names are final (Voxelvale survival reuses xbow_shot, xbow_cock, bolt_hit, bolt_flesh); recipes follow.
+  ar_shot: WEAPON_SFX_PLACEHOLDER,
+  smg_shot: WEAPON_SFX_PLACEHOLDER,
+  lmg_shot: WEAPON_SFX_PLACEHOLDER,
+  burst_shot: WEAPON_SFX_PLACEHOLDER,
+  dmr_shot: WEAPON_SFX_PLACEHOLDER,
+  hc_shot: WEAPON_SFX_PLACEHOLDER,
+  mp_shot: WEAPON_SFX_PLACEHOLDER,
+  xbow_shot: WEAPON_SFX_PLACEHOLDER,
+  bolt_hit: WEAPON_SFX_PLACEHOLDER,
+  bolt_flesh: WEAPON_SFX_PLACEHOLDER,
+  bolt_fly: WEAPON_SFX_PLACEHOLDER,
+  knife_hit: WEAPON_SFX_PLACEHOLDER,
+  clank: WEAPON_SFX_PLACEHOLDER,
+  mag_out: WEAPON_SFX_PLACEHOLDER,
+  mag_in: WEAPON_SFX_PLACEHOLDER,
+  charge: WEAPON_SFX_PLACEHOLDER,
+  pump: WEAPON_SFX_PLACEHOLDER,
+  bolt_cycle: WEAPON_SFX_PLACEHOLDER,
+  shell_in: WEAPON_SFX_PLACEHOLDER,
+  cylinder: WEAPON_SFX_PLACEHOLDER,
+  xbow_cock: WEAPON_SFX_PLACEHOLDER,
+  casing: WEAPON_SFX_PLACEHOLDER,
+  equip: WEAPON_SFX_PLACEHOLDER,
+  autoshoot_on: WEAPON_SFX_PLACEHOLDER,
+  autoshoot_off: WEAPON_SFX_PLACEHOLDER,
 } satisfies Record<string, SfxDef>;
 
 export type SfxName = keyof typeof defs;

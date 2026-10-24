@@ -1,4 +1,4 @@
-import type { CDPSession, Page } from '@playwright/test';
+import { type CDPSession, expect, type Page } from '@playwright/test';
 
 /** Sets a nickname (and any other settings) before the hub boots. */
 export async function primeSettings(page: Page, extra: Record<string, unknown> = {}): Promise<void> {
@@ -41,4 +41,37 @@ export class Touch {
 export async function waitForGame(page: Page): Promise<void> {
   await page.waitForSelector('.game-root canvas', { timeout: 60_000 });
   await page.waitForSelector('.loading-screen', { state: 'detached', timeout: 60_000 });
+}
+
+/** Arcfire Arena dev hooks used by the helpers below (window.__arena, dev builds only). */
+type ArenaDev = {
+  match: { phase: string; vote: { stage: 'open' | 'reveal' } | null };
+  backend: { sim?: { phaseTimer: number } };
+};
+
+/** Opens Arcfire Arena practice vs bots in a mode and gets past the map vote, if any. */
+export async function startArenaPractice(page: Page, mode: '1 vs 1' | '2 vs 2' | 'Free-for-all'): Promise<void> {
+  await page.getByTestId('card-arena').click();
+  await page.getByRole('tab', { name: mode }).click();
+  await page.getByRole('button', { name: 'Practice vs bots' }).click();
+  await waitForGame(page);
+  await passMapVote(page);
+}
+
+/**
+ * Offline map vote: picks card `card`, then fast-forwards the vote and its reveal. A no-op unless the
+ * match is in the vote phase.
+ */
+export async function passMapVote(page: Page, card = 0): Promise<void> {
+  const phase = () => page.evaluate(() => (window as unknown as { __arena: ArenaDev }).__arena.match.phase);
+  if ((await phase()) !== 'vote') return;
+  await page.getByTestId(`vote-card-${card}`).click();
+  const skip = () =>
+    page.evaluate(() => {
+      const a = (window as unknown as { __arena: ArenaDev }).__arena;
+      if (a.backend.sim) a.backend.sim.phaseTimer = 0;
+      return a.match.phase === 'vote' ? (a.match.vote?.stage ?? 'open') : 'done';
+    });
+  await expect.poll(skip, { timeout: 10_000 }).not.toBe('open');
+  await expect.poll(skip, { timeout: 10_000 }).toBe('done');
 }

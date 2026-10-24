@@ -2,14 +2,21 @@
  * DOM HUD for Arcfire Arena. Everything is plain DOM (cheap to update, crisp
  * at any resolution) layered over the canvas, respecting safe-area insets.
  */
+import type { WeaponId } from '@hub/shared';
 import { h } from '../../../core/ui/dom';
+
+export type CrosshairStyle = 'cross' | 'ring' | 'dot' | 'chevron';
+/** Fire-mode tag next to the ammo counter ('' = none). */
+export type FireModeTag = 'AUTO' | 'SEMI' | 'BURST' | 'BOLT' | 'PUMP' | '';
 
 export interface KillFeedEntry {
   killer: string;
   killerColor: string;
   victim: string;
   victimColor: string;
+  /** Short weapon name. */
   weapon: string;
+  weaponId: WeaponId;
   headshot: boolean;
   mine: boolean;
 }
@@ -105,7 +112,8 @@ export class ArenaHud {
     this.vignette.style.opacity = v > 0 && v <= 30 ? String(0.25 + (30 - v) / 60) : '0';
   }
 
-  setAmmo(mag: number, reserve: number, weapon: string, melee: boolean, reloadProgress: number): void {
+  /** @param mode fire-mode tag (shown once weapons have more than one mode) */
+  setAmmo(mag: number, reserve: number, weapon: string, melee: boolean, reloadProgress: number, mode: FireModeTag = ''): void {
     if (mag !== this.last.mag || reserve !== this.last.reserve || weapon !== this.last.weapon) {
       this.ammoMag.textContent = melee ? '—' : String(mag);
       this.ammoReserve.textContent = melee ? '' : `/ ${reserve}`;
@@ -123,8 +131,11 @@ export class ArenaHud {
     }
   }
 
-  /** @param gapPx distance of the crosshair lines from the centre */
-  setCrosshair(gapPx: number, visible: boolean): void {
+  /**
+   * @param gapPx distance of the crosshair lines from the centre
+   * @param style per-weapon crosshair shape (only 'cross' is drawn so far)
+   */
+  setCrosshair(gapPx: number, visible: boolean, style: CrosshairStyle = 'cross'): void {
     const g = Math.round(gapPx);
     if (g !== this.last.spread) {
       this.crosshair.style.setProperty('--gap', `${g}px`);
@@ -133,9 +144,16 @@ export class ArenaHud {
     this.crosshair.classList.toggle('hidden', !visible);
   }
 
-  setScope(on: boolean): void {
-    this.scope.classList.toggle('on', on);
+  /** Full-screen sight overlay: 'scope' (sniper) or 'optic' (drawn like the scope for now), null = none. */
+  setScope(kind: 'scope' | 'optic' | null): void {
+    this.scope.classList.toggle('on', kind !== null);
   }
+
+  /** Auto-shoot indicator. */
+  setAutoShoot(state: 'off' | 'idle' | 'firing'): void {}
+
+  /** Short rising label after a pickup, next to the HP bar (health) or the ammo counter (ammo). */
+  pickupFlash(text: string, kind: 'health' | 'ammo'): void {}
 
   hitMarker(kind: 'hit' | 'head' | 'kill'): void {
     this.hitmarker.className = `hitmarker show ${kind}`;

@@ -2,6 +2,9 @@
  * Blocky player avatars for both games, drawn with a handful of InstancedMesh
  * objects (heads, eyes, bodies, arms, legs), so 16 players cost 5 draw calls
  * instead of ~100. Nametags are small canvas sprites.
+ *
+ * Held items (weapons, tools) are generic: the game names a model by a number
+ * key and supplies the geometry; each key in use costs one more draw call.
  */
 import * as THREE from 'three';
 
@@ -22,15 +25,49 @@ export interface AvatarPose {
   alpha?: number;
   /** Optional arm pose: point both arms forward (holding a weapon). */
   aiming?: boolean;
-  /** Draw a weapon in the hands (arena). */
-  gun?: boolean;
+  /** Key of the held item model (arena: WeaponId); undefined = empty hands. */
+  held?: number;
+  /** Arena slide pose. */
+  slide?: boolean;
+}
+
+export interface AvatarOptions {
+  /**
+   * Third-person geometry for a held-item key: grip at the origin, item toward -Z, vertex colours,
+   * optional `userData.muzzle: THREE.Vector3` in item space. Called once per key, lazily. Null = nothing drawn.
+   */
+  heldModel?: (key: number) => THREE.BufferGeometry | null;
 }
 
 const SKIN = [0xf1c7a5, 0xd9a07a, 0xa86b45, 0x6e4529];
 
+/** Where the hands hold an item, in avatar space (feet origin, facing -Z). */
+const HELD_X = 0.2;
+const HELD_Y = 1.17;
+const HELD_Z = -0.28;
+
 interface Part {
   mesh: THREE.InstancedMesh;
   perAvatar: number;
+}
+
+/** The plain box used when the game supplies no held models. */
+function defaultHeldModel(): THREE.BufferGeometry {
+  const geo = new THREE.BoxGeometry(0.09, 0.12, 0.62).translate(0, 0, -0.31);
+  const n = geo.attributes.position.count;
+  const col = new Float32Array(n * 3);
+  const c = new THREE.Color(0x2b2f3a);
+  for (let i = 0; i < n; i++) col.set([c.r, c.g, c.b], i * 3);
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.userData.muzzle = new THREE.Vector3(0, 0, -0.62);
+  return geo;
+}
+
+interface HeldPool {
+  /** Null when the model builder returned nothing for this key. */
+  mesh: THREE.InstancedMesh | null;
+  muzzle: THREE.Vector3 | null;
+  count: number;
 }
 
 export class AvatarRenderer {
@@ -40,7 +77,10 @@ export class AvatarRenderer {
   private readonly bodies: Part;
   private readonly arms: Part;
   private readonly legs: Part;
-  private readonly guns: Part;
+  private readonly heldMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
+  private readonly held = new Map<number, HeldPool>();
+  /** Per avatar id: held key and item transform of the last update (for muzzleWorld). */
+  private readonly heldAt = new Map<string, { key: number; matrix: THREE.Matrix4 }>();
   private readonly walk = new Map<string, number>();
   private readonly tags = new Map<string, { sprite: THREE.Sprite; text: string }>();
   private readonly m = new THREE.Matrix4();
@@ -52,7 +92,10 @@ export class AvatarRenderer {
   private readonly base = new THREE.Matrix4();
   private readonly local = new THREE.Matrix4();
 
-  constructor(private readonly max = 16) {
+  constructor(
+    private readonly max = 16,
+    private readonly opts: AvatarOptions = {},
+  ) {
     const mat = () => new THREE.MeshLambertMaterial({ color: 0xffffff });
     const part = (geo: THREE.BufferGeometry, perAvatar: number): Part => {
       const mesh = new THREE.InstancedMesh(geo, mat(), max * perAvatar);
@@ -68,17 +111,45 @@ export class AvatarRenderer {
     this.bodies = part(new THREE.BoxGeometry(0.48, 0.66, 0.26).translate(0, 0.33, 0), 1);
     this.arms = part(new THREE.BoxGeometry(0.18, 0.64, 0.2).translate(0, -0.28, 0), 2);
     this.legs = part(new THREE.BoxGeometry(0.22, 0.72, 0.24).translate(0, -0.36, 0), 2);
-    this.guns = part(new THREE.BoxGeometry(0.09, 0.12, 0.62).translate(0, 0, -0.31), 1);
   }
 
   private get parts(): Part[] {
-    return [this.heads, this.eyes, this.bodies, this.arms, this.legs, this.guns];
+    return [this.heads, this.eyes, this.bodies, this.arms, this.legs];
+  }
+
+  /** The instanced pool for a held-item key, created on first use. */
+  private heldPool(key: number): HeldPool {
+    let pool = this.held.get(key);
+    if (!pool) {
+      const geo = this.opts.heldModel ? this.opts.heldModel(key) : defaultHeldModel();
+      let mesh: THREE.InstancedMesh | null = null;
+      if (geo) {
+        mesh = new THREE.InstancedMesh(geo, this.heldMaterial, this.max);
+        mesh.count = 0;
+        mesh.frustumCulled = false;
+        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        this.group.add(mesh);
+      }
+      const muzzle = geo?.userData.muzzle;
+      pool = { mesh, muzzle: muzzle instanceof THREE.Vector3 ? muzzle.clone() : null, count: 0 };
+      this.held.set(key, pool);
+    }
+    return pool;
+  }
+
+  /** World position of the held item's muzzle for this avatar (last update), or null. */
+  muzzleWorld(id: string, out: THREE.Vector3): THREE.Vector3 | null {
+    const at = this.heldAt.get(id);
+    const muzzle = at ? this.held.get(at.key)?.muzzle : null;
+    if (!at || !muzzle) return null;
+    return out.copy(muzzle).applyMatrix4(at.matrix);
   }
 
   /** Updates every avatar for this frame. */
   update(poses: AvatarPose[], dt: number, camera: THREE.Camera, showNames = true): void {
     const n = Math.min(poses.length, this.max);
     const seen = new Set<string>();
+    for (const pool of this.held.values()) pool.count = 0;
     for (let i = 0; i < n; i++) {
       const a = poses[i];
       seen.add(a.id);
@@ -119,12 +190,18 @@ export class AvatarRenderer {
         this.eyes.mesh.setColorAt(i * 2 + k, this.c.setHex(0x1a1f33));
       }
 
-      // Weapon held at chest height, following the view pitch.
-      const gunScale = a.gun ? 1 : 0;
-      this.local.compose(this.p.set(0.12, 1.2 - crouch, -0.2), this.q.setFromEuler(this.e.set(a.pitch * 0.8, 0, 0)), this.s.set(gunScale, gunScale, gunScale));
-      this.m.multiplyMatrices(this.base, this.local);
-      this.guns.mesh.setMatrixAt(i, this.m);
-      this.guns.mesh.setColorAt(i, this.c.setHex(0x2b2f3a));
+      // Held item in the right hand, following the view pitch.
+      if (a.held !== undefined) {
+        const pool = this.heldPool(a.held);
+        this.local.compose(this.p.set(HELD_X, HELD_Y - crouch, HELD_Z), this.q.setFromEuler(this.e.set(a.pitch * 0.8, 0, 0)), this.s.set(1, 1, 1));
+        this.m.multiplyMatrices(this.base, this.local);
+        if (pool.mesh) pool.mesh.setMatrixAt(pool.count++, this.m);
+        const at = this.heldAt.get(a.id);
+        if (at) {
+          at.key = a.held;
+          at.matrix.copy(this.m);
+        } else this.heldAt.set(a.id, { key: a.held, matrix: this.m.clone() });
+      } else this.heldAt.delete(a.id);
 
       if (showNames && a.name) this.updateTag(a, camera);
     }
@@ -133,6 +210,14 @@ export class AvatarRenderer {
       part.mesh.instanceMatrix.needsUpdate = true;
       if (part.mesh.instanceColor) part.mesh.instanceColor.needsUpdate = true;
     }
+    // Unused item models cost no draw call.
+    for (const pool of this.held.values()) {
+      if (!pool.mesh) continue;
+      pool.mesh.count = pool.count;
+      pool.mesh.visible = pool.count > 0;
+      pool.mesh.instanceMatrix.needsUpdate = true;
+    }
+    for (const id of this.heldAt.keys()) if (!seen.has(id)) this.heldAt.delete(id);
     for (const [id, tag] of this.tags) {
       if (!seen.has(id) || !showNames || !poses.some((p) => p.id === id && p.name)) {
         tag.sprite.visible = false;
@@ -152,6 +237,7 @@ export class AvatarRenderer {
     for (const part of this.parts) {
       (part.mesh.material as THREE.MeshLambertMaterial).color.setScalar(k);
     }
+    this.heldMaterial.color.setScalar(k);
   }
 
   dispose(): void {
@@ -160,6 +246,15 @@ export class AvatarRenderer {
       (part.mesh.material as THREE.Material).dispose();
       part.mesh.dispose();
     }
+    for (const pool of this.held.values()) {
+      if (!pool.mesh) continue;
+      this.group.remove(pool.mesh);
+      pool.mesh.geometry.dispose();
+      pool.mesh.dispose();
+    }
+    this.held.clear();
+    this.heldAt.clear();
+    this.heldMaterial.dispose();
     for (const t of this.tags.values()) {
       t.sprite.material.map?.dispose();
       t.sprite.material.dispose();

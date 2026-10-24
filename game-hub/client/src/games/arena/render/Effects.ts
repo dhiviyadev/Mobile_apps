@@ -89,6 +89,24 @@ export class Effects {
     }
   }
 
+  /** Dust kicked up at the feet (slides, landings); shares the spark pool. */
+  dust(p: [number, number, number], count = 3, color = 0xd9d2c4): void {
+    const n = Math.round(count * this.effects);
+    for (let i = 0; i < n; i++) {
+      if (this.sparks.length >= MAX_SPARKS) this.sparks.shift();
+      this.sparks.push({
+        x: p[0] + (Math.random() - 0.5) * 0.4,
+        y: p[1],
+        z: p[2] + (Math.random() - 0.5) * 0.4,
+        vx: (Math.random() - 0.5) * 1.6,
+        vy: 0.8 + Math.random() * 1.2,
+        vz: (Math.random() - 0.5) * 1.6,
+        life: 0.3 + Math.random() * 0.2,
+        color,
+      });
+    }
+  }
+
   muzzleFlash(p: [number, number, number]): void {
     let i = this.flashLife.findIndex((l) => l <= 0);
     if (i < 0) i = 0;

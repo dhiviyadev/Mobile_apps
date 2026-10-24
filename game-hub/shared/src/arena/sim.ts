@@ -7,13 +7,20 @@
  *     by a time budget so a client cannot run faster than real time,
  *  3. resolves shots with lag compensation: other players' hitboxes are
  *     rewound to the tick the shooter was looking at (capped at 220 ms),
- *  4. advances the round state machine and records hitbox history.
+ *  4. steps projectiles and pickups, advances the round state machine
+ *     (map vote → loadout → live ⇄ round end → match end) and records hitbox history.
+ *
+ * Features with their own rules live in small systems the simulation drives:
+ * ProjectileSystem (projectiles.ts), PickupSystem (pickups.ts) and
+ * MapVoteSystem (vote.ts). They read and change the match through the public
+ * methods marked "for the systems" below.
  *
  * Used by the Colyseus room on the server and directly by offline practice.
  */
 import { ARENA_MODE_INFO, type ArenaMode } from '../constants';
+import { clamp } from '../util/math';
 import { mulberry32 } from '../util/rng';
-import { type BotBrain, botCommand, createBotBrain, NavGraph } from './bots';
+import { applyBotProfile, type BotBrain, type BotDifficulty, botCommand, botHurt, createBotBrain, hearNoise, NavGraph, resetBotForMap } from './bots';
 import {
   CMD_RATE,
   HISTORY_TICKS,
@@ -27,13 +34,16 @@ import {
   TICK_DT,
   TICK_RATE,
 } from './constants';
-import { BoxWorld } from './geometry';
+import { type BoxWorld, createArenaWorld } from './geometry';
 import { type HitTarget, hitboxesFor, type PoseLike, resolveShot } from './hitscan';
-import type { ArenaMap, SpawnPoint } from './maps';
-import { applyCommand, type Command, createPlayerSim, type PlayerSim, respawnPlayer, type Shot } from './player';
-import { isPrimary, PRIMARY_WEAPONS, WeaponId } from './weapons';
+import { ARENA_MAPS, type ArenaMap, type PickupKind, type SpawnPoint } from './maps';
+import { PickupSystem } from './pickups';
+import { applyCommand, type Command, createPlayerSim, freshWeapon, type PlayerSim, respawnPlayer, type Shot } from './player';
+import { ProjectileSystem } from './projectiles';
+import { type MapVote, MapVoteSystem } from './vote';
+import { DEFAULT_PRIMARY, DEFAULT_SECONDARY, isPrimary, isSecondary, pickBotLoadout, type WeaponId, weaponDef } from './weapons';
 
-export type Phase = 'warmup' | 'loadout' | 'live' | 'roundEnd' | 'matchEnd';
+export type Phase = 'warmup' | 'vote' | 'loadout' | 'live' | 'roundEnd' | 'matchEnd';
 
 export interface PlayerStats {
   kills: number;
@@ -56,6 +66,13 @@ export interface SimPlayer {
   sim: PlayerSim;
   /** Primary weapon used from the next spawn on. */
   primary: WeaponId;
+  /** Secondary weapon used from the next spawn on. */
+  secondary: WeaponId;
+  /** Auto-shoot is on (scoreboard disclosure; never trusted). */
+  autoShoot: boolean;
+  /** Pad that launched this player last (-1 = none), and when (sim.time). Bots use it to pass pad nodes. */
+  launchPad: number;
+  launchedAt: number;
   stats: PlayerStats;
   queue: Command[];
   budget: number;
@@ -73,7 +90,14 @@ export type ArenaEvent =
   | { type: 'roundEnd'; winnerTeam: number; winnerId: string | null; reason: 'elimination' | 'time' | 'draw' }
   | { type: 'matchEnd'; winnerTeam: number; winnerId: string | null }
   | { type: 'reload'; id: string }
-  | { type: 'spawn'; id: string };
+  | { type: 'spawn'; id: string }
+  /** A pad launched this player. */
+  | { type: 'launch'; id: string; pad: number }
+  /** A projectile weapon fired (instead of 'shot'). Projectiles are never in snapshots. */
+  | { type: 'proj'; id: number; shooter: string; weapon: WeaponId; origin: Tuple3; vel: Tuple3; tick: number; seq: number }
+  | { type: 'projEnd'; id: number; pos: Tuple3; normal: Tuple3 | null; hitId: string | null; headshot: boolean; tick: number }
+  | { type: 'pickup'; id: string; index: number; kind: PickupKind; amount: number }
+  | { type: 'mapVote'; winner: number; tie: boolean };
 
 export interface SimOptions {
   /** Start rounds automatically once enough players are present. */
@@ -81,6 +105,8 @@ export interface SimOptions {
   /** After the match-end screen, return to warmup with stats reset. */
   loopMatches?: boolean;
   seed?: number;
+  /** Bot difficulty (default 'normal'). */
+  botDifficulty?: BotDifficulty;
 }
 
 const MAX_BUDGET = 24;
@@ -95,6 +121,12 @@ interface HistoryEntry {
 export class ArenaSimulation {
   world: BoxWorld;
   nav: NavGraph;
+  /** Index of `map` in ARENA_MAPS; -1 for a custom (test/fixture) map. */
+  mapIndex: number;
+  botDifficulty: BotDifficulty;
+  readonly projectiles = new ProjectileSystem();
+  readonly pickups = new PickupSystem();
+  readonly voting = new MapVoteSystem();
   readonly teams: number;
   tick = 0;
   /** Simulation time in seconds. */
@@ -119,23 +151,40 @@ export class ArenaSimulation {
     readonly mode: ArenaMode,
     private readonly opts: SimOptions = {},
   ) {
-    this.world = new BoxWorld(map.boxes);
+    this.world = createArenaWorld(map);
     this.nav = new NavGraph(map, this.world);
+    this.mapIndex = ARENA_MAPS.indexOf(map);
     this.teams = ARENA_MODE_INFO[mode].teams;
     this.rnd = mulberry32(opts.seed ?? 1234);
+    this.botDifficulty = opts.botDifficulty ?? 'normal';
+    this.pickups.reset(map);
+  }
+
+  /** The current map vote, or null. */
+  get vote(): MapVote | null {
+    return this.voting.current;
+  }
+
+  /** Deterministic sim RNG (authority only), for the systems. */
+  random(): number {
+    return this.rnd();
+  }
+
+  /** Queues an event in this tick's batch (for the systems). */
+  emit(e: ArenaEvent): void {
+    this.events.push(e);
   }
 
   /** Switches to another map (between matches). Everyone respawns there. */
   changeMap(map: ArenaMap): void {
     this.map = map;
-    this.world = new BoxWorld(map.boxes);
+    this.mapIndex = ARENA_MAPS.indexOf(map);
+    this.world = createArenaWorld(map);
     this.nav = new NavGraph(map, this.world);
     this.history.length = 0;
-    for (const [id, brain] of this.brains) {
-      brain.path = [];
-      brain.lastSeen = null;
-      void id;
-    }
+    this.projectiles.clear();
+    this.pickups.reset(map);
+    for (const b of this.brains.values()) resetBotForMap(b);
     if (this.phase === 'warmup') for (const p of this.players.values()) this.spawn(p);
   }
 
@@ -147,6 +196,8 @@ export class ArenaSimulation {
     this.round = 0;
     this.setPhase('warmup', 0);
     for (const p of this.players.values()) this.spawn(p);
+    this.projectiles.clear();
+    this.pickups.reset(this.map);
   }
 
   get maxPlayers(): number {
@@ -160,10 +211,12 @@ export class ArenaSimulation {
 
   // ---- roster ----------------------------------------------------------------------------
 
-  addPlayer(meta: { id: string; name: string; color: number; bot?: boolean; primary?: WeaponId }): SimPlayer {
+  addPlayer(meta: { id: string; name: string; color: number; bot?: boolean; primary?: WeaponId; secondary?: WeaponId }): SimPlayer {
     const existing = this.players.get(meta.id);
     if (existing) return existing;
     const index = this.freeIndices.length ? this.freeIndices.shift()! : this.nextIndex++;
+    const primary = isPrimary(meta.primary) ? meta.primary : DEFAULT_PRIMARY;
+    const secondary = isSecondary(meta.secondary) ? meta.secondary : DEFAULT_SECONDARY;
     const p: SimPlayer = {
       id: meta.id,
       name: meta.name,
@@ -171,8 +224,12 @@ export class ArenaSimulation {
       team: this.pickTeam(index),
       bot: !!meta.bot,
       index,
-      sim: createPlayerSim(meta.primary ?? WeaponId.Rifle),
-      primary: meta.primary ?? WeaponId.Rifle,
+      sim: createPlayerSim(primary, secondary),
+      primary,
+      secondary,
+      autoShoot: false,
+      launchPad: -1,
+      launchedAt: -1e9,
       stats: { kills: 0, deaths: 0, damage: 0, shots: 0, hits: 0, headshots: 0, roundWins: 0 },
       queue: [],
       budget: 4,
@@ -184,9 +241,12 @@ export class ArenaSimulation {
     p.sim.hp = 0;
     this.players.set(p.id, p);
     if (p.bot) {
-      this.brains.set(p.id, createBotBrain(this.rnd));
-      p.primary = PRIMARY_WEAPONS[Math.floor(this.rnd() * PRIMARY_WEAPONS.length)];
+      this.brains.set(p.id, createBotBrain(this.rnd, this.botDifficulty));
+      const lo = pickBotLoadout(this.rnd);
+      p.primary = lo.primary;
+      p.secondary = lo.secondary;
     }
+    this.voting.onPlayerAdded(this, p);
     if (this.phase === 'warmup') this.spawn(p);
     return p;
   }
@@ -198,17 +258,46 @@ export class ArenaSimulation {
     this.brains.delete(id);
     this.freeIndices.push(p.index);
     this.freeIndices.sort((a, b) => a - b);
+    this.voting.onPlayerRemoved(this, id);
   }
 
-  setLoadout(id: string, weapon: number): void {
+  /** Loadout picks. Invalid ids are ignored per slot. Applies at once in loadout/warmup, otherwise at the next spawn. */
+  setLoadout(id: string, primary: unknown, secondary?: unknown): void {
     const p = this.players.get(id);
-    if (!p || !isPrimary(weapon)) return;
-    p.primary = weapon;
-    // During the loadout phase the choice applies immediately.
-    if (this.phase === 'loadout' || this.phase === 'warmup') {
-      p.sim.weapons[0] = { id: weapon, mag: weaponMag(weapon), reserve: weaponReserve(weapon) };
-      if (p.sim.slot === 0) p.sim.reload = 0;
+    if (!p) return;
+    const prim = isPrimary(primary) ? primary : null;
+    const sec = isSecondary(secondary) ? secondary : null;
+    if (prim !== null) p.primary = prim;
+    if (sec !== null) p.secondary = sec;
+    if (this.phase !== 'loadout' && this.phase !== 'warmup') return;
+    const s = p.sim;
+    if (prim !== null) {
+      s.weapons[0] = freshWeapon(prim);
+      if (s.slot === 0) {
+        s.reload = 0;
+        s.burstLeft = 0;
+        s.ads = 0;
+      }
     }
+    if (sec !== null) {
+      s.weapons[1] = freshWeapon(sec);
+      if (s.slot === 1) {
+        s.reload = 0;
+        s.burstLeft = 0;
+        s.ads = 0;
+      }
+    }
+  }
+
+  /** Records the player's auto-shoot preference (shown on the scoreboard; it never changes what the server accepts). */
+  setAutoShootFlag(id: string, on: boolean): void {
+    const p = this.players.get(id);
+    if (p) p.autoShoot = on === true;
+  }
+
+  setBotDifficulty(d: BotDifficulty): void {
+    this.botDifficulty = d;
+    for (const b of this.brains.values()) applyBotProfile(b, d);
   }
 
   /** Queues a client command. Old or duplicate sequence numbers are dropped. */
@@ -247,7 +336,18 @@ export class ArenaSimulation {
 
   // ---- match flow ------------------------------------------------------------------------
 
+  /** warmup | matchEnd → map vote, or straight to the match when no vote is possible. */
+  startVote(): void {
+    if (!this.voting.open(this)) this.startMatch();
+  }
+
+  castVote(id: string, mapIndex: number): boolean {
+    return this.voting.cast(this, id, mapIndex);
+  }
+
   startMatch(): void {
+    this.voting.current = null;
+    this.voting.lastMatchMap = this.mapIndex;
     this.teamWins = [0, 0];
     this.matchWinner = null;
     this.round = 0;
@@ -259,23 +359,31 @@ export class ArenaSimulation {
   private startRound(): void {
     this.round++;
     this.history.length = 0;
+    this.projectiles.clear();
+    this.pickups.reset(this.map);
     const spawns = this.spawnOrder();
     let i = 0;
     for (const p of this.players.values()) {
-      if (p.bot) p.primary = PRIMARY_WEAPONS[Math.floor(this.rnd() * PRIMARY_WEAPONS.length)];
+      if (p.bot) {
+        const lo = pickBotLoadout(this.rnd);
+        p.primary = lo.primary;
+        p.secondary = lo.secondary;
+      }
       this.spawn(p, spawns(p, i++));
       p.queue.length = 0;
     }
     this.setPhase('loadout', LOADOUT_TIME);
   }
 
-  private setPhase(phase: Phase, timer: number): void {
+  /** For the systems: enters a phase with its timer and announces it. */
+  setPhase(phase: Phase, timer: number): void {
     this.phase = phase;
     this.phaseTimer = timer;
     this.events.push({ type: 'phase', phase, round: this.round });
   }
 
-  private enoughPlayers(): boolean {
+  /** For the systems: whether a match can be played with the current roster. */
+  enoughPlayers(): boolean {
     const n = this.players.size;
     return this.teams === 0 ? n >= 2 : this.teamCount(0) > 0 && this.teamCount(1) > 0;
   }
@@ -291,7 +399,7 @@ export class ArenaSimulation {
   step(): void {
     this.tick++;
     this.time += TICK_DT;
-    const frozen = this.phase === 'loadout' || this.phase === 'matchEnd';
+    const frozen = this.phase === 'loadout' || this.phase === 'matchEnd' || this.phase === 'vote';
 
     // Bots produce two 60 Hz commands per 30 Hz tick, like real clients.
     for (const p of this.players.values()) {
@@ -308,9 +416,16 @@ export class ArenaSimulation {
         const ev = applyCommand(p.sim, cmd, this.world, frozen, p.index);
         if (ev.shot) this.fire(p, ev.shot);
         if (ev.reloadStarted) this.events.push({ type: 'reload', id: p.id });
+        if (ev.launched >= 0) {
+          p.launchPad = ev.launched;
+          p.launchedAt = this.time;
+          this.events.push({ type: 'launch', id: p.id, pad: ev.launched });
+        }
       }
     }
 
+    this.projectiles.step(this);
+    if (this.phase === 'live' || this.phase === 'warmup') this.pickups.step(this);
     this.advancePhase();
     this.recordHistory();
   }
@@ -322,6 +437,9 @@ export class ArenaSimulation {
           if (!p.sim.alive && this.time - p.diedAt > WARMUP_RESPAWN) this.spawn(p);
         }
         if (this.opts.autoStart && this.enoughPlayers()) this.startMatch();
+        break;
+      case 'vote':
+        this.voting.step(this);
         break;
       case 'loadout':
         this.phaseTimer -= TICK_DT;
@@ -406,17 +524,15 @@ export class ArenaSimulation {
 
   private fire(p: SimPlayer, shot: Shot): void {
     p.stats.shots++;
+    const def = weaponDef(shot.weapon);
     // Bots see the present; humans hit what they saw (rewound, capped).
-    const rewindTo = p.bot ? this.tick : Math.max(this.tick - MAX_REWIND_TICKS, Math.min(this.tick, shot.viewTick));
-    const targets: HitTarget[] = [];
-    for (const o of this.players.values()) {
-      if (o === p) continue;
-      if (this.teams > 0 && o.team === p.team) continue; // no friendly fire; bullets pass teammates
-      const pose = this.poseAt(o.id, rewindTo) ?? { x: o.sim.x, y: o.sim.y, z: o.sim.z, crouching: o.sim.crouching, alive: o.sim.alive };
-      if (!pose.alive || !o.sim.alive) continue;
-      targets.push({ id: o.id, boxes: hitboxesFor(pose) });
+    const rewind = p.bot || !Number.isFinite(shot.viewTick) ? 0 : clamp(this.tick - shot.viewTick, 0, MAX_REWIND_TICKS);
+    if (def.kind === 'projectile') {
+      // Silent weapon: no alertBots.
+      this.projectiles.spawn(this, p, shot, rewind);
+      return;
     }
-    const { pellets, damage } = resolveShot(shot, this.world, targets);
+    const { pellets, damage } = resolveShot(shot, this.world, this.targetsFor(p, this.tick - rewind));
     this.events.push({
       type: 'shot',
       shooter: p.id,
@@ -429,14 +545,31 @@ export class ArenaSimulation {
     });
     if (damage.length) p.stats.hits++;
     for (const d of damage) this.applyDamage(p, d.id, d.damage, d.headshot, shot.weapon);
+    this.alertBots(p, shot.ox, shot.oy, shot.oz);
   }
 
-  private applyDamage(attacker: SimPlayer, victimId: string, amount: number, headshot: boolean, weapon: WeaponId): void {
+  /** Enemy hitboxes as seen at a (fractional) tick: rewound history, else live. Excludes self, teammates, the dead. */
+  targetsFor(shooter: SimPlayer, tick: number): HitTarget[] {
+    const out: HitTarget[] = [];
+    for (const o of this.players.values()) {
+      if (o === shooter) continue;
+      if (this.teams > 0 && o.team === shooter.team) continue; // no friendly fire; bullets pass teammates
+      const pose = this.poseAt(o.id, tick) ?? { x: o.sim.x, y: o.sim.y, z: o.sim.z, crouching: o.sim.crouching, alive: o.sim.alive };
+      if (!pose.alive || !o.sim.alive) continue;
+      out.push({ id: o.id, boxes: hitboxesFor(pose) });
+    }
+    return out;
+  }
+
+  /** For the systems: deals damage (live and warmup only), with hit/kill events and stats. */
+  applyDamage(attacker: SimPlayer, victimId: string, amount: number, headshot: boolean, weapon: WeaponId): void {
     const v = this.players.get(victimId);
     if (!v || !v.sim.alive || !this.damageEnabled) return;
     const dealt = Math.min(amount, v.sim.hp);
     v.sim.hp -= amount;
     attacker.stats.damage += dealt;
+    const brain = this.brains.get(v.id);
+    if (brain && dealt > 0) botHurt(brain, attacker.id, this.time);
     const killed = v.sim.hp <= 0;
     this.events.push({ type: 'hit', shooter: attacker.id, victim: v.id, damage: Math.round(dealt), headshot, killed });
     if (killed) {
@@ -447,6 +580,15 @@ export class ArenaSimulation {
       attacker.stats.kills++;
       if (headshot) attacker.stats.headshots++;
       this.events.push({ type: 'kill', killer: attacker.id, victim: v.id, weapon, headshot });
+    }
+  }
+
+  /** Gunfire at (x, y, z): every enemy bot gets to hear it. */
+  private alertBots(shooter: SimPlayer, x: number, y: number, z: number): void {
+    for (const [id, brain] of this.brains) {
+      const bot = this.players.get(id);
+      if (!bot || bot === shooter || !bot.sim.alive || (this.teams > 0 && bot.team === shooter.team)) continue;
+      hearNoise(brain, bot.sim, x, y, z, this.time);
     }
   }
 
@@ -518,7 +660,7 @@ export class ArenaSimulation {
 
   private spawn(p: SimPlayer, at?: SpawnPoint): void {
     const point = at ?? this.randomSpawn(p);
-    respawnPlayer(p.sim, point.x, point.y, point.z, point.yaw, p.primary);
+    respawnPlayer(p.sim, point.x, point.y, point.z, point.yaw, p.primary, p.secondary);
     p.sim.hp = MAX_HP;
     this.events.push({ type: 'spawn', id: p.id });
   }
@@ -527,11 +669,4 @@ export class ArenaSimulation {
     const list = this.teams === 0 ? this.map.spawns.ffa : this.map.spawns.team[p.team];
     return list[Math.floor(this.rnd() * list.length)];
   }
-}
-
-function weaponMag(id: WeaponId): number {
-  return createPlayerSim(id).weapons[0].mag;
-}
-function weaponReserve(id: WeaponId): number {
-  return createPlayerSim(id).weapons[0].reserve;
 }
