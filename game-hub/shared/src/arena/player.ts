@@ -12,7 +12,7 @@ import { clamp, lerp } from '../util/math';
 import { CMD_DT, MAX_HP, MOVE } from './constants';
 import type { BoxWorld } from './geometry';
 import { createMoveState, eyeHeight, type MoveState, stepMovement } from './movement';
-import { WeaponId, weaponDef } from './weapons';
+import { type MeleeSpec, WeaponId, weaponDef } from './weapons';
 
 export const Buttons = {
   Jump: 1,
@@ -208,7 +208,7 @@ export function applyCommand(p: PlayerSim, cmd: Command, world: BoxWorld, frozen
 
 /* ==== weapon state machine ============================================================= */
 
-/** Cooldown, draw, bloom recovery and reload completion. */
+/** Cooldown, draw, bloom recovery and reload completion (a whole magazine, or one shell). */
 function stepWeaponTimers(p: PlayerSim, dt: number, ev: CommandEvents): void {
   // Timers snap to zero within a microsecond so 0.1 s = exactly 6 commands despite float error.
   p.cooldown = snap(p.cooldown - dt);
@@ -220,16 +220,26 @@ function stepWeaponTimers(p: PlayerSim, dt: number, ev: CommandEvents): void {
     if (p.reload <= 0) {
       p.reload = 0;
       const w = currentWeapon(p);
-      const need = def0.magazine - w.mag;
-      const take = Math.min(need, w.reserve);
-      w.mag += take;
-      w.reserve -= take;
-      ev.reloadDone = true;
+      if (def0.reloadKind === 'shell') {
+        if (w.reserve > 0 && w.mag < def0.magazine) {
+          w.mag++;
+          w.reserve--;
+          ev.shellLoaded = true;
+        }
+        // The next shell goes straight in; the reload ends when the tube is full or the reserve is empty.
+        if (w.mag < def0.magazine && w.reserve > 0) p.reload = def0.shellTime;
+        else ev.reloadDone = true;
+      } else {
+        const take = Math.min(def0.magazine - w.mag, w.reserve);
+        w.mag += take;
+        w.reserve -= take;
+        ev.reloadDone = true;
+      }
     }
   }
 }
 
-/** Slot changes (melee button = quick switch to the blade). */
+/** Slot changes (melee button = quick switch to the blade). A switch cancels reloads, bursts and ADS. */
 function stepWeaponSwitch(p: PlayerSim, cmd: Command, frozen: boolean, ev: CommandEvents): void {
   let wantSlot = cmd.slot <= 2 ? cmd.slot : p.slot;
   if (cmd.buttons & Buttons.Melee) wantSlot = 2;
@@ -239,53 +249,85 @@ function stepWeaponSwitch(p: PlayerSim, cmd: Command, frozen: boolean, ev: Comma
     p.switching = weaponDef(currentWeapon(p).id).drawTime;
     p.bloom = 0;
     p.burstLeft = 0;
+    p.ads = 0;
     ev.switched = true;
   }
 }
 
-/** Aiming. `p.sliding` is the previous command's value: no ADS while sliding. */
+/** Aiming: not while drawing, reloading or sliding (`p.sliding` is the previous command's); melee never aims. */
 function stepAim(p: PlayerSim, b: number, frozen: boolean): void {
-  p.aiming = (b & Buttons.Aim) !== 0 && p.switching === 0 && !frozen && !p.sliding;
+  p.aiming =
+    (b & Buttons.Aim) !== 0 && p.switching === 0 && p.reload === 0 && weaponDef(currentWeapon(p).id).kind !== 'melee' && !frozen && !p.sliding;
 }
 
-/** ADS progress from the final aiming state. */
-function stepAds(p: PlayerSim, _dt: number): void {
-  p.ads = p.aiming ? 1 : 0; // instant until weapons ramp it with def.adsTime
+/** ADS progress ramps in over def.adsTime (out 30% faster), so there are no instant scoped shots. */
+function stepAds(p: PlayerSim, dt: number): void {
+  const t = weaponDef(currentWeapon(p).id).adsTime;
+  if (p.aiming) p.ads = t > 0 ? Math.min(1, p.ads + dt / t) : 1;
+  else p.ads = t > 0 ? Math.max(0, p.ads - dt / (t * 0.7)) : 0;
 }
 
-/** Reload start, then the trigger: fire rate, ammo, bloom and deterministic spread. */
+/** The knife's rays: evenly spread over the fan at the view pitch, centre ray first. */
+function meleeFan(yaw: number, pitch: number, spec: MeleeSpec): [number, number, number][] {
+  const offsets: number[] = [];
+  for (let i = 0; i < spec.rays; i++) offsets.push(spec.rays > 1 ? (i / (spec.rays - 1) - 0.5) * spec.fan : 0);
+  offsets.sort((a, b) => Math.abs(a) - Math.abs(b) || a - b);
+  return offsets.map((off) => viewDir(yaw + off, pitch));
+}
+
+/**
+ * The trigger: shell-reload interrupt, reload start (button, fire on empty, or automatic on an empty
+ * magazine), then fire rate, bursts, ammo, bloom and deterministic spread (or the melee fan).
+ */
 function stepTrigger(p: PlayerSim, cmd: Command, frozen: boolean, playerIndex: number, ev: CommandEvents): void {
   const b = cmd.buttons;
   const w = currentWeapon(p);
   const def = weaponDef(w.id);
+  const fire = (b & Buttons.Fire) !== 0 && !frozen;
 
   // ---- reload ---------------------------------------------------------------------------------
-  const fire = (b & Buttons.Fire) !== 0 && !frozen;
+  // A fresh trigger press with shells loaded stops a shell reload so the shotgun can fire.
+  if (p.reload > 0 && def.reloadKind === 'shell' && fire && !p.fireHeld && w.mag > 0) {
+    p.reload = 0;
+    ev.reloadCancelled = true;
+  }
   const canReload = def.magazine > 0 && w.mag < def.magazine && w.reserve > 0 && p.reload === 0 && p.switching === 0;
-  if (canReload && ((b & Buttons.Reload) !== 0 || (fire && w.mag === 0))) {
+  const autoReload = def.magazine > 0 && w.mag === 0 && p.cooldown <= 0 && p.burstLeft === 0;
+  if (canReload && ((b & Buttons.Reload) !== 0 || (fire && w.mag === 0) || autoReload)) {
     p.reload = def.reloadTime;
     p.aiming = false;
+    p.burstLeft = 0;
     ev.reloadStarted = true;
   }
 
   // ---- fire -----------------------------------------------------------------------------------
-  const trigger = fire && (def.automatic || !p.fireHeld);
-  if (trigger && p.cooldown <= 0 && p.switching <= 0 && p.reload <= 0) {
+  // Automatic and burst weapons repeat while held; a started burst finishes on its own.
+  const continuing = p.burstLeft > 0;
+  const trigger = fire && (def.fireMode !== 'semi' || !p.fireHeld);
+  if ((trigger || continuing) && !frozen && p.cooldown <= 0 && p.switching <= 0 && p.reload <= 0) {
     if (def.magazine > 0 && w.mag <= 0) {
-      if (!p.fireHeld) ev.dryFire = true;
+      if (!p.fireHeld && !continuing) ev.dryFire = true;
+      p.burstLeft = 0;
     } else {
       if (def.magazine > 0) w.mag--;
-      p.cooldown = def.interval;
-      const cone = currentSpread(p);
+      if (def.fireMode === 'burst') {
+        p.burstLeft = continuing ? p.burstLeft - 1 : def.burstCount - 1;
+        p.cooldown = p.burstLeft > 0 ? def.burstInterval : def.interval;
+      } else p.cooldown = def.interval;
       const [ox, oy, oz] = eyePosition(p);
-      const forward = viewDir(p.yaw, p.pitch);
-      const rnd = mulberry32(hash4(playerIndex, cmd.seq, w.id, 0x5eed));
-      const dirs: [number, number, number][] = [];
-      for (let i = 0; i < def.pellets; i++) dirs.push(spreadDir(forward, cone, rnd));
+      let dirs: [number, number, number][];
+      if (def.melee) dirs = meleeFan(p.yaw, p.pitch, def.melee);
+      else {
+        const cone = currentSpread(p);
+        const forward = viewDir(p.yaw, p.pitch);
+        const rnd = mulberry32(hash4(playerIndex, cmd.seq, w.id, 0x5eed));
+        dirs = [];
+        for (let i = 0; i < def.pellets; i++) dirs.push(spreadDir(forward, cone, rnd));
+      }
       p.bloom = Math.min(def.bloomMax, p.bloom + def.bloom);
       ev.shot = { weapon: w.id, ox, oy, oz, dirs, seq: cmd.seq, viewTick: cmd.viewTick };
     }
-  }
+  } else if (frozen) p.burstLeft = 0;
   p.fireHeld = fire;
 }
 
