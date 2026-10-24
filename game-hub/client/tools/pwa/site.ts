@@ -29,9 +29,9 @@ export const SITE_TEXT = {
   games: {
     voxel: {
       name: 'Voxelvale',
-      genre: ['Sandbox', 'Survival', 'Platformer'],
+      genre: ['Sandbox', 'Platformer'],
       description:
-        'A block-building sandbox with survival, creatures, biomes and parkour courses in procedurally generated worlds, solo or with up to 16 players.',
+        'A block-building sandbox with day and night, flowing water and parkour courses in procedurally generated worlds, solo or with up to 16 players.',
     },
     arena: {
       name: 'Arcfire Arena',

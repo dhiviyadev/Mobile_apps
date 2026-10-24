@@ -182,7 +182,7 @@ export class HubApp {
         h('details', { class: 'about', 'data-testid': 'about' },
           h('summary', null, 'About Cobalt Game Hub'),
           h('p', null, 'Cobalt Game Hub is a free collection of two original 3D games that run in your browser and install as an app on Android, iPad, iPhone, Chromebook, Windows and Mac.'),
-          h('p', null, h('strong', null, 'Voxelvale'), ' is a block-building sandbox with survival, creatures, biomes and parkour in generated worlds, alone or with up to 16 players. ',
+          h('p', null, h('strong', null, 'Voxelvale'), ' is a block-building sandbox with day and night, flowing water and parkour in generated worlds, alone or with up to 16 players. ',
             h('strong', null, 'Arcfire Arena'), ' is a fast round-based arena shooter: duels, team fights and free-for-all, online or against bots.'),
           h('p', null, 'All art, music and sound are made in code. Once installed, both games also work offline.'),
         ),

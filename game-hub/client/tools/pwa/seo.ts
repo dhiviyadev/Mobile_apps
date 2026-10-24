@@ -91,7 +91,7 @@ export function jsonLd(site: SiteConfig): Record<string, unknown> {
         gamePlatform: ['Web browser', 'Android', 'iPadOS', 'iOS', 'Windows', 'macOS', 'ChromeOS'],
         playMode: ['SinglePlayer', 'MultiPlayer', 'CoOp'],
         numberOfPlayers: { '@type': 'QuantitativeValue', minValue: 1, maxValue: 16 },
-        genre: ['Sandbox', 'Survival', 'Shooter'],
+        genre: ['Sandbox', 'Shooter'],
         isAccessibleForFree: true,
         offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD', availability: 'https://schema.org/InStock' },
         inLanguage: 'en',
