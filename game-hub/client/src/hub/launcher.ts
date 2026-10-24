@@ -3,14 +3,14 @@
  * fullscreen + audio unlock (needs the user gesture), loading screen,
  * parallel "download game bundle" + "join room", then hand-off to the game.
  */
-import { GAME_TITLES, type GameId, type JoinOptions } from '@hub/shared';
+import { GAME_TITLES, type GameId, type JoinOptions, PROTOCOL_TEXT } from '@hub/shared';
 import { enterFullscreen, exitFullscreen, isTouchDevice, ScreenWakeLock } from '../core/device';
 import { settings } from '../core/settings';
 import { h } from '../core/ui/dom';
 import { LoadingScreen, ReconnectBanner, toast } from '../core/ui/overlays';
 import { audio } from '../core/audio/audio';
 import { type JoinRequest, NetSession } from '../net/session';
-import { isAbortError, serverSeenRecently, waitForServer } from '../net/api';
+import { checkServerProtocol, isAbortError, serverSeenRecently, waitForServer } from '../net/api';
 import { hasGameServer } from '../net/serverUrl';
 import { gameLoaders } from '../games/registry';
 import { runBenchmark } from '../core/render/benchmark';
@@ -89,6 +89,8 @@ export async function launchGame(req: LaunchRequest, hooks: LaunchHooks): Promis
       }
       loading.set(0.03, 'Connecting…');
     }
+    // A server still on an older (or newer) wire format can't host this page: say so instead of joining.
+    if (req.online && hasGameServer()) await checkServerProtocol();
     // Join and download in parallel; the room tells us which game a code belongs to.
     const sessionPromise = req.online ? NetSession.connect(req.join) : Promise.resolve(null);
     let game = knownGame;
@@ -146,6 +148,10 @@ export async function launchGame(req: LaunchRequest, hooks: LaunchHooks): Promis
     loading.done();
     void session?.leave();
     finish();
-    if (!isAbortError(err)) toast(err instanceof Error ? err.message : 'Something went wrong.', 'error', 4500);
+    if (!isAbortError(err)) {
+      const msg = err instanceof Error ? err.message : 'Something went wrong.';
+      // "Reload the page" needs time to read and act on.
+      toast(msg, 'error', msg === PROTOCOL_TEXT.clientOutdated ? 10_000 : 4500);
+    }
   }
 }

@@ -9,8 +9,9 @@
  *  - nickname sanitising and host assignment
  *  - holding a dropped player's seat for auto-reconnect
  *  - a ping/pong channel for the in-game ping display
+ *  - the protocol version gate: pages built for another wire format are refused
  */
-import { type Client, CloseCode, Room } from '@colyseus/core';
+import { type AuthContext, type Client, CloseCode, Room } from '@colyseus/core';
 import {
   CHAT_BURST,
   CLOSE_KICKED,
@@ -20,6 +21,7 @@ import {
   type GameId,
   type JoinOptions,
   nicknameOrGuest,
+  protocolError,
   RECONNECT_WINDOW_SECONDS,
   type RoomMeta,
   sanitizeChat,
@@ -39,7 +41,23 @@ export const ROOM_CODE_SET = 'hub:room-codes';
  */
 const pendingClaims = new Set<string>();
 
+/** Throws the player-facing protocol error, if any. Called first by every room's static onAuth. */
+export function assertProtocol(options: Partial<JoinOptions> | undefined): void {
+  const error = protocolError(options?.protocol);
+  if (error) throw new Error(error);
+}
+
 export abstract class HubRoom<S extends HubState<P>, P extends HubPlayer> extends Room<{ state: S; metadata: RoomMeta }> {
+  /**
+   * Matchmaking gate for create / join / joinById / joinOrCreate (reconnects skip it).
+   * Colyseus calls static onAuth *unbound* (MatchMaker callOnAuth), so no `this` or `super` here;
+   * subclasses that override it call assertProtocol() themselves.
+   */
+  static override async onAuth(_token: string, options: Partial<JoinOptions> | undefined, _context: AuthContext): Promise<unknown> {
+    assertProtocol(options);
+    return true;
+  }
+
   protected abstract readonly gameId: GameId;
   protected readonly log = logger(this.constructor.name.replace(/^_+/, ''));
   protected isPrivate = false;

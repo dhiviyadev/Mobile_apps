@@ -64,7 +64,7 @@ import { AddressBuckets, clientAddress } from '../http/clientAddress';
 import { ServerVoxelWorld } from '../voxel/ServerVoxelWorld';
 import { VoxelFluids } from '../voxel/VoxelFluids';
 import { getWorldStore, PUBLIC_WORLD_SLOTS, publicWorldId, type SavedWorld } from '../voxel/WorldStore';
-import { HubRoom, ROOM_CODE_SET } from './HubRoom';
+import { assertProtocol, HubRoom, ROOM_CODE_SET } from './HubRoom';
 import { VoxelPlayer, VoxelState } from './schema/VoxelState';
 
 const TICK_MS = 50;
@@ -143,11 +143,13 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
 
   /**
    * Gate for every matchmaking request (Colyseus calls it before a room is
-   * created or joined): limits how fast one address, and everyone together,
-   * may try codes to reopen saved worlds. Server code calling
+   * created or joined): refuses other protocol versions (as HubRoom does),
+   * then limits how fast one address, and everyone together, may try codes
+   * to reopen saved worlds. Server code calling
    * matchMaker.create()/joinOrCreate() for voxel must pass an auth context.
    */
   static override async onAuth(_token: string, options: Partial<JoinOptions> | undefined, context: AuthContext): Promise<unknown> {
+    assertProtocol(options);
     if (options?.reviveCode !== undefined && !allowRevive(context)) {
       throw new Error(`${REVIVE_ERRORS.tooManyAttempts}: too many attempts to reopen saved worlds`);
     }

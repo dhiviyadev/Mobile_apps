@@ -4,7 +4,7 @@
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { AuthContext } from '@colyseus/core';
-import { TokenBucket } from '@hub/shared';
+import { PROTOCOL_VERSION, TokenBucket } from '@hub/shared';
 import { config } from '../src/config';
 import { AddressBuckets, addressKey, clientAddress } from '../src/http/clientAddress';
 import { PEER_ADDRESS_HEADER } from '../src/http/routes';
@@ -96,7 +96,7 @@ describe('reopen rate limit', () => {
     const res = await fetch(`http://127.0.0.1:${ts.port}/matchmake/create/voxel`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers },
-      body: JSON.stringify({ nickname: 'Guesser', reviveCode: 'ZZZZZZ' }),
+      body: JSON.stringify({ nickname: 'Guesser', reviveCode: 'ZZZZZZ', protocol: PROTOCOL_VERSION }),
     });
     return ((await res.json()) as { error?: string }).error ?? '';
   };

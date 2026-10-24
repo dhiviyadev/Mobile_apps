@@ -12,6 +12,7 @@ import {
   encodeEdit,
   encodeEdits,
   isValidRoomCode,
+  PROTOCOL_VERSION,
   TerrainGenerator,
   VoxelMsg,
 } from '@hub/shared';
@@ -691,7 +692,7 @@ describe('graceful shutdown with a pending seat reservation', () => {
     const res = await fetch(`http://127.0.0.1:${server.port}/matchmake/joinById/${code}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nickname: 'Ghost' }),
+      body: JSON.stringify({ nickname: 'Ghost', protocol: PROTOCOL_VERSION }),
     });
     expect(((await res.json()) as { sessionId?: string }).sessionId).toBeTruthy();
     const pillar = { ...surface, y: surface.y + 2, id: Block.Stone };

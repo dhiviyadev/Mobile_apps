@@ -1,5 +1,5 @@
-/** REST helpers (room list / online counts) and waiting for a sleeping server. */
-import type { RoomListResponse } from '@hub/shared';
+/** REST helpers (room list / online counts), waiting for a sleeping server, and its protocol version. */
+import { type HealthResponse, PROTOCOL_TEXT, PROTOCOL_VERSION, type RoomListResponse } from '@hub/shared';
 import { hasGameServer, serverHttpUrl } from './serverUrl';
 
 /** Longest a join waits for a sleeping server to start (free hosts take a minute or two). */
@@ -7,6 +7,13 @@ export const SERVER_WAKE_DEADLINE_MS = 180_000;
 
 /** When the server last answered (performance.now()), or null if it never has. */
 let lastContact: number | null = null;
+
+/** Protocol of the server from its last /health or /api/rooms answer (1 = a server from before versioning). */
+let serverProtocolSeen: number | null = null;
+
+function noteProtocol(p: unknown): void {
+  serverProtocolSeen = typeof p === 'number' ? p : 1;
+}
 
 /** True when the server answered a request within the last `withinMs`. */
 export function serverSeenRecently(withinMs = 60_000): boolean {
@@ -18,8 +25,22 @@ export async function fetchRooms(signal?: AbortSignal): Promise<RoomListResponse
   const res = await fetch(`${serverHttpUrl()}/api/rooms`, { signal, cache: 'no-store' });
   if (!res.ok) throw new Error(`room list failed: ${res.status}`);
   const data = (await res.json()) as RoomListResponse;
+  noteProtocol(data.protocol);
   lastContact = performance.now();
   return data;
+}
+
+/**
+ * Throws a player-facing Error when the server speaks another protocol than this page. Uses the answer
+ * from the last 60 s, otherwise asks /health once (4 s timeout). Unreachable server = no verdict.
+ * This covers a new page against an old server (e.g. while a deploy rolls out): old servers have no
+ * gate, so only the page can notice.
+ */
+export async function checkServerProtocol(signal?: AbortSignal): Promise<void> {
+  if (serverProtocolSeen === null || !serverSeenRecently()) await healthy(signal, 4000);
+  const p = serverProtocolSeen;
+  if (p === null || p === PROTOCOL_VERSION) return;
+  throw new Error(p < PROTOCOL_VERSION ? PROTOCOL_TEXT.serverOutdated : PROTOCOL_TEXT.clientOutdated);
 }
 
 export interface WaitForServerOptions {
@@ -71,6 +92,14 @@ async function healthy(signal: AbortSignal | undefined, timeoutMs: number): Prom
   signal?.addEventListener('abort', stop);
   try {
     const res = await fetch(`${serverHttpUrl()}/health`, { signal: ctrl.signal, cache: 'no-store' });
+    if (res.ok) {
+      try {
+        noteProtocol(((await res.json()) as HealthResponse).protocol);
+        lastContact = performance.now();
+      } catch {
+        /* not JSON (a proxy page?): keep what we knew */
+      }
+    }
     return res.ok;
   } catch {
     return false;

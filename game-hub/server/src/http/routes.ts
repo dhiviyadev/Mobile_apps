@@ -1,12 +1,12 @@
 /**
  * Tiny REST surface next to the Colyseus matchmaker, served by Colyseus' own
  * router (which handles every HTTP request on the server):
- *   GET /health      liveness probe for Fly.io / Render
+ *   GET /health      liveness probe for Fly.io / Render (+ protocol version)
  *   GET /api/rooms   public room list + online counts for the hub UI
  */
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { createEndpoint, createRouter, matchMaker } from '@colyseus/core';
-import { GAME_IDS, type GameId, isGameId, type RoomListResponse, type RoomMeta } from '@hub/shared';
+import { GAME_IDS, type GameId, type HealthResponse, isGameId, PROTOCOL_VERSION, type RoomListResponse, type RoomMeta } from '@hub/shared';
 import { config } from '../config';
 import { logger } from '../log';
 
@@ -113,12 +113,12 @@ export async function buildRoomList(): Promise<RoomListResponse> {
     });
   }
   rooms.sort((a, b) => b.clients - a.clients);
-  return { rooms, online };
+  return { rooms, online, protocol: PROTOCOL_VERSION };
 }
 
 const health = createEndpoint('/health', { method: 'GET' }, async (ctx) => {
   ctx.setHeader('Cache-Control', 'no-store');
-  return { ok: true, uptime: Math.round(process.uptime()) };
+  return { ok: true, uptime: Math.round(process.uptime()), protocol: PROTOCOL_VERSION } satisfies HealthResponse;
 });
 
 const rooms = createEndpoint('/api/rooms', { method: 'GET' }, async (ctx) => {

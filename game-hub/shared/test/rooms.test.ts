@@ -5,6 +5,10 @@ import {
   mulberry32,
   nicknameOrGuest,
   normalizeRoomCode,
+  PROTOCOL_ERRORS,
+  PROTOCOL_TEXT,
+  PROTOCOL_VERSION,
+  protocolError,
   ROOM_CODE_ALPHABET,
   sanitizeChat,
   sanitizeNickname,
@@ -27,6 +31,20 @@ describe('room codes', () => {
     expect(isValidRoomCode('ABC12X')).toBe(false); // contains 1
     expect(isValidRoomCode('ABC23X')).toBe(true);
     expect(isValidRoomCode('ABCD')).toBe(false);
+  });
+});
+
+describe('protocol version', () => {
+  it('accepts only this build, and tells old and new pages apart', () => {
+    expect(PROTOCOL_VERSION).toBe(2);
+    expect(protocolError(PROTOCOL_VERSION)).toBeNull();
+    // Missing or malformed = a page from before versioning.
+    for (const old of [undefined, 1, '2', 1.5, null]) {
+      expect(protocolError(old)).toBe(`${PROTOCOL_TEXT.clientOutdated} (${PROTOCOL_ERRORS.clientOutdated})`);
+    }
+    expect(protocolError(3)).toBe(`${PROTOCOL_TEXT.serverOutdated} (${PROTOCOL_ERRORS.serverOutdated})`);
+    expect(protocolError(3)).toMatch(/being updated/);
+    expect(protocolError(undefined)).toMatch(/Reload the page/);
   });
 });
 

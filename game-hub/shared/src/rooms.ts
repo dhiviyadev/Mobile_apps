@@ -6,6 +6,7 @@ import {
   type ArenaMode,
   type GameId,
   GAME_IDS,
+  PROTOCOL_VERSION,
   ROOM_CODE_ALPHABET,
   ROOM_CODE_LENGTH,
   VOXEL_MODES,
@@ -26,6 +27,33 @@ export interface JoinOptions {
    * create('voxel') after joinById found no open room).
    */
   reviveCode?: string;
+  /** PROTOCOL_VERSION the page was built with. Missing = a page from before versioning (treated as 1). */
+  protocol?: number;
+  /** Arcfire Arena: bot difficulty ('easy' | 'normal' | 'hard') for a room this client creates. Ignored on join. */
+  botDifficulty?: string;
+}
+
+/** Markers in join errors caused by a protocol mismatch. Old pages show the whole message as is. */
+export const PROTOCOL_ERRORS = { clientOutdated: 'CLIENT_OUTDATED', serverOutdated: 'SERVER_OUTDATED' } as const;
+export const PROTOCOL_TEXT = {
+  clientOutdated: 'Cobalt Game Hub was updated. Reload the page to play online.',
+  serverOutdated: 'The game server is being updated. Try again in a minute, or play offline.',
+} as const;
+
+/** The join error for a client speaking `clientProtocol`, or null when it matches this build. */
+export function protocolError(clientProtocol: unknown): string | null {
+  const v = typeof clientProtocol === 'number' && Number.isInteger(clientProtocol) ? clientProtocol : 1;
+  if (v === PROTOCOL_VERSION) return null;
+  return v < PROTOCOL_VERSION
+    ? `${PROTOCOL_TEXT.clientOutdated} (${PROTOCOL_ERRORS.clientOutdated})`
+    : `${PROTOCOL_TEXT.serverOutdated} (${PROTOCOL_ERRORS.serverOutdated})`;
+}
+
+/** GET /health. `protocol` is missing on servers from before versioning. */
+export interface HealthResponse {
+  ok: boolean;
+  uptime: number;
+  protocol?: number;
 }
 
 /** Markers in the error message when reopening a saved world fails. */
@@ -62,6 +90,8 @@ export interface RoomListResponse {
   rooms: RoomListing[];
   /** Total connected players per game, including private rooms. */
   online: Record<GameId, number>;
+  /** PROTOCOL_VERSION of the server. Missing on servers from before versioning. */
+  protocol?: number;
 }
 
 export function isGameId(value: unknown): value is GameId {

@@ -59,3 +59,13 @@ export const DEFAULT_SERVER_PORT = 2567;
 
 /** WebSocket close code the server uses when it removes a player on purpose (anti-cheat). */
 export const CLOSE_KICKED = 4100;
+
+/**
+ * Version of the client/server contract for every room: binary layouts, schema fields, message and
+ * event shapes, phases. Every join carries it (JoinOptions.protocol) and rooms refuse any other value.
+ * Bump it once per *release* whose wire changes would break an older client or server. The arena and
+ * voxel upgrades share one bump if they ship in the same deploy; voxel bumps again if it ships later.
+ *   1 = before versioning (clients sent nothing)
+ *   2 = Arcfire Arena upgrade (self-snapshot v2, vote phase, new schema fields)
+ */
+export const PROTOCOL_VERSION = 2;

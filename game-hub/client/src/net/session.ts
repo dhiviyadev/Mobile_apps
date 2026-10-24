@@ -11,7 +11,16 @@
  * The SDK is imported dynamically so the hub's first paint doesn't pay for it.
  */
 import type { Client, Room } from '@colyseus/sdk';
-import { CLOSE_KICKED, type GameId, type JoinOptions, RECONNECT_WINDOW_SECONDS, REVIVE_ERRORS } from '@hub/shared';
+import {
+  CLOSE_KICKED,
+  type GameId,
+  type JoinOptions,
+  PROTOCOL_ERRORS,
+  PROTOCOL_TEXT,
+  PROTOCOL_VERSION,
+  RECONNECT_WINDOW_SECONDS,
+  REVIVE_ERRORS,
+} from '@hub/shared';
 import { hasGameServer, serverWsUrl } from './serverUrl';
 
 export type JoinRequest =
@@ -36,6 +45,11 @@ const CLOSE_SERVER_SHUTDOWN = 4001;
 async function createClient(): Promise<Client> {
   const { Client } = await import('@colyseus/sdk');
   return new Client(serverWsUrl());
+}
+
+/** Every matchmaking request carries the page's protocol version; rooms refuse joins without it. */
+export function withProtocol(options: JoinOptions): JoinOptions {
+  return { ...options, protocol: PROTOCOL_VERSION };
 }
 
 /**
@@ -77,15 +91,16 @@ export class NetSession {
     try {
       switch (req.kind) {
         case 'quick':
-          room = await client.joinOrCreate(req.game, req.options);
+          room = await client.joinOrCreate(req.game, withProtocol(req.options));
           break;
         case 'create':
-          room = await client.create(req.game, { ...req.options, private: true });
+          room = await client.create(req.game, { ...withProtocol(req.options), private: true });
           break;
         case 'code':
-          room = await joinByCode(client, req);
+          room = await joinByCode(client, { ...req, options: withProtocol(req.options) });
           break;
         case 'resume':
+          // Reconnects never pass onAuth, so they carry no protocol version.
           room = await client.reconnect(req.token);
           break;
       }
@@ -298,6 +313,8 @@ export async function joinByCode(client: Pick<Client, 'joinById' | 'create'>, re
 /** Turns a join failure into a message for players. Exported for tests. */
 export function describeJoinError(err: unknown, req: JoinRequest): string {
   const msg = errorMessage(err);
+  if (msg.includes(PROTOCOL_ERRORS.clientOutdated)) return PROTOCOL_TEXT.clientOutdated;
+  if (msg.includes(PROTOCOL_ERRORS.serverOutdated)) return PROTOCOL_TEXT.serverOutdated;
   if (msg.includes(REVIVE_ERRORS.alreadyOpen)) return 'That world is just reopening. Try joining again in a moment.';
   if (msg.includes(REVIVE_ERRORS.tooManyAttempts)) return 'Too many tries with room codes. Wait a minute and try again.';
   if (msg.includes(REVIVE_ERRORS.noSavedWorld) || NOT_FOUND.test(msg)) {

@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { describeJoinError, joinByCode, type JoinRequest } from '../src/net/session';
+import { PROTOCOL_TEXT, PROTOCOL_VERSION, protocolError } from '@hub/shared';
+import { describeJoinError, joinByCode, type JoinRequest, withProtocol } from '../src/net/session';
 
 type CodeRequest = Extract<JoinRequest, { kind: 'code' }>;
 
@@ -83,5 +84,23 @@ describe('joinByCode', () => {
   it('explains rate limiting', () => {
     const err = new Error('TOO_MANY_REVIVES: too many attempts to reopen saved worlds');
     expect(describeJoinError(err, request('K7PX2M'))).toMatch(/Too many tries/);
+  });
+});
+
+describe('protocol version', () => {
+  it('adds the page protocol to join options without touching the rest', () => {
+    const opts = { nickname: 'Kid', mode: '1v1', color: 0xff0000 };
+    expect(withProtocol(opts)).toEqual({ ...opts, protocol: PROTOCOL_VERSION });
+    expect(opts).not.toHaveProperty('protocol');
+    // A stale value is replaced.
+    expect(withProtocol({ ...opts, protocol: 1 }).protocol).toBe(PROTOCOL_VERSION);
+  });
+
+  it('turns the server refusal into the reload / server-updating messages', () => {
+    const quick: JoinRequest = { kind: 'quick', game: 'arena', options };
+    expect(describeJoinError(new Error(protocolError(1)!), quick)).toBe(PROTOCOL_TEXT.clientOutdated);
+    expect(describeJoinError(new Error(protocolError(PROTOCOL_VERSION + 1)!), quick)).toBe(PROTOCOL_TEXT.serverOutdated);
+    // Also when it comes back from a join by code (not mistaken for "no such room").
+    expect(describeJoinError(new Error(protocolError(undefined)!), request('K7PX2M'))).toBe(PROTOCOL_TEXT.clientOutdated);
   });
 });
