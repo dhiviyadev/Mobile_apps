@@ -48,7 +48,7 @@ game-hub/
 - **Seeded worlds.** Voxelvale terrain is generated identically on every client and on the server from a seed; only edits travel over the network, and only edits are saved (a seed plus a compact edit list per world).
 - **Lighting in the mesher.** Sky light and lamp light are flood-filled per chunk in the mesh workers and baked into vertices with smooth (per-corner) averaging, so caves are dark, lamps light their surroundings, and the GPU still does one texture fetch per pixel.
 - **Server authority where it matters.** Arena: movement, fire rate, ammo, line of sight and hits are all decided on the server, with lag compensation. Voxelvale: block edits are validated by the server; movement is client-simulated but speed-checked (it's a co-op sandbox).
-- **Small first download.** The hub is ~21 KB gzipped JS + ~7 KB CSS. Three.js (~124 KB gz) and each game (~20–25 KB gz) load only when you open one; the network library (Colyseus SDK, ~54 KB gz) loads only when you join a room.
+- **Small first download.** The hub is ~30 KB gzipped JS + ~8 KB CSS. Three.js (~124 KB gz) and each game (~20–25 KB gz) load only when you open one; the network library (Colyseus SDK, ~54 KB gz) loads only when you join a room. A service worker then downloads the rest (about 1 MB, 0.3 MB gzipped) in the background so everything also opens offline.
 
 ---
 
@@ -69,13 +69,15 @@ Voxelvale sandbox worlds you build online are saved to `server/data/` (gitignore
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Server and client in watch mode |
-| `npm test` | 188 unit and integration tests (Vitest): world generation, lighting, meshing, flowing water, saved worlds, physics, combat rules, lag compensation, full bot matches, real Colyseus rooms over WebSockets |
-| `npm run e2e` | 26 browser tests (Playwright, desktop and emulated Android tablet), incl. multi-touch and two-browser multiplayer |
+| `npm test` | 270 unit and integration tests (Vitest): world generation, lighting, meshing, flowing water, saved worlds, physics, combat rules, lag compensation, full bot matches, real Colyseus rooms over WebSockets, the generated icons/manifest/search tags and the service worker |
+| `npm run e2e` | 40 browser tests (Playwright, desktop and emulated Android tablet), incl. multi-touch, two-browser multiplayer, offline play from the service worker, and the Google app / in-app browser fallbacks |
 | `npm run typecheck` | `tsc --noEmit` for all three packages |
 | `npm run build` | Production builds: `server/dist/index.js` and `client/dist/` |
 | `npm start` | Run the built server |
 
 > The first `npm run e2e` uses the Chromium that Playwright 1.56 ships with. Run `npx playwright install chromium` if it isn't installed.
+>
+> `client/e2e/pwa.spec.ts` builds the production site into `client/dist-e2e` itself and serves it on port 4180 (`E2E_STATIC_PORT` moves it), to test the service worker, offline play and updates.
 
 ---
 
@@ -180,6 +182,49 @@ Every push to this branch (or `main`) that touches `game-hub/` runs the typechec
 
 If you prefer, any domain you own works the same way: point a `CNAME` record at `dhiviyadev.github.io` and set `PAGES_CUSTOM_DOMAIN`.
 
+## Install it as an app, play offline, and find it on Google
+
+The website is an installable web app (PWA). Installed, it opens from the home screen full screen, with no browser bar, and works without internet.
+
+**Installing.** The hub's **Install app** button (and the "Play it like an app" card on tablets) does the right thing for each browser:
+
+| Where | How |
+| --- | --- |
+| Chrome, Edge, Samsung Internet (Android, Chromebook, Windows, Mac) | One tap: the browser's own install prompt. Without it yet: ⋮ menu → **Install app** / **Add to Home screen**, or the install icon in the address bar |
+| iPad / iPhone Safari | Share → **Add to Home Screen** (the button shows the steps) |
+| Chrome / Firefox / Edge on iOS | Share → **Add to Home Screen**, or open the page in Safari |
+| Safari on a Mac | File → **Add to Dock** |
+| The Google app, Facebook, Instagram and other in-app browsers | They can't install: the hub says so and offers **Open in Chrome** (Android) or explains **Open in Safari** (iOS). The games still run in them |
+
+On Android the installed app is a real app entry, so "Hey Google, open Cobalt Hub" should open it.
+
+**Offline.** After one online visit, a service worker keeps a copy of the hub, both games, the Voxelvale world worker, the styles and the icons. Then the hub, Voxelvale offline and Arcfire Arena against bots open with no connection, installed or not. Online play always needs the network, and the service worker never touches game-server traffic (WebSockets, matchmaking, `/api/rooms`, `/health`).
+
+**Updates.** Page loads check the network first (3 s budget, then the offline copy). A new deploy downloads in the background; the hub then shows **A new version of Cobalt Hub is ready → Restart**, never during a game. Settings → **App** shows the version, offline status, install, **Check for updates**, storage protection and **Reset offline copy**.
+
+**The Google app and in-app browsers.** The hub detects the Google app (on Android it usually opens results in a Chrome Custom Tab; on iOS it is an in-app browser), Android WebViews, social apps' browsers and iframes, and falls back gracefully when something is missing:
+- no full screen → the game plays in the page (and suggests installing);
+- no screen wake lock → touch input keeps the screen on while playing;
+- no pointer lock → drag with the mouse button held to look;
+- no localStorage → settings and worlds live in memory for the visit (the banner warns);
+- no service worker → online only; if a deploy replaced a game's files, the hub offers a reload;
+- no WebGL 2 or no module workers → a clear message instead of a broken game.
+
+**Kill switches** (if the offline copy ever misbehaves):
+1. Open the site with `?sw=off`: it removes the service worker and its caches on that device and remembers that (`?sw=on` undoes it). The loading screen links to it after 12 s.
+2. Set the repository variable `SERVICE_WORKER` = `off` and re-run *Publish website*: every browser that has the site installs a worker that deletes itself and the offline copy at its next update check (on the next visit).
+3. Settings → App → **Reset offline copy** on one device.
+
+**Getting found on Google.** Every build has a title and description, a canonical URL, Open Graph and Twitter cards with a generated 1200×630 preview image, JSON-LD (`WebSite`, `VideoGame`/`WebApplication`, with no made-up ratings), a real `<h1>`, an About text, `robots.txt` and `sitemap.xml`. All icons and the preview are drawn by code at build time (`client/tools/pwa`). One-time steps in [Google Search Console](https://search.google.com/search-console):
+1. Add a property → **URL prefix** `https://dhiviyadev.github.io/Mobile_apps/` → verification method **HTML tag**. Put the tag's `content` value in the repository variable `GOOGLE_SITE_VERIFICATION`, re-run *Publish website*, then click **Verify**.
+2. **Sitemaps** → submit `sitemap.xml`. **URL Inspection** → the site's address → **Request indexing**.
+3. On GitHub, set the repository's **About → Website** to the site's address.
+4. Check the previews with the [Rich Results Test](https://search.google.com/test/rich-results) and any social-card preview tool.
+
+github.io limits: crawlers read `robots.txt` only at a host's root, and Google shows a site name and favicon per host, not per folder. On `dhiviyadev.github.io/Mobile_apps/`, submit the sitemap in Search Console instead; a [custom domain](#free-custom-domain-optional) gets the full search appearance (`robots.txt` and `sitemap.xml` are emitted for it already).
+
+A Google Play app (a Trusted Web Activity built with Bubblewrap from this same manifest) is possible later; it needs a custom domain (for `/.well-known/assetlinks.json`) and a Play developer account, and is not built.
+
 ## Deploy
 
 The client is a static site; the server is one Node process holding game rooms in memory. Voxelvale sandbox worlds are also written to disk (`DATA_DIR`, `/data` in the image), so give the server a persistent volume if worlds should survive deploys and restarts.
@@ -220,7 +265,7 @@ VITE_SERVER_URL=wss://<your-server> npm run build -w client   # output: client/d
 - Build output: `client/dist`
 - Environment variables: `VITE_SERVER_URL=wss://<your-server>` and `NODE_VERSION=22`
 
-`client/public/_headers` sets long-term caching for hashed assets.
+`client/public/_headers` sets long-term caching for hashed assets and makes browsers revalidate `sw.js`, `index.html` and the manifest (`netlify.toml` does the same on Netlify). Set `VITE_SITE_URL` to the site's address for the canonical and social-card URLs.
 
 **Netlify:** Add site → import the repo → Base directory `game-hub`. [`netlify.toml`](netlify.toml) supplies the build command and output folder. Add `VITE_SERVER_URL` under Site settings → Environment variables.
 
@@ -232,6 +277,10 @@ You can also point any build at another server with `?server=wss://host` in the 
 | --- | --- | --- | --- |
 | `VITE_SERVER_URL` | client build | `ws(s)://<page host>:2567` | Game server WebSocket URL; `none` builds a static site for offline play only |
 | `VITE_BASE` | client build | `/` | Path the site is served under (e.g. `/Mobile_apps/` on GitHub Pages) |
+| `VITE_SITE_URL` | client build | unset | Public address of the site, e.g. `https://dhiviyadev.github.io/Mobile_apps/`. Enables the canonical URL, Open Graph/Twitter image URLs, JSON-LD URLs and `sitemap.xml` (the Pages workflow sets it; repository variable `SITE_URL` overrides) |
+| `VITE_SW` | client build | `on` | `off` builds the kill-switch service worker, which removes itself and the offline copy (repository variable `SERVICE_WORKER`) |
+| `VITE_GOOGLE_SITE_VERIFICATION` | client build | unset | Search Console HTML-tag verification value (repository variable `GOOGLE_SITE_VERIFICATION`) |
+| `VITE_BUILD_SHA` | client build | `dev` | Commit shown in Settings → App (the workflow sets it) |
 | `PORT` | server | `2567` | Listen port |
 | `HOST` | server | `0.0.0.0` | Listen address |
 | `ALLOWED_ORIGINS` | server | `*` | Comma-separated web origins allowed to use the server over HTTP: matchmaking (joining rooms) and `/api/rooms`. If you restrict it, include every site that serves the client, e.g. `https://dhiviyadev.github.io` and your custom domain |

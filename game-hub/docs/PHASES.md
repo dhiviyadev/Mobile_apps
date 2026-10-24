@@ -287,7 +287,7 @@ On a tablet: Settings → Show FPS & ping, then play both games on Auto quality.
 ### Known issues / what to verify next
 - **Real-device performance is not yet verified.** This environment has no GPU (tests use SwiftShader), so the 60 FPS target on a base iPad and 30 FPS on low-end Android still need checking on hardware. The benchmark thresholds in `client/src/core/render/benchmark.ts` may need tuning after that.
 - Voxel worlds aren't persisted server-side; rooms reset when empty. *(Fixed in the follow-up below.)*
-- No service worker / offline cache yet (the PWA manifest is in place).
+- No service worker / offline cache yet (the PWA manifest is in place). *(Fixed in the upgrade below.)*
 - The FPS-cap and dynamic-resolution heuristics use frame intervals, so a browser that throttles `requestAnimationFrame` (e.g. Low Power Mode on iOS) will look like a slow GPU and drop resolution.
 
 ---
@@ -468,3 +468,63 @@ Verified here:
 - **Pages switch:** GitHub Pages must be switched on once in the repository settings; the workflow's token isn't allowed to do it. The first deploy failed for exactly that reason.
 - **Free server sleeps:** Render's free server sleeps when idle, so the first player after a quiet spell waits about a minute.
 - **Container user switch:** the `su-exec` package the container uses to drop to the `node` user couldn't be fetched in this sandbox (the Alpine mirror is blocked here). That step was skipped for the local image check; Render and Fly fetch it normally.
+
+---
+
+## Upgrade: installable app, offline play and Google ✅
+
+The request: "the game should be able to open even without a browser, in just Google". The hub is now an installable app that opens without internet, works inside the Google app and other in-app browsers, and is set up to be found on Google Search. No game, server or save-format changes.
+
+### What was built
+
+**Build pipeline** (`client/tools/pwa`, a Vite plugin; no new dependencies)
+- **Art:** PNG icons (any 192/512, maskable 192/512, Apple 180, favicon 48, two shortcut icons) and a 1200×630 social preview, drawn at build time by a ~200-line rasterizer on `node:zlib` (4×4 supersampling, adaptive PNG filters: the preview is 56 KB). No binary files in the repository; `public/icon-180.png` and the static manifest are gone.
+- **Manifest:** generated per build. `id` is the base path, which equals the old manifest's implicit id, so existing installs keep their identity. Fullscreen and landscape as before, plus shortcuts (`?open=voxel`, `?open=arena`), `launch_handler`, screenshots from `docs/screenshots` with their real sizes.
+- **Search:** title, description, canonical, Open Graph/Twitter cards, JSON-LD (`WebSite` + `VideoGame`/`WebApplication`, no ratings), `robots.txt` and `sitemap.xml`; absolute URLs come from `VITE_SITE_URL`, which the Pages workflow sets. `index.html` has a static boot shell with crawlable text, a `nomodule` message, and a 12 s watchdog that links to `?sw=off`.
+- **Service worker:** `src/platform/sw/sw.ts`, compiled into a 4 KB classic `sw.js` by a nested Vite build. It precaches 25 files, about 990 KB (the shell, three.js, both games, the voxel worker, CSS, icons), installs all or nothing, and checks that `index.html` belongs to the same deploy. Page loads are network-first with a 3 s budget; hashed files are cache-first. It never answers anything else: other origins (the game server), non-GET requests, other projects on the same host, and same-origin `api/`, `matchmake/`, `health` paths go straight to the network, and WebSockets never reach a service worker. The build fails if `dist` misses a file the worker or manifest needs, or if the precache passes 12 MB (warning at 4 MB).
+
+**Client** (`client/src/platform`, hub install UI)
+- **Registration and updates:** registered 1.5 s after load. A new deploy downloads in the background; the hub then shows "A new version of Cobalt Hub is ready → Restart", never during a game. The first download shows "Ready to play offline" once.
+- **Kill switches:** `?sw=off` (removes the worker and the `cobalt-hub-*` caches and remembers it; `?sw=on` undoes it), the `SERVICE_WORKER=off` repository variable (publishes a worker that deletes itself everywhere), and Settings → App → Reset offline copy.
+- **Install:** an **Install app** button in the header and a "Play it like an app" card on touch devices. Where Chromium offers `beforeinstallprompt` it is one tap; elsewhere a sheet explains the steps for iPad/iPhone Safari, other iOS browsers, Android browsers, the Google app's Custom Tab, Safari on the Mac and desktop Chrome/Edge.
+- **Google app and in-app browsers:** the user agent picks only the wording: the Google app (`GSA/`), Android WebViews (`; wv)`), Facebook, Instagram, TikTok, Snapchat, LINE, other iOS web views, and iframes. A banner explains the limits and offers **Open in Chrome** (an Android `intent://` link that falls back to the page itself) or how to open the page in Safari.
+- **Fallbacks, all detected rather than assumed:**
+  - Storage: when `localStorage` is missing or throws (DOM storage off in a WebView), a memory stand-in replaces it at boot, so every game's existing `localStorage` calls keep working; the banner warns that nothing is kept.
+  - Full screen: `enterFullscreen()` gives up after 1.5 s (some WebViews never settle the request) and reports whether it worked; a weekly tip suggests installing when it didn't. Installed apps skip it.
+  - Pointer lock: refused in sandboxed frames and WebViews, so the mouse falls back to drag-to-look. A refusal after the lock once worked (Chrome's cooldown after Esc) doesn't count.
+  - WebGL 2 or module workers missing: a clear dialog instead of a broken game (Arena needs only WebGL 2).
+  - Stale tabs: when a deploy replaced a game's files, the hub offers a reload ("Cobalt Hub was updated"); offline, it explains that the game hasn't been downloaded yet.
+  - Wake lock: best effort, as before.
+- **Search content:** the brand is an `<h1>`, and the footer has a collapsible About text.
+- **Settings → App:** version and offline build, offline status, install, check for updates, storage protection (`navigator.storage.persist`), reset. It loads on demand. Installed apps ask for persistent storage once per launch.
+
+**Size:** the hub's first-load JS went from about 22.6 KB to 29.5 KB gzipped (detection, install UI, banner, update flow). The install instructions (1.5 KB) and Settings → App (1.3 KB) load on demand.
+
+### How to test
+```bash
+npm test && npm run e2e            # 270 unit tests; 40 browser tests (20 skipped by design: project-specific)
+VITE_BASE=/Mobile_apps/ VITE_SITE_URL=http://localhost:4173/Mobile_apps/ npm run build -w client
+(cd client && VITE_BASE=/Mobile_apps/ npx vite preview)   # → http://localhost:4173/Mobile_apps/
+```
+Then in Chrome DevTools: **Application → Manifest** (no errors, installable, maskable icon preview) and **Application → Service workers** (activated, scope `/Mobile_apps/`). Tick *Offline* and reload: the hub and both offline games still start.
+
+`client/e2e/pwa.spec.ts` builds `client/dist-e2e` and serves it like GitHub Pages. It goes offline by stopping that server, because Playwright's `setOffline` doesn't apply to a service worker's own requests. `client/e2e/platform.spec.ts` emulates the Google app on Android (no service worker, wake lock, full screen or storage), no WebGL 2, the install prompt, iPad Safari, an installed app, shortcuts, a missing chunk and an iframe.
+
+Verified here:
+- **Headless Chromium on a `/Mobile_apps/` production build** (`vite preview`): the manifest parses without errors, `Page.getInstallabilityErrors` is empty (installable), and the worker is activated with scope `/Mobile_apps/`.
+- **Offline:** after stopping the preview server, the hub reloads, Arena vs bots runs and Voxelvale sandbox loads its world worker from the cache, with no page errors.
+
+Manual checks still to do on devices:
+- **Android Chrome tablet:** Install → home-screen icon (maskable crop) → full screen, landscape → airplane mode → both offline games.
+- **iPad Safari:** Add to Home Screen → offline launch.
+- **The Google app on Android and iOS:** search, tap the result, play Arena vs bots; check the banner and Open in Chrome.
+- **Voice:** "Hey Google, open Cobalt Hub" after installing on Android.
+- **Audits:** Lighthouse PWA and SEO in Chrome DevTools, and a social-card preview of the URL.
+
+### Known issues / notes
+- **One-time Search Console setup:** being found on Google needs the steps in the README (verification tag, sitemap, Request indexing). On `github.io`, `robots.txt` is ignored (it isn't at the host root), and Google shows a site name and favicon per host; a custom domain fixes both.
+- **Service workers are unavailable in some in-app browsers:** the iOS Google app's web view is one. There the site works online only, and the banner explains how to open it in Safari and install it.
+- **Wording to keep in sync:** the search description and About text mention Voxelvale survival, creatures and biomes, which ship with the gameplay upgrade. If that doesn't ship, change "survive"/"survival" in `client/tools/pwa/site.ts` and `HubApp.ts`.
+- **Screenshots:** the manifest and JSON-LD use `docs/screenshots/*.png`. Refresh them after the gameplay upgrades (same file names).
+- **Size budget:** the hub grew by 6.9 KB gzipped, over the design's +4 KB budget. Making registration lazy would win back about 2 KB if needed.
+- **Play Store:** a Trusted Web Activity (Bubblewrap) is documented as a later option, not built. It needs a custom domain for `assetlinks.json` and a Play developer account.
