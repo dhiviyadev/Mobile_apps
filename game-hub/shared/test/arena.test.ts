@@ -6,6 +6,7 @@ import {
   BoxWorld,
   Buttons,
   type Command,
+  createArenaWorld,
   createMoveState,
   createPlayerSim,
   decodeCommands,
@@ -13,6 +14,7 @@ import {
   encodeCommands,
   encodePoses,
   encodeSnapshot,
+  findOpenLane,
   hitboxesFor,
   LOADOUT_TIME,
   MOVE,
@@ -53,7 +55,7 @@ describe('arena maps', () => {
         map.waypoints.forEach((w, i) => expect(standable(w.x, w.y, w.z), `${map.id} waypoint ${i} ${JSON.stringify(w)}`).toBe(true));
         const seen = new Set([0]);
         const queue = [0];
-        while (queue.length) for (const n of sim.nav.adj[queue.shift()!]) if (!seen.has(n)) (seen.add(n), queue.push(n));
+        while (queue.length) for (const e of sim.nav.adj[queue.shift()!]) if (!seen.has(e.to)) (seen.add(e.to), queue.push(e.to));
         expect(seen.size, `${map.id} reachable waypoints`).toBe(map.waypoints.length);
       });
 
@@ -91,12 +93,12 @@ describe('arena movement', () => {
 
   it('climbs the Foundry stairs onto the central deck', () => {
     const map = ARENA_MAPS[0];
-    const world = new BoxWorld(map.boxes);
-    const s = createMoveState(-9, 0, 0);
-    // Face east (+X): yaw = -PI/2.
+    const world = createArenaWorld(map);
+    const s = createMoveState(-12.5, 0, 0);
+    // Face east (+X): yaw = -PI/2. The deck (top 3.2) has stairs from x -11.2 up to its west edge at x -7.
     for (let i = 0; i < 70; i++) stepMovement(s, { moveX: 0, moveY: 1, yaw: -Math.PI / 2, jump: false, crouch: false, speedMul: 1 }, world, 1 / 60);
-    expect(s.y).toBeCloseTo(2.4, 2);
-    expect(s.x).toBeGreaterThan(-4);
+    expect(s.y).toBeCloseTo(3.2, 2);
+    expect(s.x).toBeGreaterThan(-6);
   });
 });
 
@@ -171,16 +173,17 @@ describe('arena simulation', () => {
     sim.startMatch();
     for (let i = 0; i < LOADOUT_TIME * TICK_RATE + 2; i++) sim.step(); // through loadout
     expect(sim.phase).toBe('live');
-    // Place both in the open north lane and record history while the target moves.
-    Object.assign(shooter.sim, { x: -14, y: 0, z: 7, yaw: -Math.PI / 2, pitch: 0 });
-    Object.assign(target.sim, { x: -6, y: 0, z: 7 });
+    // Place both in an open lane and record history while the target moves.
+    const lane = findOpenLane(map)!;
+    Object.assign(shooter.sim, { ...lane.a, yaw: -Math.PI / 2, pitch: 0 });
+    Object.assign(target.sim, { ...lane.b });
     for (let i = 0; i < 5; i++) sim.step();
     const seenAt = sim.tick;
-    Object.assign(target.sim, { z: 9.5 }); // target sidesteps 2.5 m
+    Object.assign(target.sim, { ...lane.side }); // target sidesteps 2.5 m
     sim.step();
     sim.step();
-    // The shooter aims where it *saw* the target (z = 7) two ticks ago.
-    const aim = Math.atan2(-(-6 - -14), -(7 - 7));
+    // The shooter aims where it *saw* the target two ticks ago.
+    const aim = Math.atan2(-(lane.b.x - lane.a.x), -(lane.b.z - lane.a.z));
     sim.queueCommand('a', cmd(shooter.sim.lastSeq + 1, { buttons: Buttons.Fire, yaw: aim, pitch: -0.1, viewTick: seenAt }));
     sim.step();
     const hit = sim.drainEvents().find((e) => e.type === 'hit');
