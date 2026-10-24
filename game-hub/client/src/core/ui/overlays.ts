@@ -87,12 +87,26 @@ export class ReconnectBanner {
 
 let toastHost: HTMLElement | null = null;
 
-export function toast(message: string, kind: 'info' | 'error' | 'success' = 'info', ms = 3200): void {
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
+export function toast(message: string, kind: 'info' | 'error' | 'success' = 'info', ms = 3200, action?: ToastAction): void {
   if (!toastHost) {
     toastHost = h('div', { class: 'toast-host', 'aria-live': 'polite' });
     document.body.appendChild(toastHost);
   }
   const t = h('div', { class: `toast toast-${kind} entering` }, message);
+  if (action) {
+    t.append(' ', h('button', {
+      class: 'btn btn-sm toast-action',
+      onclick: () => {
+        removeWithTransition(t, 250);
+        action.onClick();
+      },
+    }, action.label));
+  }
   toastHost.appendChild(t);
   requestAnimationFrame(() => t.classList.remove('entering'));
   window.setTimeout(() => removeWithTransition(t, 250), ms);
@@ -106,7 +120,7 @@ export interface DialogButton {
 }
 
 /** Promise-based modal dialog. Resolves with the clicked button's value ('' on dismiss). */
-export function dialog(title: string, body: string | Node, buttons: DialogButton[]): Promise<string> {
+export function dialog(title: string, body: string | Node, buttons: DialogButton[], opts: { testId?: string } = {}): Promise<string> {
   return new Promise((resolve) => {
     const close = (value: string) => {
       removeWithTransition(backdrop);
@@ -115,7 +129,7 @@ export function dialog(title: string, body: string | Node, buttons: DialogButton
     const backdrop = h(
       'div',
       { class: 'modal-backdrop entering', onclick: (e: Event) => e.target === backdrop && close('') },
-      h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true' },
+      h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'data-testid': opts.testId },
         h('h3', null, title),
         typeof body === 'string' ? h('p', null, body) : body,
         h('div', { class: 'modal-actions' },

@@ -5,5 +5,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vite/client"]
   },
-  "include": ["src", "test", "e2e", "vite.config.ts", "playwright.config.ts"]
+  "include": ["src", "test", "e2e", "tools", "vite.config.ts", "playwright.config.ts"],
+  // The service worker has its own WebWorker-lib project: tsconfig.sw.json.
+  "exclude": ["src/platform/sw/sw.ts", "src/platform/sw/globals.d.ts"]
 }

@@ -7,6 +7,12 @@
 #                        `none` to build a site for offline play only.
 #   PAGES_CUSTOM_DOMAIN  the custom domain set in Settings → Pages (e.g. cobalt-hub.js.org):
 #                        the site is then built for the domain's root and ships a CNAME file.
+#   SITE_URL             public address of the site, for canonical/Open Graph tags and the
+#                        sitemap. Only needed when the default below is wrong (Pages host names
+#                        are lower case, and workflow expressions can't lower-case the owner).
+#   SERVICE_WORKER       `off` publishes a service worker that removes itself and the offline
+#                        copy from every player's browser (kill switch). Default: on.
+#   GOOGLE_SITE_VERIFICATION  the content value of Search Console's HTML-tag verification.
 name: Publish website
 
 on:
@@ -46,6 +52,10 @@ jobs:
         env:
           VITE_BASE: ${{ vars.PAGES_CUSTOM_DOMAIN && '/' || format('/{0}/', github.event.repository.name) }}
           VITE_SERVER_URL: ${{ vars.GAME_SERVER_URL || 'wss://cobalt-hub-server.onrender.com' }}
+          VITE_SITE_URL: ${{ vars.SITE_URL || (vars.PAGES_CUSTOM_DOMAIN && format('https://{0}/', vars.PAGES_CUSTOM_DOMAIN)) || format('https://{0}.github.io/{1}/', github.repository_owner, github.event.repository.name) }}
+          VITE_SW: ${{ vars.SERVICE_WORKER || 'on' }}
+          VITE_GOOGLE_SITE_VERIFICATION: ${{ vars.GOOGLE_SITE_VERIFICATION }}
+          VITE_BUILD_SHA: ${{ github.sha }}
         run: npm run build -w client
       - name: Add the custom domain
         if: vars.PAGES_CUSTOM_DOMAIN != ''

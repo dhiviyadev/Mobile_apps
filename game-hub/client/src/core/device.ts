@@ -28,17 +28,34 @@ export function isFullscreen(): boolean {
   return !!(document.fullscreenElement ?? d.webkitFullscreenElement);
 }
 
+/** The installed app's display mode (home screen / app window), or 'browser' in a tab. */
+export function appDisplayMode(): 'fullscreen' | 'standalone' | 'minimal-ui' | 'browser' {
+  if (typeof matchMedia === 'function') {
+    for (const m of ['fullscreen', 'standalone', 'minimal-ui'] as const) if (matchMedia(`(display-mode: ${m})`).matches) return m;
+  }
+  return (navigator as Navigator & { standalone?: boolean }).standalone === true ? 'standalone' : 'browser';
+}
+
+/** Some Android WebViews never settle requestFullscreen(); don't wait for them forever. */
+const FULLSCREEN_TIMEOUT_MS = 1500;
+
 /**
  * Enters fullscreen and locks to landscape where supported (Android Chrome).
- * Must be called from a user gesture. Failures are silently ignored: iPhone
- * Safari has no element fullscreen, and that is fine.
+ * Must be called from a user gesture. Failures are ignored: iPhone Safari and
+ * many in-app browsers have no element fullscreen, and that is fine.
+ * Resolves true when the game has the whole screen (fullscreen, or running
+ * as an installed app), false when it stays in a browser tab with its bars.
  */
-export async function enterFullscreen(el: HTMLElement = document.documentElement): Promise<void> {
+export async function enterFullscreen(el: HTMLElement = document.documentElement): Promise<boolean> {
   const target = el as FullscreenElement;
+  const display = appDisplayMode();
   try {
-    if (!isFullscreen()) {
-      if (target.requestFullscreen) await target.requestFullscreen({ navigationUI: 'hide' });
-      else if (target.webkitRequestFullscreen) await target.webkitRequestFullscreen();
+    // An app installed with display "fullscreen" (or a Trusted Web Activity) already is.
+    if (!isFullscreen() && display !== 'fullscreen') {
+      const request = target.requestFullscreen
+        ? target.requestFullscreen({ navigationUI: 'hide' })
+        : target.webkitRequestFullscreen?.();
+      await Promise.race([request, new Promise((resolve) => setTimeout(resolve, FULLSCREEN_TIMEOUT_MS))]);
     }
   } catch {
     /* not allowed or not supported */
@@ -49,6 +66,7 @@ export async function enterFullscreen(el: HTMLElement = document.documentElement
   } catch {
     /* orientation lock is only allowed in fullscreen on some browsers */
   }
+  return isFullscreen() || display !== 'browser';
 }
 
 export async function exitFullscreen(): Promise<void> {

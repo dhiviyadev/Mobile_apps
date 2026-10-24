@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { cobaltPwa } from './tools/pwa/plugin';
 
 export default defineConfig({
   // Path the site is served under: "/" by default, "/<repo>/" on GitHub Pages project sites.
@@ -21,4 +22,6 @@ export default defineConfig({
     },
   },
   worker: { format: 'es' },
+  // Web app manifest, icons, service worker and search tags (see tools/pwa/plugin.ts).
+  plugins: [cobaltPwa()],
 });
