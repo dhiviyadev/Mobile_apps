@@ -177,6 +177,7 @@ export class ArenaRoom extends HubRoom<ArenaState, ArenaPlayer> {
     const s = this.state;
     if (!s) return '';
     if (s.phase === 'warmup') return `Waiting for players · ${arenaMap(s.mapIndex).name}`;
+    if (s.phase === 'vote') return 'Voting for the next map';
     if (this.mode === 'ffa') return `Round ${s.round} · ${arenaMap(s.mapIndex).name}`;
     return `Round ${s.round} · ${s.teamWins0}–${s.teamWins1} · ${arenaMap(s.mapIndex).name}`;
   }
@@ -202,8 +203,11 @@ export class ArenaRoom extends HubRoom<ArenaState, ArenaPlayer> {
     sim.step();
     const events = sim.drainEvents();
 
-    // Match finished and its end screen has run: rotate the map and go back to warmup.
-    if (sim.phase === 'matchEnd' && sim.phaseTimer <= 0) this.nextMatch(false);
+    // Match finished and its end screen has run without a rematch: back to warmup on the same map.
+    if (sim.phase === 'matchEnd' && sim.phaseTimer <= 0) {
+      this.clearRematch();
+      sim.resetToWarmup();
+    }
 
     this.syncState();
 
@@ -236,7 +240,7 @@ export class ArenaRoom extends HubRoom<ArenaState, ArenaPlayer> {
     }
     if (this.state.startTick !== 0 && sim.tick >= this.state.startTick) {
       this.state.startTick = 0;
-      if (this.sim.players.size >= 2) sim.startMatch();
+      if (this.sim.players.size >= 2) sim.startVote();
     }
   }
 
@@ -287,7 +291,7 @@ export class ArenaRoom extends HubRoom<ArenaState, ArenaPlayer> {
       return;
     }
     this.state.startTick = 0;
-    this.sim.startMatch();
+    this.sim.startVote();
     this.syncState();
   }
 
@@ -296,18 +300,17 @@ export class ArenaRoom extends HubRoom<ArenaState, ArenaPlayer> {
     this.rematchVoters.add(client.sessionId);
     this.state.rematchVotes = this.rematchVoters.size;
     const connectedHumans = [...this.sim.players.values()].filter((p) => !p.bot && p.connected).length;
-    if (client.sessionId === this.state.hostId || this.rematchVoters.size >= connectedHumans) this.nextMatch(true);
+    if (client.sessionId === this.state.hostId || this.rematchVoters.size >= connectedHumans) {
+      // Every rematch votes on the next map again (the map just played is not offered).
+      this.clearRematch();
+      this.sim.startVote();
+      this.syncState();
+    }
   }
 
-  /** Rotates to the next map; starts immediately (rematch) or returns to warmup. */
-  private nextMatch(startNow: boolean): void {
+  private clearRematch(): void {
     this.rematchVoters.clear();
     this.state.rematchVotes = 0;
-    this.state.mapIndex = (this.state.mapIndex + 1) % ARENA_MAPS.length;
-    this.sim.changeMap(arenaMap(this.state.mapIndex));
-    if (startNow) this.sim.startMatch();
-    else this.sim.resetToWarmup();
-    this.syncState();
   }
 
   // ---- bots --------------------------------------------------------------------------------------
@@ -339,12 +342,16 @@ export class ArenaRoom extends HubRoom<ArenaState, ArenaPlayer> {
     const set = <K extends keyof ArenaState>(key: K, value: ArenaState[K]) => {
       if (s[key] !== value) s[key] = value;
     };
+    // The vote (or a test fixture map, index -1) changes the map under the room.
+    set('mapIndex', Math.max(0, sim.mapIndex));
     if (sim.phase !== this.lastPhase) {
       this.lastPhase = sim.phase;
       set('phase', sim.phase);
-      set('phaseEndTick', sim.phase === 'warmup' ? 0 : sim.tick + Math.round(sim.phaseTimer * TICK_RATE));
       void this.refreshMetadata();
     }
+    // The vote shortens its timer (everyone voted) and restarts it for the reveal, so follow the timer itself.
+    const endTick = sim.phase === 'warmup' ? 0 : sim.tick + Math.round(sim.phaseTimer * TICK_RATE);
+    if (Math.abs(s.phaseEndTick - endTick) > 1) s.phaseEndTick = endTick;
     set('round', sim.round);
     set('teamWins0', sim.teamWins[0]);
     set('teamWins1', sim.teamWins[1]);
