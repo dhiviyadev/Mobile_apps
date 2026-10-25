@@ -1,1 +1,45 @@
 /* Arcfire Arena: movement and interactive items (slide tip, pads, pickups, pickup flash). */
+
+/* Touch: the Crouch button while a slide would start (its icon also turns into the slide icon). */
+.touch-btn[data-id='crouch'].slide-ready {
+  border-color: #7fe3ff;
+  background: rgba(64, 170, 220, 0.35);
+  box-shadow: 0 0 0 3px rgba(127, 227, 255, 0.28), 0 0 18px rgba(127, 227, 255, 0.35);
+}
+.touch-btn[data-id='crouch'].slide-ready svg {
+  animation: slide-ready-nudge 0.9s ease-in-out infinite;
+}
+@keyframes slide-ready-nudge {
+  0%, 100% { transform: translateX(-1px); }
+  50% { transform: translateX(2px); }
+}
+
+/* "+50 HP" / "+Ammo" rising above the HP bar or the ammo counter. */
+.pickup-flash {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.65);
+  animation: pickup-rise 1.2s ease-out forwards;
+}
+.pickup-flash.health { color: #6ff0a6; }
+.pickup-flash.ammo { left: auto; right: 0; color: #ffc24a; }
+@keyframes pickup-rise {
+  0% { opacity: 0; transform: translateY(8px) scale(0.9); }
+  15% { opacity: 1; transform: translateY(0) scale(1.08); }
+  30% { transform: translateY(-4px) scale(1); }
+  100% { opacity: 0; transform: translateY(-30px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pickup-flash { animation: pickup-fade 1.2s linear forwards; }
+  .touch-btn[data-id='crouch'].slide-ready svg { animation: none; }
+}
+@keyframes pickup-fade {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; }
+}

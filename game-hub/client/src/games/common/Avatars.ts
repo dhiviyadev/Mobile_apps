@@ -41,6 +41,22 @@ export interface AvatarOptions {
 
 const SKIN = [0xf1c7a5, 0xd9a07a, 0xa86b45, 0x6e4529];
 
+/**
+ * Slide pose (design-arena-movement §7.5): hips low, torso leaning back, the front leg
+ * stretched forward and the rear leg folded under, arms still aiming. Positive leg pitch
+ * swings a leg forward in this renderer; a negative lean tips the body back.
+ */
+const SLIDE_POSE = { crouch: 0.38, lean: -0.45, frontLeg: 1.35, rearLeg: 1.25, tag: 0.38 } as const;
+/** How fast avatars blend into and out of the slide pose (1/s). */
+const SLIDE_BLEND = 12;
+/** Joint heights above the hips along the torso (shoulders, neck), for the tilted slide torso. */
+const SHOULDER_UP = 0.62;
+const NECK_UP = 0.66;
+/** Standing shoulder height: the held item sits at a fixed offset from the shoulders. */
+const SHOULDER_Y = 1.34;
+/** a → b by k (exactly a at k = 0). */
+const blend = (a: number, b: number, k: number): number => a + (b - a) * k;
+
 /** Where the hands hold an item, in avatar space (feet origin, facing -Z). */
 const HELD_X = 0.2;
 const HELD_Y = 1.17;
@@ -82,6 +98,8 @@ export class AvatarRenderer {
   /** Per avatar id: held key and item transform of the last update (for muzzleWorld). */
   private readonly heldAt = new Map<string, { key: number; matrix: THREE.Matrix4 }>();
   private readonly walk = new Map<string, number>();
+  /** Per avatar: 0 standing/crouching … 1 in the slide pose. */
+  private readonly slideK = new Map<string, number>();
   private readonly tags = new Map<string, { sprite: THREE.Sprite; text: string }>();
   private readonly m = new THREE.Matrix4();
   private readonly q = new THREE.Quaternion();
@@ -156,9 +174,28 @@ export class AvatarRenderer {
       let phase = this.walk.get(a.id) ?? 0;
       phase += dt * a.speed * 2.4;
       this.walk.set(a.id, phase);
-      const swing = Math.sin(phase) * Math.min(1, a.speed / 3) * 0.7;
-      const crouch = a.crouch ? 0.18 : 0;
-      const lean = a.crouch ? 0.35 : 0;
+      let sk = this.slideK.get(a.id) ?? 0;
+      sk += ((a.slide ? 1 : 0) - sk) * Math.min(1, dt * SLIDE_BLEND);
+      if (sk < 1e-3) sk = 0;
+      this.slideK.set(a.id, sk);
+      const swing = Math.sin(phase) * Math.min(1, a.speed / 3) * 0.7 * (1 - sk);
+      const crouch0 = a.crouch ? 0.18 : 0;
+      const lean0 = a.crouch ? 0.35 : 0;
+      const crouch = blend(crouch0, SLIDE_POSE.crouch, sk);
+      const lean = blend(lean0, SLIDE_POSE.lean, sk);
+      // Shoulders, head and hands: the walk/crouch placement, blended toward joints placed rigidly on
+      // the slide's tilted torso (sk = 0 gives exactly the walk/crouch pose).
+      const hipY = 0.72 - crouch;
+      const cl = Math.cos(lean);
+      const sl = Math.sin(lean);
+      const slideShoulderY = hipY + SHOULDER_UP * cl;
+      const slideShoulderZ = -SHOULDER_UP * sl;
+      const shoulderY = blend(SHOULDER_Y - crouch - lean * 0.15, slideShoulderY, sk);
+      const shoulderZ = blend(-lean * 0.2, slideShoulderZ, sk);
+      const headY = blend(1.38 - crouch, hipY + NECK_UP * cl, sk);
+      const headZ = blend(-lean * 0.25, -NECK_UP * sl, sk);
+      const heldY = blend(HELD_Y - crouch, slideShoulderY - (SHOULDER_Y - HELD_Y), sk);
+      const heldZ = blend(HELD_Z, slideShoulderZ + HELD_Z, sk);
 
       // Root transform: feet position + yaw (avatars face -Z like the camera).
       this.base.compose(this.p.set(a.x, a.y, a.z), this.q.setFromEuler(this.e.set(0, a.yaw, 0)), this.s.set(1, 1, 1));
@@ -167,22 +204,23 @@ export class AvatarRenderer {
       // Legs
       for (let k = 0; k < 2; k++) {
         const side = k === 0 ? -0.12 : 0.12;
-        this.setPart(this.legs, i * 2 + k, side, 0.72 - crouch, 0, (k === 0 ? swing : -swing) - lean * 0.2, 0, this.c.setHex(a.color).multiplyScalar(0.45));
+        const walkLeg = (k === 0 ? swing : -swing) - lean * 0.2;
+        const legPitch = blend(walkLeg, k === 0 ? SLIDE_POSE.frontLeg : SLIDE_POSE.rearLeg, sk);
+        this.setPart(this.legs, i * 2 + k, side, hipY, 0, legPitch, 0, this.c.setHex(a.color).multiplyScalar(0.45));
       }
       // Body
-      this.setPart(this.bodies, i, 0, 0.72 - crouch, 0, -lean, 0, this.c.setHex(a.color));
+      this.setPart(this.bodies, i, 0, hipY, 0, -lean, 0, this.c.setHex(a.color));
       // Arms
       for (let k = 0; k < 2; k++) {
         const side = k === 0 ? -0.33 : 0.33;
         const armPitch = a.aiming ? Math.PI / 2 + a.pitch * 0.8 : (k === 0 ? -swing : swing) * 0.9;
-        this.setPart(this.arms, i * 2 + k, side, 1.34 - crouch - lean * 0.15, -lean * 0.2, armPitch, 0, this.c.setHex(a.color).multiplyScalar(0.85));
+        this.setPart(this.arms, i * 2 + k, side, shoulderY, shoulderZ, armPitch, 0, this.c.setHex(a.color).multiplyScalar(0.85));
       }
       // Head (pitch follows the view)
-      const headY = 1.38 - crouch;
-      this.setPart(this.heads, i, 0, headY, -lean * 0.25, a.pitch * 0.8, 0, this.c.setHex(skin));
+      this.setPart(this.heads, i, 0, headY, headZ, a.pitch * 0.8, 0, this.c.setHex(skin));
       for (let k = 0; k < 2; k++) {
         // Eyes sit on the front (-Z) face of the head, rotated with it.
-        this.local.compose(this.p.set(0, headY, -lean * 0.25), this.q.setFromEuler(this.e.set(a.pitch * 0.8, 0, 0)), this.s.set(1, 1, 1));
+        this.local.compose(this.p.set(0, headY, headZ), this.q.setFromEuler(this.e.set(a.pitch * 0.8, 0, 0)), this.s.set(1, 1, 1));
         this.m.makeTranslation(k === 0 ? -0.1 : 0.1, 0.26, -0.225);
         this.local.multiply(this.m);
         this.m.multiplyMatrices(this.base, this.local);
@@ -193,7 +231,7 @@ export class AvatarRenderer {
       // Held item in the right hand, following the view pitch.
       if (a.held !== undefined) {
         const pool = this.heldPool(a.held);
-        this.local.compose(this.p.set(HELD_X, HELD_Y - crouch, HELD_Z), this.q.setFromEuler(this.e.set(a.pitch * 0.8, 0, 0)), this.s.set(1, 1, 1));
+        this.local.compose(this.p.set(HELD_X, heldY, heldZ), this.q.setFromEuler(this.e.set(a.pitch * 0.8, 0, 0)), this.s.set(1, 1, 1));
         this.m.multiplyMatrices(this.base, this.local);
         if (pool.mesh) pool.mesh.setMatrixAt(pool.count++, this.m);
         const at = this.heldAt.get(a.id);
@@ -218,6 +256,7 @@ export class AvatarRenderer {
       pool.mesh.instanceMatrix.needsUpdate = true;
     }
     for (const id of this.heldAt.keys()) if (!seen.has(id)) this.heldAt.delete(id);
+    for (const id of this.slideK.keys()) if (!seen.has(id)) this.slideK.delete(id);
     for (const [id, tag] of this.tags) {
       if (!seen.has(id) || !showNames || !poses.some((p) => p.id === id && p.name)) {
         tag.sprite.visible = false;
@@ -283,7 +322,7 @@ export class AvatarRenderer {
     }
     const d = camera.position.distanceTo(this.p.set(a.x, a.y, a.z));
     tag.sprite.visible = d < 48;
-    tag.sprite.position.set(a.x, a.y + 2.15 - (a.crouch ? 0.2 : 0), a.z);
+    tag.sprite.position.set(a.x, a.y + 2.15 - (a.slide ? SLIDE_POSE.tag : a.crouch ? 0.2 : 0), a.z);
     // Keep nametags readable at distance: grow slowly with range.
     const k = 0.9 + Math.min(d, 40) * 0.025;
     tag.sprite.scale.set(tag.sprite.userData.aspect * 0.32 * k, 0.32 * k, 1);

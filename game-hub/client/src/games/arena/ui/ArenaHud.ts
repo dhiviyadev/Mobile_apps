@@ -153,7 +153,14 @@ export class ArenaHud {
   setAutoShoot(state: 'off' | 'idle' | 'firing'): void {}
 
   /** Short rising label after a pickup, next to the HP bar (health) or the ammo counter (ammo). */
-  pickupFlash(text: string, kind: 'health' | 'ammo'): void {}
+  pickupFlash(text: string, kind: 'health' | 'ammo'): void {
+    const anchor = this.el.querySelector(kind === 'health' ? '.hp-panel' : '.ammo-panel');
+    if (!anchor) return;
+    // Styled in arena-move.css: mint by the HP bar, amber by the ammo counter, rising for 1.2 s.
+    const label = h('div', { class: `pickup-flash ${kind}`, 'data-testid': 'pickup-flash' }, text);
+    anchor.appendChild(label);
+    window.setTimeout(() => label.remove(), 1200);
+  }
 
   hitMarker(kind: 'hit' | 'head' | 'kill'): void {
     this.hitmarker.className = `hitmarker show ${kind}`;
