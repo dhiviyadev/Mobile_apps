@@ -105,6 +105,7 @@ export class MatchEndScreen {
           h('button', { class: 'btn btn-primary btn-lg', 'data-testid': 'play-again', onclick: () => this.onAgain() }, againLabel),
           h('button', { class: 'btn btn-lg btn-danger', onclick: () => this.onLeave() }, 'Leave'),
         ),
+        h('div', { class: 'me-hint' }, "You'll vote for the next map"),
       ),
     );
     this.el.classList.remove('hidden');

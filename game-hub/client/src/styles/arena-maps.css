@@ -1,1 +1,155 @@
 /* Arcfire Arena: maps (map vote panel, warmup bots row, match-end screen). */
+
+/* ---- Map vote overlay ------------------------------------------------------------------- */
+.map-vote {
+  position: absolute;
+  inset: 0;
+  z-index: 42;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: calc(16px + var(--safe-top)) calc(16px + var(--safe-right)) calc(16px + var(--safe-bottom)) calc(16px + var(--safe-left));
+  background: rgba(5, 8, 20, 0.72);
+  overflow-y: auto;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.mv-head {
+  width: min(980px, 96vw);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mv-heading { display: flex; flex-direction: column; gap: 2px; }
+.mv-title { font-size: 1.45rem; font-weight: 900; letter-spacing: 0.01em; }
+.mv-sub { color: var(--muted); font-weight: 700; font-size: 0.85rem; }
+.mv-timer { position: relative; width: 52px; height: 52px; flex: none; }
+.mv-timer svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.mv-ring-bg { fill: rgba(16, 22, 42, 0.9); stroke: rgba(255, 255, 255, 0.12); stroke-width: 4; }
+.mv-ring { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset 0.25s linear, stroke 0.2s; }
+.mv-secs { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 900; font-size: 1.1rem; }
+.mv-timer.urgent .mv-ring { stroke: var(--danger); }
+.mv-timer.urgent .mv-secs { color: #ffb4b4; }
+
+.mv-grid {
+  width: min(980px, 96vw);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.mv-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 120px;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+  color: var(--text);
+  font: inherit;
+  border-radius: 16px;
+  border: 2px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.15s, opacity 0.3s, filter 0.3s, box-shadow 0.15s;
+}
+.mv-card:hover { border-color: rgba(255, 255, 255, 0.28); }
+.mv-card:active { transform: scale(0.98); }
+.mv-card:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* .game-root canvas is the full-screen game canvas: undo that for the previews. */
+.game-root .mv-thumb { position: static; inset: auto; display: block; width: 100%; aspect-ratio: 16 / 10; height: auto; background: #0b1020; touch-action: manipulation; }
+.mv-info { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px 12px; }
+.mv-name { margin: 0; font-size: 1.15rem; font-weight: 900; }
+.mv-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.mv-tag { padding: 2px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); font-size: 0.72rem; font-weight: 800; color: var(--muted); }
+.mv-size { color: var(--muted); font-size: 0.75rem; font-weight: 700; }
+.mv-votes { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; }
+.mv-pips { display: flex; flex-wrap: wrap; gap: 4px; }
+.mv-pip { display: block; width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--muted); }
+.mv-pip.bot { background: transparent; border-color: rgba(255, 255, 255, 0.55); }
+.mv-pip.me { box-shadow: 0 0 0 2px var(--accent); }
+.mv-count { font-size: 1.1rem; font-weight: 900; min-width: 1.2em; text-align: right; }
+.mv-key {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(5, 8, 20, 0.7);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+@media (hover: none) and (pointer: coarse) { .mv-key { display: none; } }
+.mv-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #1a1400;
+  font-size: 0.75rem;
+  font-weight: 900;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.15s, transform 0.15s;
+}
+.mv-card.mine { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255, 209, 102, 0.25), var(--shadow); }
+.mv-card.mine .mv-badge { opacity: 1; transform: none; }
+.mv-card.flash { border-color: #fff; box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.35), var(--shadow); }
+.mv-card.winner { transform: scale(1.05); border-color: var(--success); box-shadow: 0 0 0 4px rgba(95, 209, 122, 0.3), var(--shadow); z-index: 1; }
+.mv-card.loser { opacity: 0.35; filter: grayscale(0.6); }
+.mv-card.winner .mv-badge, .mv-card.loser .mv-badge { opacity: 0; }
+
+.mv-bots { display: flex; align-items: center; gap: 10px; font-weight: 800; }
+.mv-bots-label, .wu-bots-label { color: var(--muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.mv-seg { display: inline-flex; padding: 3px; border-radius: 12px; background: rgba(255, 255, 255, 0.08); border: 1px solid var(--line); }
+.mv-seg-btn {
+  min-width: 72px;
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.mv-seg-btn.on { background: var(--arena); color: #fff; }
+.mv-bots-fixed { padding: 4px 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); font-size: 0.85rem; }
+.mv-foot { color: var(--muted); font-weight: 700; font-size: 0.9rem; text-align: center; min-height: 1.2em; }
+
+/* Phones in portrait, narrow windows: one column, each card a row. */
+@media (max-width: 560px), (max-aspect-ratio: 4/5) {
+  .map-vote { justify-content: flex-start; }
+  .mv-grid { grid-template-columns: 1fr; }
+  .mv-card { flex-direction: row; min-height: 120px; }
+  .game-root .mv-thumb { width: 42%; flex: none; aspect-ratio: auto; object-fit: cover; }
+  .mv-info { flex: 1; min-width: 0; }
+}
+/* Landscape phones: cards stay readable without scrolling. */
+@media (max-height: 460px) {
+  .map-vote { gap: 8px; padding-top: calc(8px + var(--safe-top)); padding-bottom: calc(8px + var(--safe-bottom)); }
+  .mv-tags, .mv-size { display: none; }
+  .mv-title { font-size: 1.15rem; }
+  .game-root .mv-thumb { aspect-ratio: 16 / 8; object-fit: cover; }
+  .mv-seg-btn { min-height: 34px; }
+}
+
+/* ---- Warmup panel: bot difficulty row ----------------------------------------------------- */
+.wu-bots { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wu-bots .mv-seg-btn { min-width: 64px; min-height: 36px; }
+
+/* ---- Match end -------------------------------------------------------------------------------- */
+.me-hint { color: var(--muted); font-size: 0.85rem; font-weight: 700; }

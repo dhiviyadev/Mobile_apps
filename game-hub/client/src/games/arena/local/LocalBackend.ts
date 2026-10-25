@@ -3,7 +3,6 @@
  * with bots. Snapshots are produced every tick without serialisation.
  */
 import {
-  ARENA_MAPS,
   arenaMap,
   type ArenaEvent,
   type ArenaMap,
@@ -52,7 +51,7 @@ export class LocalBackend implements ArenaBackend {
 
   constructor(
     private readonly mode: ArenaMode,
-    private mapIndex: number,
+    private readonly mapIndex: number,
     private readonly name: string,
     private readonly color: number,
     private readonly opts: LocalBackendOptions = {},
@@ -66,7 +65,8 @@ export class LocalBackend implements ArenaBackend {
     sim.fillWithBots(BOT_NAMES, BOT_COLORS);
     // FFA practice: 6 players feels busy without being chaotic on a tablet.
     if (this.mode === 'ffa') for (const p of [...sim.players.values()].filter((q) => q.bot).slice(5)) sim.removePlayer(p.id);
-    sim.startMatch();
+    // Every match starts with a map vote; the map the sim was built on is only the backdrop behind it.
+    sim.startVote();
     return sim;
   }
 
@@ -161,12 +161,9 @@ export class LocalBackend implements ArenaBackend {
     this.sim.startMatch();
   }
 
-  /** Offline rematch: next map in the rotation, fresh bots. */
+  /** Offline "Play again": the same bots, a new map vote (the map just played is not offered); stats reset at the start. */
   rematch(): void {
-    this.mapIndex = (this.mapIndex + 1) % ARENA_MAPS.length;
-    this.sim = this.createSim();
-    this.snapshots = [];
-    this.events = [{ type: 'phase', phase: this.sim.phase, round: this.sim.round }];
+    this.sim.startVote();
   }
 
   currentMap(): ArenaMap {
