@@ -95,20 +95,25 @@ export interface BotProfile {
 
 const deg = (d: number) => (d * Math.PI) / 180;
 
-/** Measured against a strafing player at 8–20 m: Normal takes 2–3× as long to kill as the old bots, Easy 5–6×, Hard ≈ old. */
+/**
+ * Measured with the Assault Rifle against a player strafing or crossing at 9 m/s, 8–20 m away: Normal takes
+ * 2–3× as long to kill as the old bots, Easy 4–6× (and rarely kills beyond 20 m), Hard about as long as the old bots.
+ * (Easy's trackLag / aimFloor / aimSettle / pause and Normal's trackLag / aimFloor are a little higher than the
+ * design's first values, which measured only 2× and 3.3× with the real movement and weapons.)
+ */
 export const BOT_PROFILES: Readonly<Record<BotDifficulty, Readonly<BotProfile>>> = {
   easy: {
     sightRange: 45, fovHalf: deg(50), closeAware: 2.5, hearRange: 15, reactToHit: 0.9,
-    reaction: [0.7, 0.95], noticePerMetre: 0.012, turnRate: 2.4, trackLag: 0.13,
-    aimError0: 0.3, aimSettle: 1.4, aimFloor: 0.04, wobbleHz: 2.5, aimHeight: 1.05,
+    reaction: [0.7, 0.95], noticePerMetre: 0.012, turnRate: 2.4, trackLag: 0.19,
+    aimError0: 0.3, aimSettle: 1.2, aimFloor: 0.05, wobbleHz: 2.5, aimHeight: 1.05,
     tolMul: 1.3, engageRange: 32, scopeMul: 2.5, leadFactor: 0.4,
-    burst: [0.25, 0.45], pause: [0.5, 0.8], semiCadence: 0.5,
+    burst: [0.25, 0.45], pause: [0.6, 0.9], semiCadence: 0.5,
     strafe: 0.35, slideChase: 0, slideRoam: 0, skillJitter: 0.1,
   },
   normal: {
     sightRange: 65, fovHalf: deg(60), closeAware: 3.5, hearRange: 25, reactToHit: 0.55,
-    reaction: [0.5, 0.7], noticePerMetre: 0.008, turnRate: 3.2, trackLag: 0.09,
-    aimError0: 0.22, aimSettle: 2.0, aimFloor: 0.028, wobbleHz: 3, aimHeight: 1.15,
+    reaction: [0.5, 0.7], noticePerMetre: 0.008, turnRate: 3.2, trackLag: 0.12,
+    aimError0: 0.22, aimSettle: 2.0, aimFloor: 0.032, wobbleHz: 3, aimHeight: 1.15,
     tolMul: 1.0, engageRange: 48, scopeMul: 1.7, leadFactor: 0.6,
     burst: [0.35, 0.65], pause: [0.3, 0.5], semiCadence: 0.32,
     strafe: 0.5, slideChase: 0.2, slideRoam: 0.1, skillJitter: 0.1,
