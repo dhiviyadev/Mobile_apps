@@ -267,8 +267,8 @@ function stepAds(p: PlayerSim, dt: number): void {
   else p.ads = t > 0 ? Math.max(0, p.ads - dt / (t * 0.7)) : 0;
 }
 
-/** The knife's rays: evenly spread over the fan at the view pitch, centre ray first. */
-function meleeFan(yaw: number, pitch: number, spec: MeleeSpec): [number, number, number][] {
+/** The knife's rays: evenly spread over the fan at the view pitch, centre ray first (auto-shoot reuses it). */
+export function meleeFan(yaw: number, pitch: number, spec: MeleeSpec): [number, number, number][] {
   const offsets: number[] = [];
   for (let i = 0; i < spec.rays; i++) offsets.push(spec.rays > 1 ? (i / (spec.rays - 1) - 0.5) * spec.fan : 0);
   offsets.sort((a, b) => Math.abs(a) - Math.abs(b) || a - b);
