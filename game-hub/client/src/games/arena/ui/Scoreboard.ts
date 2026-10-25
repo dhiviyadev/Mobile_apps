@@ -12,7 +12,13 @@ function accuracy(p: PlayerInfo): string {
 function rows(players: PlayerInfo[], localId: string, ffa: boolean): HTMLElement[] {
   return players.map((p) =>
     h('tr', { class: `${p.id === localId ? 'me' : ''} ${p.connected ? '' : 'dropped'}` },
-      h('td', { class: 'sb-name' }, h('span', { class: 'sb-dot', style: `background:${hexColor(ffa ? p.color : TEAM_COLORS[p.team] ?? p.color)}` }), p.name, p.bot ? h('small', null, ' bot') : null),
+      h('td', { class: 'sb-name' },
+        h('span', { class: 'sb-dot', style: `background:${hexColor(ffa ? p.color : TEAM_COLORS[p.team] ?? p.color)}` }),
+        p.name,
+        p.bot ? h('small', null, ' bot') : null,
+        // Auto-shoot is disclosed to everyone.
+        p.autoShoot ? h('span', { class: 'sb-auto', title: 'Auto-shoot on' }, 'AUTO') : null,
+      ),
       ffa ? h('td', null, String(p.roundWins)) : null,
       h('td', null, String(p.kills)),
       h('td', null, String(p.deaths)),

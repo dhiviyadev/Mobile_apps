@@ -1,1 +1,148 @@
 /* Arcfire Arena: weapons (loadout picker, ammo panel, crosshair styles, scopes, auto-shoot). */
+
+/* ---- crosshair styles ------------------------------------------------------------------------ */
+.xhair .ring,
+.xhair .chev { display: none; }
+.xhair .ring {
+  width: calc(var(--gap) * 2);
+  height: calc(var(--gap) * 2);
+  left: calc(var(--gap) * -1);
+  top: calc(var(--gap) * -1);
+  background: transparent;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.9), inset 0 0 2px rgba(0, 0, 0, 0.6);
+}
+.xhair[data-style='ring'] .t,
+.xhair[data-style='ring'] .b,
+.xhair[data-style='ring'] .l,
+.xhair[data-style='ring'] .r { display: none; }
+.xhair[data-style='ring'] .ring { display: block; }
+.xhair[data-style='dot'] .t,
+.xhair[data-style='dot'] .b,
+.xhair[data-style='dot'] .l,
+.xhair[data-style='dot'] .r { display: none; }
+.xhair[data-style='dot'] .dot { width: 5px; height: 5px; left: -2.5px; top: -2.5px; }
+/* Crossbow: centre dot and drop marks for 30 m and 60 m below it. */
+.xhair[data-style='chevron'] .t,
+.xhair[data-style='chevron'] .l,
+.xhair[data-style='chevron'] .r { display: none; }
+.xhair[data-style='chevron'] .b { top: var(--gap); opacity: 0.55; }
+.xhair[data-style='chevron'] .chev { display: block; height: 2px; }
+.xhair .chev.c30 { width: 14px; left: -7px; top: calc(var(--c30, 6px) - 1px); }
+.xhair .chev.c60 { width: 9px; left: -4.5px; top: calc(var(--c60, 22px) - 1px); }
+.xhair.auto i { background: var(--arena); }
+.xhair.auto .ring { background: transparent; border-color: var(--arena); }
+
+/* ---- auto-shoot chip ------------------------------------------------------------------------- */
+.auto-chip {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 30px);
+  transform: translateX(-50%);
+  padding: 1px 7px;
+  border-radius: 6px;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  color: #fff;
+  background: rgba(10, 14, 28, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  opacity: 0.6;
+  transition: opacity 0.12s, background 0.12s;
+}
+.auto-chip.firing {
+  opacity: 1;
+  background: var(--arena);
+  border-color: transparent;
+  animation: auto-pulse 0.5s ease-in-out infinite alternate;
+}
+@keyframes auto-pulse { to { box-shadow: 0 0 10px rgba(255, 122, 69, 0.9); } }
+
+/* ---- ammo panel ---------------------------------------------------------------------------- */
+.weapon-line { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.weapon-icon { height: 26px; width: 72px; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6)); }
+.weapon-icon:not([src]) { display: none; }
+.fire-mode {
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  border: 1px solid rgba(255, 209, 102, 0.5);
+}
+.fire-mode.hidden { display: none; }
+
+/* ---- scopes ---------------------------------------------------------------------------------- */
+.scope-overlay .optic-ring { display: none; }
+.scope-overlay.optic .scope-lens { display: none; }
+.scope-overlay.optic .optic-ring {
+  display: block;
+  position: absolute;
+  inset: 0;
+  /* 2× optic: a see-through lens with a fine reticle inside a soft dark housing. */
+  background:
+    radial-gradient(circle at center, rgba(255, 60, 60, 0.95) 0, rgba(255, 60, 60, 0.95) 2px, transparent 2.5px),
+    linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)) center calc(50% + 24px) / 1px 40px no-repeat,
+    linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)) calc(50% - 30px) center / 36px 1px no-repeat,
+    linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)) calc(50% + 30px) center / 36px 1px no-repeat,
+    radial-gradient(circle at center, transparent 0, transparent min(34vh, 34vw), rgba(20, 24, 32, 0.9) calc(min(34vh, 34vw) + 3px), #070a10 calc(min(34vh, 34vw) + 26px));
+}
+
+/* ---- touch: auto-shoot badge on Fire -------------------------------------------------------- */
+.touch-btn[data-id='fire'].auto::after {
+  content: 'A';
+  position: absolute;
+  top: 8%;
+  right: 8%;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.72rem;
+  font-weight: 900;
+  color: #fff;
+  background: var(--arena);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.5);
+}
+.touch-btn[data-id='auto'].on { background: rgba(255, 122, 69, 0.55); border-color: var(--arena); }
+
+/* ---- kill feed and scoreboard ----------------------------------------------------------------- */
+.kf-weapon { display: inline-flex; align-items: center; gap: 3px; }
+.kf-weapon img { height: 18px; width: 48px; object-fit: contain; }
+.kf-head { color: var(--accent); font-weight: 900; }
+.sb-auto {
+  margin-left: 6px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  vertical-align: middle;
+  color: #fff;
+  background: rgba(255, 122, 69, 0.75);
+}
+
+/* ---- loadout picker ------------------------------------------------------------------------- */
+.loadout { width: min(1000px, 96vw); max-height: 92vh; }
+.lo-section h3 { margin: 6px 0 6px; font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+.lo-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+.lo-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.lo-card { min-height: 64px; gap: 4px; padding: 10px; }
+.lo-card.small { padding: 8px 10px; }
+.lo-icon { width: 100%; height: 40px; object-fit: contain; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5)); }
+.lo-card.small .lo-icon { height: 32px; }
+.lo-title { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 6px; }
+.lo-name { font-size: 1rem; font-weight: 900; }
+.lo-tag { font-size: 0.62rem; color: var(--accent); letter-spacing: 0.06em; font-weight: 800; white-space: nowrap; }
+.lo-blurb { font-size: 0.72rem; line-height: 1.25; }
+.lo-stat { grid-template-columns: 58px 1fr; font-size: 0.66rem; }
+.lo-dps { font-size: 0.7rem; }
+@media (max-height: 720px) {
+  .lo-blurb { display: none; }
+  .lo-stat:not(.key) { display: none; }
+  .lo-icon { height: 30px; }
+  .lo-card.small .lo-icon { height: 26px; }
+}
+@media (max-width: 760px) {
+  .lo-grid.cols-4 { grid-template-columns: repeat(2, 1fr); }
+}
