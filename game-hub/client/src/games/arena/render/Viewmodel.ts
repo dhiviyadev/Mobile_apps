@@ -24,7 +24,7 @@ import { type FlashStyle, WEAPON_VISUALS, type WeaponVisual } from './weaponVisu
 /** Models are authored at real-world size; the viewmodel draws them smaller and closer. */
 export const MODEL_SCALE = 0.45;
 /** Distance (m) from the eye to the sight when fully aimed. */
-const EYE_RELIEF = 0.12;
+const EYE_RELIEF = 0.15;
 
 export interface ViewmodelState {
   weapon: WeaponId;
@@ -78,7 +78,7 @@ const RELOAD_SOUNDS: Record<string, [number, SfxName, number][]> = {
 
 export class Viewmodel {
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(56, 1, 0.01, 10);
+  readonly camera = new THREE.PerspectiveCamera(52, 1, 0.01, 10);
   /** Mechanical sounds on animation keyframes (set by the owner; silent by default). */
   onSound: (name: SfxName, pitch?: number, volume?: number) => void = () => {};
   private readonly root = new THREE.Group();
@@ -155,7 +155,7 @@ export class Viewmodel {
 
   /** Sleeve colour (team or player colour). */
   setSleeve(hex: number): void {
-    (this.material.uniforms.uSleeve.value as THREE.Color).setHex(hex, THREE.LinearSRGBColorSpace).multiplyScalar(0.8);
+    (this.material.uniforms.uSleeve.value as THREE.Color).setHex(hex, THREE.LinearSRGBColorSpace).multiplyScalar(0.9);
   }
 
   /** Low quality keeps fewer casings in the air. */
@@ -268,9 +268,10 @@ export class Viewmodel {
     p.y += Math.abs(Math.sin(this.bob)) * 0.014 * bobAmt + this.swayY * 0.04 * steady;
     p.y -= 0.025 * this.slideK + (Math.random() - 0.5) * 0.002 * this.slideK;
     p.z += this.kick * v.recoil.back * MODEL_SCALE * 1.6 * (1 - ease * 0.6);
-    let rx = this.kick * v.recoil.up * (1 - ease * 0.6) + 0.05 * this.slideK;
-    let ry = 0;
-    let rz = this.kick * v.recoil.roll * this.kickRoll + 0.32 * this.slideK;
+    const [hx, hy, hz] = v.hipRot ?? [0, 0, 0];
+    let rx = hx * (1 - ease) + this.kick * v.recoil.up * (1 - ease * 0.6) + 0.05 * this.slideK;
+    let ry = hy * (1 - ease);
+    let rz = hz * (1 - ease) + this.kick * v.recoil.roll * this.kickRoll + 0.32 * this.slideK;
 
     // Reloads move the weapon, its parts and the left hand.
     const left = this.left.set(...a.gripL);

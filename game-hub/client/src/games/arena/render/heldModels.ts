@@ -5,17 +5,17 @@
  *
  * The avatars put the item origin at the right hand (0.2, 1.17, −0.28 in avatar space) and pitch it
  * with the view. The blocky avatars hold both arms straight forward, so the model is shifted to sit
- * centred between the arms at chest height, stock at the shoulder, and drawn a little larger than
- * life so the silhouette reads at a distance.
+ * centred just under the arms with its grip at the hands and the barrel out in front (visible from the
+ * side), and drawn a little larger than life so the silhouette reads at a distance.
  */
 import * as THREE from 'three';
 import { isWeaponId } from '@hub/shared';
 import { buildWeapon } from './weaponKit';
 import { WEAPON_SPECS } from './weaponSpecs';
 
-const SCALE = 1.12;
-/** Item-space offset of the grip from the avatar's hand point. */
-const OFFSET = new THREE.Vector3(-0.2, 0.07, -0.2);
+const SCALE = 1.2;
+/** Item-space offset of the grip from the avatar's hand point: centred, just under the arms, grip at the hands. */
+const OFFSET = new THREE.Vector3(-0.2, -0.045, -0.3);
 
 export function arenaHeldModel(key: number): THREE.BufferGeometry | null {
   if (!isWeaponId(key)) return null;

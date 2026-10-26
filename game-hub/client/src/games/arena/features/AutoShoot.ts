@@ -101,9 +101,12 @@ export function targetUnderCrosshair(ctx: AutoShootContext, def: WeaponDef): str
  * is their maximum legal rate. Never while reloading or on an empty magazine (auto-reload handles that).
  */
 export function fireBit(p: PlayerSim, def: WeaponDef, wants: boolean): boolean {
-  if (!wants || !p.alive || p.reload > 0) return false;
+  if (!wants || !p.alive) return false;
+  // A magazine reload that completes during this command refills before the trigger is read.
+  const refilled = p.reload > 0 && def.reloadKind === 'mag' && p.reload - CMD_DT <= 1e-6;
+  if (p.reload > 0 && !refilled) return false;
   const w = p.weapons[p.slot];
-  if (def.magazine > 0 && w.mag === 0) return false;
+  if (def.magazine > 0 && w.mag === 0 && !refilled) return false;
   if (def.fireMode === 'semi') {
     const ready = p.cooldown - CMD_DT <= 1e-6 && p.switching - CMD_DT <= 1e-6;
     return ready && !p.fireHeld;
