@@ -28,11 +28,8 @@ type A = {
     };
   };
 };
-declare global {
-  interface Window {
-    __arena: A;
-  }
-}
+/** The page's dev hook, typed for this file (arena-mp.spec.ts declares its own window.__arena). */
+type W = { __arena: A };
 const arena = <T>(page: Page, fn: (a: A) => T): Promise<T> => page.evaluate(`(${fn.toString()})(window.__arena)`) as Promise<T>;
 
 async function openPractice(page: Page, mode: '1 vs 1' | '2 vs 2' | 'Free-for-all' = '1 vs 1'): Promise<void> {
@@ -46,7 +43,7 @@ async function openPractice(page: Page, mode: '1 vs 1' | '2 vs 2' | 'Free-for-al
 async function roamAlone(page: Page): Promise<void> {
   await passMapVote(page);
   await page.evaluate(() => {
-    const sim = window.__arena.backend.sim;
+    const sim = (window as unknown as W).__arena.backend.sim;
     sim.removeBots();
     sim.resetToWarmup();
   });
@@ -125,7 +122,7 @@ test.describe('Arcfire Arena maps and map vote', () => {
       return { from, top: a.map.pads[pi].top };
     });
     await expect.poll(() => arena(page, (a) => a.predicted!.y)).toBeCloseTo(start.from.y, 0);
-    await page.evaluate(() => window.__arena.input.setKeyboardMove(0, 0.4));
+    await page.evaluate(() => (window as unknown as W).__arena.input.setKeyboardMove(0, 0.4));
     let peak = 0;
     await expect
       .poll(async () => {
@@ -133,24 +130,24 @@ test.describe('Arcfire Arena maps and map vote', () => {
         return peak;
       }, { timeout: 6000, intervals: [50] })
       .toBeGreaterThan(start.top + 3);
-    await page.evaluate(() => window.__arena.input.setKeyboardMove(0, 0));
+    await page.evaluate(() => (window as unknown as W).__arena.input.setKeyboardMove(0, 0));
   });
 
   test('a health pack on the voted map heals you', async ({ page }) => {
     await openPractice(page);
     await roamAlone(page);
-    test.skip(!(await page.evaluate(() => !!window.__arena.itemsFx.pickups)), 'pickups are rendered by the movement & items package');
+    test.skip(!(await page.evaluate(() => !!(window as unknown as W).__arena.itemsFx.pickups)), 'pickups are rendered by the movement & items package');
     const i = await arena(page, (a) => a.map.pickups.findIndex((p) => p.kind === 'health'));
     await page.evaluate((i) => {
-      const a = window.__arena;
+      const a = (window as unknown as W).__arena;
       const pk = a.map.pickups[i];
       Object.assign(a.backend.sim.players.get('you')!.sim, { x: pk.x, y: pk.y, z: pk.z, vx: 0, vy: 0, vz: 0, hp: 40 });
     }, i);
     await expect.poll(() => arena(page, (a) => a.predicted!.hp), { timeout: 1500 }).toBe(90);
-    expect(await page.evaluate((i) => window.__arena.itemsFx.pickups!.isVisible(i), i)).toBe(false);
+    expect(await page.evaluate((i) => (window as unknown as W).__arena.itemsFx.pickups!.isVisible(i), i)).toBe(false);
     await page.evaluate(() => {
-      window.__arena.backend.sim.tick += 600;
+      (window as unknown as W).__arena.backend.sim.tick += 600;
     });
-    await expect.poll(() => page.evaluate((i) => window.__arena.itemsFx.pickups!.isVisible(i), i), { timeout: 3000 }).toBe(true);
+    await expect.poll(() => page.evaluate((i) => (window as unknown as W).__arena.itemsFx.pickups!.isVisible(i), i), { timeout: 3000 }).toBe(true);
   });
 });

@@ -101,7 +101,8 @@ describe('Arcfire Arena map vote online', () => {
     await until(() => room.sim.vote?.stage === 'reveal');
     room.sim.phaseTimer = 0;
     await until(() => room.sim.phase === 'loadout');
-    const map = host.room.state.mapIndex;
+    const map = room.sim.mapIndex;
+    await until(() => host.room.state.mapIndex === map);
     room.sim.phase = 'matchEnd';
     room.sim.phaseTimer = 0.05;
     await until(() => host.room.state.phase === 'warmup', 3000);
