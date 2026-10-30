@@ -164,7 +164,8 @@ export class PickupRenderer {
       if (perKind[kind] === 0) continue;
       const mesh = new THREE.InstancedMesh(kind === 'health' ? healthPackGeometry() : ammoCrateGeometry(), this.material, perKind[kind]);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      mesh.frustumCulled = false;
+      // Pickups never move: a fixed bounding sphere lets off-screen kinds skip their draw call.
+      mesh.boundingSphere = boundsOf(list.filter((pk) => pk.kind === kind), FLOAT, 0.9);
       mesh.name = `${kind} pickups`;
       this.meshes[kind] = mesh;
       this.group.add(mesh);
@@ -179,7 +180,7 @@ export class PickupRenderer {
     ringGeo.setAttribute('aColor', new THREE.InstancedBufferAttribute(color, 3));
     const rings = new THREE.InstancedMesh(ringGeo, this.ringMaterial, list.length);
     list.forEach((pk, i) => rings.setMatrixAt(i, this.m.makeTranslation(pk.x, pk.y + 0.02, pk.z)));
-    rings.frustumCulled = false;
+    rings.boundingSphere = boundsOf(list, 0.02, 0.7);
     rings.renderOrder = 2;
     rings.name = 'pickup rings';
     this.rings = rings;
@@ -302,6 +303,15 @@ export class PickupRenderer {
     this.material.dispose();
     this.ringMaterial.dispose();
   }
+}
+
+/** A sphere around pickups lifted by `lift`, padded by `pad` (models bob and turn inside it). */
+function boundsOf(list: readonly MapPickup[], lift: number, pad: number): THREE.Sphere {
+  const box = new THREE.Box3();
+  for (const pk of list) box.expandByPoint(new THREE.Vector3(pk.x, pk.y + lift, pk.z));
+  const sphere = box.getBoundingSphere(new THREE.Sphere());
+  sphere.radius += pad;
+  return sphere;
 }
 
 /** 0 → 1 with a small overshoot. */
