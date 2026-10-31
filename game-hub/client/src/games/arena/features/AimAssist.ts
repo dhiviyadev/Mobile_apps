@@ -1,23 +1,18 @@
 /**
  * Light touch-only aim assist: when the crosshair is over (or right next to)
  * a visible opponent, look sensitivity drops so the thumb doesn't overshoot.
- * It never moves the camera by itself.
+ * It never moves the camera by itself, and never fires (auto-shoot is separate).
  */
 import type { BoxWorld } from '@hub/shared';
-
-export interface AssistTarget {
-  x: number;
-  y: number;
-  z: number;
-  crouching: boolean;
-}
+import type { AimTarget } from './AutoShoot';
 
 const SLOWDOWN = 0.45;
 
 export class AimAssist {
   multiplier = 1;
 
-  update(dt: number, enabled: boolean, eye: [number, number, number], forward: [number, number, number], targets: AssistTarget[], world: BoxWorld): number {
+  /** @param range useful range of the held weapon (m) */
+  update(dt: number, enabled: boolean, eye: [number, number, number], forward: [number, number, number], targets: readonly AimTarget[], world: BoxWorld, range = 60): number {
     let target = 1;
     if (enabled) {
       for (const t of targets) {
@@ -26,7 +21,7 @@ export class AimAssist {
         const dy = cy - eye[1];
         const dz = t.z - eye[2];
         const dist = Math.hypot(dx, dy, dz);
-        if (dist < 0.5 || dist > 60) continue;
+        if (dist < 0.5 || dist > range) continue;
         const cos = (dx * forward[0] + dy * forward[1] + dz * forward[2]) / dist;
         const angle = Math.acos(Math.min(1, cos));
         // Roughly the angular half-width of a body, plus a little magnetism.

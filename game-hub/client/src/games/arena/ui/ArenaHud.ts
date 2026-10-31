@@ -2,8 +2,9 @@
  * DOM HUD for Arcfire Arena. Everything is plain DOM (cheap to update, crisp
  * at any resolution) layered over the canvas, respecting safe-area insets.
  */
-import type { WeaponId } from '@hub/shared';
+import { type WeaponId, weaponDef } from '@hub/shared';
 import { h } from '../../../core/ui/dom';
+import { weaponIcon } from '../render/weaponIcons';
 
 export type CrosshairStyle = 'cross' | 'ring' | 'dot' | 'chevron';
 /** Fire-mode tag next to the ammo counter ('' = none). */
@@ -43,12 +44,21 @@ export class ArenaHud {
   private readonly scope: HTMLElement;
   private readonly vignette: HTMLElement;
   private readonly spectate: HTMLElement;
+  private readonly modeTag: HTMLElement;
+  private readonly weaponImg: HTMLImageElement;
+  private readonly autoChip: HTMLElement;
   private bannerTimer = 0;
   private hitTimer = 0;
-  private last = { hp: -1, mag: -1, reserve: -1, weapon: '', timer: '', reload: -1, spread: -1 };
+  private last = { hp: -1, mag: -1, reserve: -1, weapon: '', timer: '', reload: -1, spread: -1, mode: '', style: '', scope: '', auto: '', icon: -1, chevron: '' };
 
   constructor(parent: HTMLElement) {
-    this.crosshair = h('div', { class: 'xhair' }, h('i', { class: 't' }), h('i', { class: 'b' }), h('i', { class: 'l' }), h('i', { class: 'r' }), h('i', { class: 'dot' }));
+    this.crosshair = h('div', { class: 'xhair', 'data-testid': 'crosshair' },
+      h('i', { class: 't' }), h('i', { class: 'b' }), h('i', { class: 'l' }), h('i', { class: 'r' }), h('i', { class: 'dot' }),
+      h('i', { class: 'ring' }), h('i', { class: 'chev c30' }), h('i', { class: 'chev c60' }),
+    );
+    this.modeTag = h('span', { class: 'fire-mode hidden', 'data-testid': 'fire-mode' });
+    this.weaponImg = h('img', { class: 'weapon-icon', alt: '' }) as HTMLImageElement;
+    this.autoChip = h('div', { class: 'auto-chip hidden', 'data-testid': 'auto-chip' }, 'AUTO');
     this.hitmarker = h('div', { class: 'hitmarker' }, h('i'), h('i'), h('i'), h('i'));
     this.damageRing = h('div', { class: 'damage-ring' });
     this.hpFill = h('div', { class: 'hp-fill' });
@@ -65,7 +75,7 @@ export class ArenaHud {
     this.bannerTitle = h('div', { class: 'banner-title' });
     this.bannerSub = h('div', { class: 'banner-sub' });
     this.banner = h('div', { class: 'arena-banner', 'data-testid': 'arena-banner' }, this.bannerTitle, this.bannerSub);
-    this.scope = h('div', { class: 'scope-overlay' }, h('div', { class: 'scope-lens' }));
+    this.scope = h('div', { class: 'scope-overlay', 'data-testid': 'scope' }, h('div', { class: 'scope-lens' }), h('div', { class: 'optic-ring' }));
     this.vignette = h('div', { class: 'hurt-vignette' });
     this.spectate = h('div', { class: 'spectate-label hidden' });
 
@@ -74,13 +84,18 @@ export class ArenaHud {
       this.scope,
       this.damageRing,
       this.crosshair,
+      this.autoChip,
       this.hitmarker,
       h('div', { class: 'scorebar' }, this.scoreLeft, h('div', { class: 'score-mid' }, this.timer, this.roundLabel), this.scoreRight),
       this.feed,
       this.banner,
       this.spectate,
       h('div', { class: 'hp-panel' }, h('div', { class: 'hp-bar' }, this.hpFill), this.hpText),
-      h('div', { class: 'ammo-panel' }, this.weaponName, h('div', { class: 'ammo-row' }, this.ammoMag, this.ammoReserve), this.reloadBar),
+      h('div', { class: 'ammo-panel' },
+        h('div', { class: 'weapon-line' }, this.weaponImg, this.weaponName, this.modeTag),
+        h('div', { class: 'ammo-row' }, this.ammoMag, this.ammoReserve),
+        this.reloadBar,
+      ),
     );
     parent.appendChild(this.el);
   }
@@ -112,7 +127,10 @@ export class ArenaHud {
     this.vignette.style.opacity = v > 0 && v <= 30 ? String(0.25 + (30 - v) / 60) : '0';
   }
 
-  /** @param mode fire-mode tag (shown once weapons have more than one mode) */
+  /**
+   * @param reloadProgress 0..1 bar under the counter (shell reloads pass mag / magazine)
+   * @param mode fire-mode tag next to the weapon name ('' hides it)
+   */
   setAmmo(mag: number, reserve: number, weapon: string, melee: boolean, reloadProgress: number, mode: FireModeTag = ''): void {
     if (mag !== this.last.mag || reserve !== this.last.reserve || weapon !== this.last.weapon) {
       this.ammoMag.textContent = melee ? '—' : String(mag);
@@ -123,6 +141,11 @@ export class ArenaHud {
       this.last.reserve = reserve;
       this.last.weapon = weapon;
     }
+    if (mode !== this.last.mode) {
+      this.last.mode = mode;
+      this.modeTag.textContent = mode;
+      this.modeTag.classList.toggle('hidden', mode === '');
+    }
     const r = Math.round(reloadProgress * 100);
     if (r !== this.last.reload) {
       this.last.reload = r;
@@ -131,9 +154,17 @@ export class ArenaHud {
     }
   }
 
+  /** Side-view icon of the held weapon in the ammo panel. */
+  setWeaponIcon(id: WeaponId): void {
+    if (id === this.last.icon) return;
+    this.last.icon = id;
+    this.weaponImg.src = weaponIcon(id, 72, 26);
+    this.weaponImg.alt = weaponDef(id).short;
+  }
+
   /**
-   * @param gapPx distance of the crosshair lines from the centre
-   * @param style per-weapon crosshair shape (only 'cross' is drawn so far)
+   * @param gapPx distance of the crosshair lines (or the ring) from the centre
+   * @param style cross (rifles), ring (shotgun spread), dot (sniper hip, knife), chevron (crossbow drop marks)
    */
   setCrosshair(gapPx: number, visible: boolean, style: CrosshairStyle = 'cross'): void {
     const g = Math.round(gapPx);
@@ -141,16 +172,39 @@ export class ArenaHud {
       this.crosshair.style.setProperty('--gap', `${g}px`);
       this.last.spread = g;
     }
+    if (style !== this.last.style) {
+      this.last.style = style;
+      this.crosshair.dataset.style = style;
+    }
     this.crosshair.classList.toggle('hidden', !visible);
   }
 
-  /** Full-screen sight overlay: 'scope' (sniper) or 'optic' (drawn like the scope for now), null = none. */
-  setScope(kind: 'scope' | 'optic' | null): void {
-    this.scope.classList.toggle('on', kind !== null);
+  /** Crossbow chevron: the drop marks for 30 m and 60 m, in pixels below the centre. */
+  setChevron(px30: number, px60: number): void {
+    const key = `${Math.round(px30)}:${Math.round(px60)}`;
+    if (key === this.last.chevron) return;
+    this.last.chevron = key;
+    this.crosshair.style.setProperty('--c30', `${Math.round(px30)}px`);
+    this.crosshair.style.setProperty('--c60', `${Math.round(px60)}px`);
   }
 
-  /** Auto-shoot indicator. */
-  setAutoShoot(state: 'off' | 'idle' | 'firing'): void {}
+  /** Full-screen sight overlay: 'scope' (sniper, 4×), 'optic' (marksman, 2×: lighter, see-through centre), null = none. */
+  setScope(kind: 'scope' | 'optic' | null): void {
+    const k = kind ?? '';
+    if (k === this.last.scope) return;
+    this.last.scope = k;
+    this.scope.classList.toggle('on', kind !== null);
+    this.scope.classList.toggle('optic', kind === 'optic');
+  }
+
+  /** Auto-shoot chip under the crosshair: hidden when off, dim while waiting, lit while it fires. */
+  setAutoShoot(state: 'off' | 'idle' | 'firing'): void {
+    if (state === this.last.auto) return;
+    this.last.auto = state;
+    this.autoChip.classList.toggle('hidden', state === 'off');
+    this.autoChip.classList.toggle('firing', state === 'firing');
+    this.crosshair.classList.toggle('auto', state === 'firing');
+  }
 
   /** Short rising label after a pickup, next to the HP bar (health) or the ammo counter (ammo). */
   pickupFlash(text: string, kind: 'health' | 'ammo'): void {
@@ -176,9 +230,10 @@ export class ArenaHud {
   }
 
   killFeed(e: KillFeedEntry): void {
+    const icon = weaponIcon(e.weaponId, 48, 18);
     const row = h('div', { class: `kf-row ${e.mine ? 'mine' : ''}` },
       h('span', { style: `color:${e.killerColor}` }, e.killer),
-      h('span', { class: 'kf-weapon' }, e.weapon, e.headshot ? ' ◎' : ''),
+      h('span', { class: 'kf-weapon' }, icon ? h('img', { src: icon, alt: e.weapon, title: weaponDef(e.weaponId).name }) : e.weapon, e.headshot ? h('b', { class: 'kf-head', title: 'Headshot' }, '◎') : null),
       h('span', { style: `color:${e.victimColor}` }, e.victim),
     );
     this.feed.prepend(row);

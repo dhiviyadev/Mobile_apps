@@ -83,8 +83,25 @@ function noise(v: Voice, o: NoiseOpts): void {
 const notes = (v: Voice, freqs: number[], step: number, type: OscillatorType, vol = 0.25, dur = 0.18) =>
   freqs.forEach((f, i) => tone(v, { type, freq: f, dur, vol, delay: i * step }));
 
-/** Stand-in for Arcfire Arena weapon sounds whose recipes come with the weapons package. */
-const WEAPON_SFX_PLACEHOLDER: SfxDef = { play: (v) => tone(v, { type: 'square', freq: 1500, dur: 0.02, vol: 0.06 }), length: 0.05 };
+/** A gunshot in layers: a filtered noise crack, a falling tone for the body, an optional echo tail and mechanical tick. */
+interface GunVoice {
+  crack: [freq: number, freqEnd: number, dur: number, vol: number, type?: BiquadFilterType];
+  body: [f0: number, f1: number, dur: number, vol: number, type?: OscillatorType];
+  tail?: [freq: number, dur: number, vol: number, delay: number];
+  tick?: [freq: number, dur: number, vol: number];
+}
+
+function gun(v: Voice, g: GunVoice): void {
+  const [cf, cfe, cd, cv, ct] = g.crack;
+  noise(v, { dur: cd, vol: cv, type: ct ?? 'lowpass', freq: cf, freqEnd: cfe });
+  const [b0, b1, bd, bv, bt] = g.body;
+  tone(v, { type: bt ?? 'sine', freq: b0, freqEnd: b1, dur: bd, vol: bv });
+  if (g.tail) {
+    const [tf, td, tv, delay] = g.tail;
+    noise(v, { dur: td, vol: tv, freq: tf, freqEnd: tf * 0.3, attack: 0.02, delay });
+  }
+  if (g.tick) tone(v, { type: 'square', freq: g.tick[0], dur: g.tick[1], vol: g.tick[2] });
+}
 
 const defs = {
   click: { play: (v) => tone(v, { freq: 1300, freqEnd: 900, dur: 0.05, vol: 0.18 }), length: 0.1 },
@@ -260,32 +277,174 @@ const defs = {
   vote_win: { play: (v) => notes(v, [523, 784, 1046, 1568], 0.08, 'triangle', 0.22, 0.25), length: 0.7 },
 
   // ---- Arcfire Arena: weapons (WP2) -----------------------------------------
-  // Names are final (Voxelvale survival reuses xbow_shot, xbow_cock, bolt_hit, bolt_flesh); recipes follow.
-  ar_shot: WEAPON_SFX_PLACEHOLDER,
-  smg_shot: WEAPON_SFX_PLACEHOLDER,
-  lmg_shot: WEAPON_SFX_PLACEHOLDER,
-  burst_shot: WEAPON_SFX_PLACEHOLDER,
-  dmr_shot: WEAPON_SFX_PLACEHOLDER,
-  hc_shot: WEAPON_SFX_PLACEHOLDER,
-  mp_shot: WEAPON_SFX_PLACEHOLDER,
-  xbow_shot: WEAPON_SFX_PLACEHOLDER,
-  bolt_hit: WEAPON_SFX_PLACEHOLDER,
-  bolt_flesh: WEAPON_SFX_PLACEHOLDER,
-  bolt_fly: WEAPON_SFX_PLACEHOLDER,
-  knife_hit: WEAPON_SFX_PLACEHOLDER,
-  clank: WEAPON_SFX_PLACEHOLDER,
-  mag_out: WEAPON_SFX_PLACEHOLDER,
-  mag_in: WEAPON_SFX_PLACEHOLDER,
-  charge: WEAPON_SFX_PLACEHOLDER,
-  pump: WEAPON_SFX_PLACEHOLDER,
-  bolt_cycle: WEAPON_SFX_PLACEHOLDER,
-  shell_in: WEAPON_SFX_PLACEHOLDER,
-  cylinder: WEAPON_SFX_PLACEHOLDER,
-  xbow_cock: WEAPON_SFX_PLACEHOLDER,
-  casing: WEAPON_SFX_PLACEHOLDER,
-  equip: WEAPON_SFX_PLACEHOLDER,
-  autoshoot_on: WEAPON_SFX_PLACEHOLDER,
-  autoshoot_off: WEAPON_SFX_PLACEHOLDER,
+  // Names are final (Voxelvale survival reuses xbow_shot, xbow_cock, bolt_hit, bolt_flesh).
+  // Shots: each weapon has its own crack, body and tail, so it can be told apart by ear.
+  ar_shot: {
+    play: (v) => gun(v, { crack: [3200, 700, 0.1, 0.55], body: [150, 55, 0.1, 0.45], tail: [1200, 0.25, 0.12, 0.04] }),
+    length: 0.32,
+    minGap: 0.04,
+  },
+  smg_shot: {
+    play: (v) => gun(v, { crack: [4800, 1200, 0.06, 0.45], body: [220, 90, 0.05, 0.3], tail: [1500, 0.12, 0.08, 0.03] }),
+    length: 0.18,
+    minGap: 0.03,
+  },
+  lmg_shot: {
+    play: (v) => gun(v, { crack: [2600, 500, 0.12, 0.6], body: [120, 45, 0.13, 0.55], tail: [900, 0.3, 0.15, 0.05] }),
+    length: 0.38,
+    minGap: 0.04,
+  },
+  burst_shot: {
+    play: (v) => gun(v, { tick: [3000, 0.01, 0.08], crack: [3600, 800, 0.08, 0.5], body: [170, 70, 0.08, 0.4], tail: [1400, 0.18, 0.1, 0.04] }),
+    length: 0.25,
+    minGap: 0.03,
+  },
+  dmr_shot: {
+    play: (v) => {
+      noise(v, { dur: 0.05, vol: 0.6, type: 'highpass', freq: 3000 });
+      gun(v, { crack: [2200, 300, 0.3, 0.5], body: [110, 40, 0.2, 0.55], tail: [800, 0.35, 0.12, 0.15] });
+    },
+    length: 0.55,
+    minGap: 0.1,
+  },
+  hc_shot: {
+    play: (v) => gun(v, { crack: [3000, 600, 0.08, 0.65], body: [90, 35, 0.22, 0.65, 'triangle'], tail: [700, 0.4, 0.15, 0.08] }),
+    length: 0.52,
+    minGap: 0.1,
+  },
+  mp_shot: {
+    play: (v) => gun(v, { crack: [5200, 1400, 0.05, 0.4], body: [260, 110, 0.04, 0.25] }),
+    length: 0.1,
+    minGap: 0.03,
+  },
+  xbow_shot: {
+    play: (v) => {
+      tone(v, { type: 'triangle', freq: 180, freqEnd: 120, dur: 0.18, vol: 0.35 });
+      tone(v, { freq: 360, freqEnd: 240, dur: 0.12, vol: 0.2 });
+      noise(v, { dur: 0.08, vol: 0.3, type: 'bandpass', freq: 2400, freqEnd: 800, q: 3 });
+    },
+    length: 0.24,
+    minGap: 0.1,
+  },
+  bolt_hit: {
+    play: (v) => {
+      noise(v, { dur: 0.09, vol: 0.45, freq: 900, freqEnd: 200 });
+      tone(v, { freq: 140, freqEnd: 80, dur: 0.06, vol: 0.3 });
+    },
+    length: 0.14,
+    minGap: 0.03,
+  },
+  bolt_flesh: {
+    play: (v) => {
+      noise(v, { dur: 0.07, vol: 0.35, type: 'bandpass', freq: 600, q: 1.5 });
+      tone(v, { freq: 120, freqEnd: 70, dur: 0.08, vol: 0.3 });
+    },
+    length: 0.13,
+    minGap: 0.03,
+  },
+  bolt_fly: { play: (v) => noise(v, { dur: 0.25, vol: 0.12, type: 'bandpass', freq: 1800, freqEnd: 600, q: 2, attack: 0.08 }), length: 0.3, minGap: 0.2 },
+  knife_hit: {
+    play: (v) => {
+      noise(v, { dur: 0.06, vol: 0.3, type: 'bandpass', freq: 1800, q: 2 });
+      tone(v, { freq: 300, freqEnd: 150, dur: 0.05, vol: 0.25 });
+    },
+    length: 0.1,
+    minGap: 0.05,
+  },
+  // Mechanical sounds on the viewmodel's keyframes (local only).
+  clank: {
+    play: (v) => {
+      tone(v, { type: 'square', freq: 2400, dur: 0.03, vol: 0.1 });
+      noise(v, { dur: 0.05, vol: 0.2, type: 'highpass', freq: 3500 });
+    },
+    length: 0.08,
+    minGap: 0.05,
+  },
+  mag_out: {
+    play: (v) => {
+      noise(v, { dur: 0.06, vol: 0.2, type: 'bandpass', freq: 1100, q: 4 });
+      tone(v, { type: 'square', freq: 1600, dur: 0.015, vol: 0.1 });
+    },
+    length: 0.1,
+    minGap: 0.05,
+  },
+  mag_in: {
+    play: (v) => {
+      tone(v, { type: 'square', freq: 2000, dur: 0.02, vol: 0.14 });
+      noise(v, { dur: 0.05, vol: 0.25, type: 'bandpass', freq: 1500, q: 3, delay: 0.02 });
+    },
+    length: 0.1,
+    minGap: 0.05,
+  },
+  charge: {
+    play: (v) => {
+      noise(v, { dur: 0.05, vol: 0.22, type: 'bandpass', freq: 1300, q: 3 });
+      tone(v, { type: 'square', freq: 2200, dur: 0.02, vol: 0.14, delay: 0.07 });
+    },
+    length: 0.12,
+    minGap: 0.05,
+  },
+  pump: {
+    play: (v) => {
+      noise(v, { dur: 0.07, vol: 0.3, type: 'bandpass', freq: 900, q: 2 });
+      noise(v, { dur: 0.07, vol: 0.3, type: 'bandpass', freq: 900, q: 2, delay: 0.12 });
+      tone(v, { type: 'square', freq: 1400, dur: 0.015, vol: 0.1, delay: 0.12 });
+    },
+    length: 0.22,
+    minGap: 0.1,
+  },
+  bolt_cycle: {
+    play: (v) => {
+      tone(v, { type: 'square', freq: 1800, dur: 0.02, vol: 0.12 });
+      noise(v, { dur: 0.06, vol: 0.2, type: 'bandpass', freq: 1200, q: 3, delay: 0.05 });
+      noise(v, { dur: 0.06, vol: 0.2, type: 'bandpass', freq: 1400, q: 3, delay: 0.22 });
+      tone(v, { type: 'square', freq: 2100, dur: 0.02, vol: 0.12, delay: 0.3 });
+    },
+    length: 0.35,
+    minGap: 0.2,
+  },
+  shell_in: {
+    play: (v) => {
+      noise(v, { dur: 0.04, vol: 0.22, type: 'bandpass', freq: 1600, q: 4 });
+      tone(v, { type: 'square', freq: 2500, dur: 0.015, vol: 0.1 });
+    },
+    length: 0.07,
+    minGap: 0.05,
+  },
+  cylinder: {
+    play: (v) => {
+      for (let i = 0; i < 6; i++) tone(v, { type: 'square', freq: 2600, dur: 0.01, vol: 0.08, delay: i * 0.025 });
+    },
+    length: 0.2,
+    minGap: 0.1,
+  },
+  xbow_cock: {
+    play: (v) => {
+      tone(v, { type: 'sawtooth', freq: 90, freqEnd: 140, dur: 0.4, vol: 0.06 });
+      noise(v, { dur: 0.35, vol: 0.08, type: 'bandpass', freq: 600, q: 6 });
+      tone(v, { type: 'square', freq: 1900, dur: 0.02, vol: 0.14, delay: 0.42 });
+    },
+    length: 0.5,
+    minGap: 0.3,
+  },
+  casing: {
+    play: (v) => {
+      tone(v, { freq: 4200, freqEnd: 3800, dur: 0.05, vol: 0.05 });
+      tone(v, { freq: 3900, dur: 0.04, vol: 0.03, delay: 0.08 });
+    },
+    length: 0.15,
+    minGap: 0.06,
+  },
+  equip: {
+    play: (v) => {
+      noise(v, { dur: 0.08, vol: 0.15, freq: 700 });
+      tone(v, { type: 'square', freq: 1500, dur: 0.015, vol: 0.08, delay: 0.06 });
+    },
+    length: 0.12,
+    minGap: 0.1,
+  },
+  autoshoot_on: { play: (v) => notes(v, [1200, 1600], 0.06, 'sine', 0.12, 0.06), length: 0.16, minGap: 0.1 },
+  autoshoot_off: { play: (v) => notes(v, [1600, 1200], 0.06, 'sine', 0.12, 0.06), length: 0.16, minGap: 0.1 },
 } satisfies Record<string, SfxDef>;
 
 export type SfxName = keyof typeof defs;
