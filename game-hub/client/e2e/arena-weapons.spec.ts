@@ -61,6 +61,7 @@ test.describe('Arcfire Arena weapons', () => {
   });
 
   test('loadout picker: 8 primaries, 3 sidearms, picks apply and persist', async ({ page }) => {
+    test.setTimeout(120_000); // two practice starts
     await startArenaPractice(page, '1 vs 1');
     await expect(page.getByTestId('loadout-primary').locator('.lo-card')).toHaveCount(8);
     await expect(page.getByTestId('loadout-secondary').locator('.lo-card')).toHaveCount(3);
