@@ -85,7 +85,7 @@ test.describe('Arcfire Arena weapons', () => {
     await startArenaPractice(page, '1 vs 1');
     await liveDuel(page);
     if (!touch) {
-      await page.locator('.game-root canvas').click({ position: { x: 640, y: 400 } });
+      await page.locator('.game-root > canvas').click({ position: { x: 640, y: 400 } });
       await placeBot(page, 0);
     }
     await page.waitForTimeout(600);
@@ -119,7 +119,7 @@ test.describe('Arcfire Arena weapons', () => {
     await page.getByTestId('loadout-crossbow').click();
     await liveDuel(page);
     // Desktop: take the pointer so the game is not paused (offline practice stops while paused).
-    if (!info.project.use.hasTouch) await page.locator('.game-root canvas').click({ position: { x: 640, y: 400 } });
+    if (!info.project.use.hasTouch) await page.locator('.game-root > canvas').click({ position: { x: 640, y: 400 } });
     await arena(page, (a) => {
       a.yaw = 0.6; // past the bot, toward the open floor
       a.pitch = 0.02;

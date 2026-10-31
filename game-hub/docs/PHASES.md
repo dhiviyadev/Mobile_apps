@@ -528,3 +528,35 @@ Manual checks still to do on devices:
 - **Screenshots:** the manifest and JSON-LD use `docs/screenshots/*.png`. Refresh them after the gameplay upgrades (same file names).
 - **Size budget:** the hub grew by 6.9 KB gzipped, over the design's +4 KB budget. Making registration lazy would win back about 2 KB if needed.
 - **Play Store:** a Trusted Web Activity (Bubblewrap) is documented as a later option, not built. It needs a custom domain for `assetlinks.json` and a Play developer account.
+
+---
+
+## Upgrade: Arcfire Arena movement, weapons, maps and bots ✅
+
+### What was built
+- **Movement:**
+  - Running speed rises from 6 to 9 m/s.
+  - A slide: C or Ctrl while running, or tap Crouch on touch. It gives +4 m/s for up to 1 s, then a 1.4 s cooldown, and a slide-jump keeps your momentum.
+  - Camera motion (slide tilt, speed zoom, landing dip) can be switched off. Footsteps can be heard; crouch-walking is silent.
+- **Interactive items:** trampolines, launchers and speed strips; respawning health packs (+50 HP) and ammo crates.
+- **Weapons:**
+  - 12 weapons with procedural first- and third-person models, gloved hands and moving parts.
+  - Primaries: Assault Rifle, SMG, Shotgun, Sniper Rifle, Crossbow, Burst Rifle, Marksman Rifle, LMG. Sidearms: Pistol, Hand Cannon, Machine Pistol. Combat Knife in every loadout.
+  - Per-weapon reloads, recoil and sounds. Crossbow bolts fly and drop, simulated on the server with lag compensation.
+- **Auto-shoot** (optional, off by default): fires while the server's own hit test says the crosshair is on a visible enemy.
+- **Maps:** six maps of 72–96 m with perimeter walls, rooms, corridors and 3–5 levels: Foundry Yard, Sunken Courts and Skybridge (rebuilt), plus Verdant Hall, Dune Relay and Frostline Depot.
+  - A map checker walks every bot path with the real movement code.
+- **Map vote:** three maps before every match, online and against bots.
+  - 15 s to vote, shortened when every human has voted.
+  - Human votes outrank bot votes.
+- **Bots:** Easy, Normal and Hard. Normal now takes 2–3× longer to kill you than the old bots, and Easy 4–6× (time to kill a strafing player at 8 m: 1.4 s, 2.8 s and 5.8 s).
+- **Protocol version gate:** pages from before this upgrade are told to reload instead of misreading the new network format.
+
+### How to test
+```bash
+npm test && npm run e2e
+```
+
+### Known issues / notes
+- Play-testing on real tablets is still needed for the slide and auto-shoot feel.
+- A few e2e tests wait in real time for the 8 s loadout, so they can be slow on a busy machine.

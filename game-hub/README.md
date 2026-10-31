@@ -5,7 +5,7 @@ that run in the browser, on iPad and Android tablets as well as keyboard and mou
 
 | | |
 | --- | --- |
-| **Voxelvale**: build, explore and race in a shared, procedurally generated block world (sandbox and parkour modes, up to 16 players). | **Arcfire Arena**: fast round-based shooter: 1v1, 2v2 and free-for-all, first to 5 rounds, three maps, five weapons, bots. |
+| **Voxelvale**: build, explore and race in a shared, procedurally generated block world (sandbox and parkour modes, up to 16 players). | **Arcfire Arena**: fast round-based shooter: 1v1, 2v2 and free-for-all, first to 5 rounds, six large maps with trampolines and launchers, a map vote before every match, twelve weapons, sliding, optional auto-shoot, bots on Easy, Normal or Hard. |
 | ![Voxelvale](docs/screenshots/voxel-sandbox.png) | ![Arcfire Arena](docs/screenshots/arena-live.png) |
 
 All names, art, music and sound are original. Textures are painted in code, audio is synthesised with WebAudio, and maps and terrain are generated, so there are **no third-party assets** to license and the download stays small.
@@ -88,17 +88,27 @@ Voxelvale sandbox worlds you build online are saved to `server/data/` (gitignore
 | --- | --- | --- |
 | Move | Floating joystick: put your thumb anywhere on the left side; push to the rim to **sprint** | same |
 | Look | Drag anywhere on the right | same; **light aim assist** slows the camera over an enemy (toggleable) |
-| Actions | **Break** (hold, also steers the camera), **Place** (tap or hold), Jump, Crouch (toggle, stops you falling off edges) | **Fire** (hold, also steers the camera), Aim (toggle), Jump, Crouch, Reload, Swap, Blade |
+| Actions | **Break** (hold, also steers the camera), **Place** (tap or hold), Jump, Crouch (toggle, stops you falling off edges) | **Fire** (hold, also steers the camera), Aim (toggle), Jump, Crouch (tap while running to **slide**; the button shows a slide icon when you can), Reload, Swap, Knife, **Auto** (auto-shoot on/off) |
 | Other | Hotbar: tap or slide your finger across it · Chat · Menu | Scoreboard · Chat · Menu |
 
 Every button can be **moved and resized**: Menu → *Edit touch layout*. You can also turn on **left-handed mode**, change button size and opacity, look sensitivity and invert-Y in Settings → Controls.
 
+**Arcfire Arena extras.**
+- **Weapons:**
+  - Primaries: Assault Rifle, SMG, Shotgun, Sniper Rifle, Crossbow, Burst Rifle, Marksman Rifle, LMG.
+  - Sidearms: Pistol, Hand Cannon, Machine Pistol. Every loadout also has a Combat Knife.
+  - Crossbow bolts fly with travel time and drop.
+- **Auto-shoot** (off by default) fires for you while your crosshair is on a visible enemy. It uses the same hit test as the server, never fires through walls or at teammates, and shows an AUTO tag on the scoreboard.
+- **Maps:** each has trampolines, launchers, speed strips, and health packs and ammo crates that respawn.
+- **Map vote:** before every match, pick one of three maps by tapping its card or pressing 1–3. The host sets bot difficulty in the warmup panel or on the vote screen.
+- **Camera motion:** speed zoom, slide tilt and landing dip can be turned off in Settings.
+
 ### Keyboard and mouse
 | | Voxelvale | Arcfire Arena |
 | --- | --- | --- |
-| Move / jump / sprint / crouch | WASD · Space · Shift · Ctrl or C | WASD · Space · — · Ctrl or C |
+| Move / jump / sprint / crouch | WASD · Space · Shift · Ctrl or C | WASD · Space · — · Ctrl or C (while running: slide) |
 | Mouse | Left: break · Right: place · Wheel: block | Left: fire · Right: aim · Wheel: weapon |
-| Keys | 1–0, -, = hotbar · T chat · Esc menu | 1–3 weapons · R reload · V blade · B loadout · Tab scoreboard · T chat · Esc menu |
+| Keys | 1–0, -, = hotbar · T chat · Esc menu | 1–3 weapons · R reload · V knife · X auto-shoot · B loadout · 1–3 map vote · Tab scoreboard · T chat · Esc menu |
 
 ---
 

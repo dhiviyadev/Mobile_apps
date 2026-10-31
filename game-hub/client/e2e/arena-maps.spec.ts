@@ -145,9 +145,13 @@ test.describe('Arcfire Arena maps and map vote', () => {
     }, i);
     await expect.poll(() => arena(page, (a) => a.predicted!.hp), { timeout: 1500 }).toBe(90);
     expect(await page.evaluate((i) => (window as unknown as W).__arena.itemsFx.pickups!.isVisible(i), i)).toBe(false);
-    await page.evaluate(() => {
-      (window as unknown as W).__arena.backend.sim.tick += 600;
-    });
+    await page.evaluate((i) => {
+      const a = (window as unknown as W).__arena;
+      // Step off the pack first: at 90 HP it would be collected again the moment it respawns.
+      const pk = a.map.pickups[i];
+      Object.assign(a.backend.sim.players.get('you')!.sim, { x: pk.x + 6, z: pk.z, hp: 100 });
+      a.backend.sim.tick += 600;
+    }, i);
     await expect.poll(() => page.evaluate((i) => (window as unknown as W).__arena.itemsFx.pickups!.isVisible(i), i), { timeout: 3000 }).toBe(true);
   });
 });
