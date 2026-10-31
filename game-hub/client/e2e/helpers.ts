@@ -46,7 +46,7 @@ export async function waitForGame(page: Page): Promise<void> {
 /** Arcfire Arena dev hooks used by the helpers below (window.__arena, dev builds only). */
 type ArenaDev = {
   match: { phase: string; vote: { stage: 'open' | 'reveal' } | null };
-  backend: { sim?: { phaseTimer: number } };
+  backend: { sim?: { phase: string; phaseTimer: number } };
 };
 
 /** Opens Arcfire Arena practice vs bots in a mode and gets past the map vote, if any. */
@@ -69,7 +69,8 @@ export async function passMapVote(page: Page, card = 0): Promise<void> {
   const skip = () =>
     page.evaluate(() => {
       const a = (window as unknown as { __arena: ArenaDev }).__arena;
-      if (a.backend.sim) a.backend.sim.phaseTimer = 0;
+      // Only the vote's timers: never skip the loadout that follows.
+      if (a.backend.sim?.phase === 'vote') a.backend.sim.phaseTimer = 0;
       return a.match.phase === 'vote' ? (a.match.vote?.stage ?? 'open') : 'done';
     });
   await expect.poll(skip, { timeout: 10_000 }).not.toBe('open');

@@ -1,8 +1,8 @@
 import { expect, type Page, test } from '@playwright/test';
-import { primeSettings, startArenaPractice as startPractice, Touch } from './helpers';
+import { passMapVote, primeSettings, startArenaPractice as startPractice, Touch } from './helpers';
 
 type A = {
-  match: { phase: string; round: number; mode: string; mapIndex: number; players: { id: string; team: number; kills: number }[] };
+  match: { phase: string; round: number; mode: string; mapIndex: number; players: { id: string; team: number; kills: number }[]; vote: { candidates: number[] } | null };
   predicted: { alive: boolean; hp: number; weapons: { mag: number; reserve: number; id: number }[]; slot: number; x: number; z: number } | null;
   backend: { sim: { teamWins: number[]; players: Map<string, { id: string; team: number; sim: { alive: boolean } }>; eliminate(id: string): void; phase: string; phaseTimer: number } };
 };
@@ -53,8 +53,13 @@ test.describe('Arcfire Arena practice', () => {
     await expect(page.getByTestId('scoreboard')).toBeHidden();
   });
 
-  test('winning the deciding round shows the end-of-match screen and next map', async ({ page }) => {
+  test('winning the deciding round shows the end-of-match screen, then a new map vote', async ({ page }) => {
     await startPractice(page, '1 vs 1');
+    // Only a live round matters here: skip the loadout (busy CI machines run the in-page sim slower than real time).
+    await page.evaluate(() => {
+      const sim = (window as unknown as { __arena: A }).__arena.backend.sim;
+      if (sim.phase === 'loadout') sim.phaseTimer = 0;
+    });
     await expect.poll(() => arena(page)(() => (window as unknown as { __arena: A }).__arena.match.phase), { timeout: 15_000 }).toBe('live');
     const map0 = await arena(page)(() => (window as unknown as { __arena: A }).__arena.match.mapIndex);
     await page.evaluate(() => {
@@ -63,11 +68,21 @@ test.describe('Arcfire Arena practice', () => {
       for (const p of sim.players.values()) if (p.id !== 'you') sim.eliminate(p.id);
     });
     await expect(page.getByTestId('arena-banner')).toContainText('Round won');
+    await expect.poll(() => arena(page)(() => (window as unknown as { __arena: A }).__arena.backend.sim.phase)).toBe('roundEnd');
+    await page.evaluate(() => {
+      (window as unknown as { __arena: A }).__arena.backend.sim.phaseTimer = 0; // the round-end pause
+    });
     await expect(page.getByTestId('match-end')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('match-end')).toContainText('Victory');
+    await expect(page.getByTestId('match-end')).toContainText('vote for the next map');
     await page.getByTestId('play-again').click();
     await expect(page.getByTestId('match-end')).toBeHidden();
-    await expect.poll(() => arena(page)(() => (window as unknown as { __arena: A }).__arena.match.mapIndex)).toBe((map0 + 1) % 3);
+    // "Play again" votes on the next map; the map just played is not offered.
+    await expect(page.getByTestId('map-vote')).toBeVisible();
+    const cand = await arena(page)(() => (window as unknown as { __arena: A }).__arena.match.vote!.candidates);
+    expect(cand).not.toContain(map0);
+    await passMapVote(page, 0);
+    await expect.poll(() => arena(page)(() => (window as unknown as { __arena: A }).__arena.match.mapIndex)).toBe(cand[0]);
     await expect.poll(() => arena(page)(() => (window as unknown as { __arena: A }).__arena.match.round)).toBe(1);
   });
 });

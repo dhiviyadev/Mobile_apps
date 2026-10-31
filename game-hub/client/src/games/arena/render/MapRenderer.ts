@@ -1,48 +1,41 @@
 /**
  * Builds an arena map as ONE merged mesh (one draw call): every box becomes
  * six flat-shaded faces with baked lighting and contact shadows in vertex
- * colours. A small shader adds a world-space 1 m / 4 m grid for depth cues
- * and distance fog. Also builds the gradient sky dome for the map theme.
+ * colours. A small shader adds world-space detail and distance fog (the
+ * map theme's fogNear/fogFar, sized for the map):
+ *  - walkable tops: a 1 m / 4 m grid for depth and distance cues;
+ *  - wall and pillar sides: panel seams every 2 m and a dark kick band at
+ *    the foot, so walls read as walls;
+ *  - other sides: a faint 4 m grid.
+ * Also builds the gradient sky dome for the map theme.
  */
 import * as THREE from 'three';
-import { type ArenaMap, type BoxKind, hashFloat } from '@hub/shared';
+import { type ArenaMap, hashFloat } from '@hub/shared';
+import { kindColor } from './mapColors';
 
 const SHADE = { top: 1, bottom: 0.55, x: 0.82, z: 0.7 };
-
-function kindColor(map: ArenaMap, kind: BoxKind): number {
-  const t = map.theme;
-  switch (kind) {
-    case 'floor':
-      return t.floor;
-    case 'wall':
-      return t.wall;
-    case 'platform':
-    case 'stairs':
-      return t.platform;
-    case 'accent':
-      return t.accent;
-    case 'trim':
-      return t.trim;
-    case 'pillar':
-      return t.wall;
-    default:
-      return t.cover;
-  }
-}
+/** aMat values: which surface detail the shader draws. */
+const MAT = { top: 0, wall: 1, side: 2 } as const;
 
 export function buildMapMesh(map: ArenaMap): THREE.Mesh {
   const positions: number[] = [];
   const normals: number[] = [];
   const colors: number[] = [];
+  const mats: number[] = [];
+  const baseYs: number[] = [];
   const indices: number[] = [];
   const base = new THREE.Color();
   const c = new THREE.Color();
 
+  let sideMat: number = MAT.side;
   const quad = (pts: number[][], n: number[], col: THREE.Color, shade: number, aoBottom: boolean, minY: number) => {
     const start = positions.length / 3;
+    const mat = n[1] !== 0 ? MAT.top : sideMat;
     for (const p of pts) {
       positions.push(p[0], p[1], p[2]);
       normals.push(n[0], n[1], n[2]);
+      mats.push(mat);
+      baseYs.push(minY);
       // Contact shadow: darken the bottom edge of walls that touch the floor.
       const ao = aoBottom && p[1] <= minY + 0.001 ? 0.68 : 1;
       c.copy(col).multiplyScalar(shade * ao);
@@ -59,6 +52,7 @@ export function buildMapMesh(map: ArenaMap): THREE.Mesh {
     const { minX: x0, maxX: x1, minY: y0, maxY: y1, minZ: z0, maxZ: z1 } = b;
     const onFloor = y0 <= 0.001 && b.kind !== 'floor';
     const trim = b.kind === 'trim' ? 1.15 : 1;
+    sideMat = b.kind === 'wall' || b.kind === 'pillar' ? MAT.wall : MAT.side;
     // top (+Y)
     quad([[x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0]], [0, 1, 0], base, SHADE.top * trim, false, y0);
     // bottom (-Y) — skipped for anything resting on the floor
@@ -77,6 +71,8 @@ export function buildMapMesh(map: ArenaMap): THREE.Mesh {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setAttribute('aMat', new THREE.Float32BufferAttribute(mats, 1));
+  geo.setAttribute('aBaseY', new THREE.Float32BufferAttribute(baseYs, 1));
   geo.setIndex(indices);
   geo.computeBoundingSphere();
 
@@ -85,13 +81,19 @@ export function buildMapMesh(map: ArenaMap): THREE.Mesh {
     uniforms: { uFogColor: { value: fog }, uFogNear: { value: map.theme.fogNear }, uFogFar: { value: map.theme.fogFar } },
     vertexColors: true,
     vertexShader: /* glsl */ `
+      attribute float aMat;
+      attribute float aBaseY;
       varying vec3 vColor;
       varying vec3 vWorld;
       varying vec3 vNormal;
       varying float vFogDist;
+      varying float vMat;
+      varying float vBaseY;
       void main() {
         vColor = color;
         vNormal = normal;
+        vMat = aMat;
+        vBaseY = aBaseY;
         vec4 world = modelMatrix * vec4(position, 1.0);
         vWorld = world.xyz;
         vec4 mv = viewMatrix * world;
@@ -107,14 +109,28 @@ export function buildMapMesh(map: ArenaMap): THREE.Mesh {
       varying vec3 vWorld;
       varying vec3 vNormal;
       varying float vFogDist;
+      varying float vMat;
+      varying float vBaseY;
       float grid(vec2 p) {
         vec2 g = abs(fract(p - 0.5) - 0.5) / max(fwidth(p), vec2(1e-4));
         return 1.0 - min(min(g.x, g.y), 1.0);
       }
+      float line1(float x) {
+        float g = abs(fract(x - 0.5) - 0.5) / max(fwidth(x), 1e-4);
+        return 1.0 - min(g, 1.0);
+      }
       void main() {
         vec3 n = abs(vNormal);
         vec2 p = n.y > 0.5 ? vWorld.xz : (n.x > 0.5 ? vWorld.zy : vWorld.xy);
-        float lines = grid(p) * 0.06 + grid(p * 0.25) * 0.1;
+        float lines;
+        if (vMat < 0.5) {
+          lines = grid(p) * 0.06 + grid(p * 0.25) * 0.1;
+        } else if (vMat < 1.5) {
+          // Wall panels: seams every 2 m and a darker kick band along the foot.
+          lines = line1(p.x * 0.5) * 0.12 + smoothstep(0.32, 0.28, vWorld.y - vBaseY) * 0.18;
+        } else {
+          lines = grid(p * 0.25) * 0.05;
+        }
         vec3 c = vColor * (1.0 - lines);
         gl_FragColor = vec4(mix(c, uFogColor, smoothstep(uFogNear, uFogFar, vFogDist)), 1.0);
       }

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ArenaMsg, Buttons, type Command, encodeCommands } from '@hub/shared';
+import { ArenaMsg, Buttons, type Command, encodeCommands, findOpenLane } from '@hub/shared';
 import { join as joinArena, sendPaced, serverRoom } from './arenaHelpers';
 import { startTestServer, type TestServer, until, wait } from './helpers';
 
@@ -64,8 +64,9 @@ describe('Arcfire Arena room', () => {
     await until(() => room.sim.phase === 'live');
     const pa = room.sim.players.get(a.room.sessionId)!;
     const pb = room.sim.players.get(b.room.sessionId)!;
-    Object.assign(pa.sim, { x: -14, y: 0, z: 7, vx: 0, vz: 0 });
-    Object.assign(pb.sim, { x: -6, y: 0, z: 7, vx: 0, vz: 0 });
+    const lane = findOpenLane(room.sim.map)!;
+    Object.assign(pa.sim, { ...lane.a, vx: 0, vz: 0 });
+    Object.assign(pb.sim, { ...lane.b, vx: 0, vz: 0 });
     pa.sim.lastSeq = a.seq;
     await wait(150);
     const yaw = Math.atan2(-(pb.sim.x - pa.sim.x), -(pb.sim.z - pa.sim.z));
@@ -86,17 +87,37 @@ describe('Arcfire Arena room', () => {
     await Promise.all([a.room.leave(), b.room.leave()]);
   });
 
-  it('lets the host start with bots, and rematch rotates the map', async () => {
+  it('host start opens a map vote; the vote picks the map; rematch votes again', async () => {
     const host = await join('Host', undefined, '2v2');
+    const room = serverRoom(host.room.roomId);
+    type P = { bot: boolean; team: number; vote: number };
     host.room.send(ArenaMsg.Start, { bots: true });
-    await until(() => host.room.state.phase === 'loadout', 3000);
-    const players = [...host.room.state.players.values()] as { bot: boolean; team: number }[];
+    await until(() => host.room.state.phase === 'vote', 3000);
+    const players = [...host.room.state.players.values()] as P[];
     expect(players).toHaveLength(4);
     expect(players.filter((p) => p.bot)).toHaveLength(3);
     expect(players.filter((p) => p.team === 0)).toHaveLength(2);
+    await until(() => host.room.state.voteMaps.length === 3);
+    const cand = [...host.room.state.voteMaps] as number[];
+    expect(new Set(cand).size).toBe(3);
+    expect(host.room.state.voteWinner).toBe(-1);
 
-    const room = serverRoom(host.room.roomId);
-    const map0 = host.room.state.mapIndex;
+    // The only human votes: the bots vote at once and at most 3 s remain.
+    host.room.send(ArenaMsg.Vote, { map: cand[1] });
+    await until(() => (host.room.state.players.get(host.room.sessionId) as P).vote === cand[1]);
+    await until(() => ([...host.room.state.players.values()] as P[]).every((p) => p.vote >= 0), 1000);
+    expect(host.room.state.phaseEndTick - room.sim.tick).toBeLessThanOrEqual(3 * 30 + 2);
+
+    // Reveal: the human vote outranks the bots'. Then round 1 on that map.
+    await until(() => host.room.state.voteWinner === cand[1], 4000);
+    expect(host.room.state.phase).toBe('vote');
+    await until(() => host.room.state.phase === 'loadout', 5000);
+    expect(host.room.state.mapIndex).toBe(cand[1]);
+    expect(room.sim.mapIndex).toBe(cand[1]);
+    expect(host.room.state.round).toBe(1);
+    expect(host.room.state.voteMaps.length).toBe(0);
+
+    // Win the match, then ask for a rematch: a new vote without the map just played.
     room.sim.teamWins = [4, 0];
     room.sim.phaseTimer = 0;
     await until(() => room.sim.phase === 'live');
@@ -105,11 +126,12 @@ describe('Arcfire Arena room', () => {
     await until(() => host.room.state.phase === 'matchEnd', 6000);
     expect(host.room.state.matchWinnerTeam).toBe(0);
     host.room.send(ArenaMsg.Rematch);
-    await until(() => host.room.state.phase === 'loadout', 3000);
-    expect(host.room.state.mapIndex).toBe((map0 + 1) % 3);
-    expect(host.room.state.round).toBe(1);
+    await until(() => host.room.state.phase === 'vote' && host.room.state.voteMaps.length === 3, 3000);
+    expect([...host.room.state.voteMaps]).not.toContain(cand[1]);
+    expect(host.room.state.mapIndex).toBe(cand[1]);
+    expect(host.room.state.rematchVotes).toBe(0);
     await host.room.leave();
-  }, 20_000);
+  }, 30_000);
 
   it('kicks clients that flood garbage input', async () => {
     const a = await join('Garbage');

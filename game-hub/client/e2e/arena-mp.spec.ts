@@ -2,7 +2,7 @@ import { type Browser, expect, type Page, test } from '@playwright/test';
 import { waitForGame } from './helpers';
 
 type G = {
-  match: { phase: string; players: { id: string; name: string }[] };
+  match: { phase: string; players: { id: string; name: string }[]; vote: { stage: 'open' | 'reveal' } | null };
   predicted: { x: number; z: number; alive: boolean; weapons: { mag: number }[] } | null;
   latestPoses: Map<string, { x: number; z: number }>;
   backend: { localId: string; serverTick(): number; interpDelayTicks(): number };
@@ -70,9 +70,15 @@ test('online arena: warmup lobby, prediction vs server, auto-start and replicate
   expect(clock.delay).toBeGreaterThanOrEqual(2);
   expect(clock.delay).toBeLessThanOrEqual(6);
 
-  // ---- two humans in a 1v1: the server starts the match by itself -----------------------------------
-  await expect.poll(() => g(b, () => window.__arena.match.phase), { timeout: 20_000 }).not.toBe('warmup');
-  await expect.poll(() => g(a, () => window.__arena.match.phase), { timeout: 20_000 }).toBe('live');
+  // ---- two humans in a 1v1: the server starts a map vote by itself; both vote, then the match runs -----
+  await expect.poll(() => g(b, () => window.__arena.match.phase), { timeout: 20_000 }).toBe('vote');
+  await expect.poll(() => g(a, () => window.__arena.match.phase), { timeout: 10_000 }).toBe('vote');
+  for (const p of [a, b]) {
+    await p.bringToFront();
+    await p.getByTestId('vote-card-0').click();
+  }
+  await expect.poll(() => g(a, () => window.__arena.match.vote?.stage ?? 'none'), { timeout: 6_000 }).toBe('reveal');
+  await expect.poll(() => g(a, () => window.__arena.match.phase), { timeout: 25_000 }).toBe('live');
 
   // ---- firing is predicted locally and confirmed by the server (no rollback) ---------------------------
   await a.evaluate(() => window.__arena.input.press('primary'));

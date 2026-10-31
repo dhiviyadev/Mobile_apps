@@ -1,12 +1,14 @@
 /**
  * Online warmup lobby shown over the arena while players gather:
- * room code, who's here, auto-start countdown and the host's start buttons.
- * Players can run around and shoot each other during warmup.
+ * room code, who's here, auto-start countdown, the host's start buttons and
+ * bot difficulty. Players can run around and shoot each other during warmup.
+ * Starting opens the map vote.
  */
 import type { BotDifficulty } from '@hub/shared';
 import { h, svg } from '../../../core/ui/dom';
 import { toast } from '../../../core/ui/overlays';
 import type { NetMatchInfo } from '../net/NetBackend';
+import { BOT_LABELS } from './MapVotePanel';
 
 const COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>';
 
@@ -15,10 +17,12 @@ export class WarmupPanel {
   private readonly status: HTMLElement;
   private readonly roster: HTMLElement;
   private readonly actions: HTMLElement;
+  private readonly bots: HTMLElement;
   private lastKey = '';
+  private botsKey = '';
   private lastStatus = '';
 
-  /** @param onBots host picks a bot difficulty (the bots row comes with the map vote) */
+  /** @param onBots host picks the difficulty of the bots (for "Start with bots" and back-fills) */
   constructor(
     parent: HTMLElement,
     code: string,
@@ -28,6 +32,7 @@ export class WarmupPanel {
     this.status = h('div', { class: 'wu-status', 'data-testid': 'warmup-status' });
     this.roster = h('div', { class: 'wu-roster' });
     this.actions = h('div', { class: 'wu-actions' });
+    this.bots = h('div', { class: 'wu-bots' });
     this.el = h('div', { class: 'warmup-panel hidden', 'data-testid': 'warmup' },
       h('div', { class: 'wu-head' },
         h('span', { class: 'wu-title' }, 'Warmup'),
@@ -46,6 +51,7 @@ export class WarmupPanel {
       this.status,
       this.roster,
       this.actions,
+      this.bots,
     );
     this.el.addEventListener('pointerdown', (e) => e.stopPropagation());
     parent.appendChild(this.el);
@@ -67,6 +73,7 @@ export class WarmupPanel {
       this.status.textContent = status;
       this.lastStatus = status;
     }
+    this.updateBots(m.botDifficulty, isHost);
     // Rebuild the roster and buttons only when they change (keeps buttons stable under the finger).
     const key = `${m.players.map((p) => p.id + p.connected).join()}|${isHost}|${humans.length >= 2}`;
     if (key === this.lastKey) return;
@@ -81,6 +88,30 @@ export class WarmupPanel {
             humans.length >= 2 ? h('button', { class: 'btn btn-sm', 'data-testid': 'start-now', onclick: () => this.onStart(false) }, 'Start now') : null,
           )
         : h('span', { class: 'wu-hint' }, 'Waiting for the host to start…'),
+    );
+  }
+
+  private updateBots(current: BotDifficulty, isHost: boolean): void {
+    const key = `${current}|${isHost}`;
+    if (key === this.botsKey) return;
+    this.botsKey = key;
+    this.bots.replaceChildren(
+      h('span', { class: 'wu-bots-label' }, 'Bots'),
+      isHost
+        ? h('span', { class: 'mv-seg', role: 'group', 'aria-label': 'Bot difficulty' },
+            ...(Object.keys(BOT_LABELS) as BotDifficulty[]).map((d) =>
+              h('button', {
+                type: 'button',
+                class: `mv-seg-btn${d === current ? ' on' : ''}`,
+                'data-testid': `warmup-bots-${d}`,
+                'aria-pressed': String(d === current),
+                onclick: () => {
+                  if (d !== current) this.onBots(d);
+                },
+              }, BOT_LABELS[d]),
+            ),
+          )
+        : h('span', { class: 'mv-bots-fixed' }, BOT_LABELS[current]),
     );
   }
 
