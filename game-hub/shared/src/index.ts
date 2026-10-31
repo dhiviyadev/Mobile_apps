@@ -13,6 +13,7 @@ export * from './voxel/parkour';
 export * from './voxel/generator';
 export * from './voxel/physics';
 export * from './voxel/raycast';
+export * from './voxel/support';
 export * from './voxel/light';
 export * from './voxel/fluids';
 export * from './voxel/daylight';

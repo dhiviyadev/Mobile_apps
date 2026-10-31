@@ -4,6 +4,8 @@
  */
 import * as THREE from 'three';
 import {
+  Block,
+  blockDef,
   type BlockQuery,
   clamp,
   collides,
@@ -14,7 +16,27 @@ import {
   type PlayerBody,
   stepBody,
 } from '@hub/shared';
-import { audio } from '../../../core/audio/audio';
+import { audio, type SfxName } from '../../../core/audio/audio';
+
+/** Footstep sound per material of the block underfoot. */
+function stepSound(get: BlockQuery, x: number, y: number, z: number): SfxName {
+  const fx = Math.floor(x);
+  const fz = Math.floor(z);
+  if (get(fx, Math.floor(y), fz) === Block.SnowLayer) return 'stepSnow';
+  switch (blockDef(get(fx, Math.floor(y - 0.05), fz)).sound) {
+    case 'stone':
+    case 'glass':
+      return 'stepStone';
+    case 'wood':
+      return 'stepWood';
+    case 'sand':
+      return 'stepSand';
+    case 'snow':
+      return 'stepSnow';
+    default:
+      return 'step';
+  }
+}
 
 export const PHYSICS_DT = 1 / 60;
 const BASE_FOV = 72;
@@ -76,7 +98,7 @@ export class LocalPlayer {
       this.prev.set(this.body.x, this.body.y, this.body.z);
       if (frozen) continue;
       stepBody(this.body, { ...input, sprint: this.sprinting, yaw: this.yaw }, get, PHYSICS_DT, this.eye);
-      this.afterStep();
+      this.afterStep(get);
       this.onStep?.(this.body);
     }
     this.updateCamera(dt);
@@ -85,14 +107,14 @@ export class LocalPlayer {
   /** Called after every fixed physics step (offline survival: fall tracking, hazards). */
   onStep: ((body: PlayerBody) => void) | null = null;
 
-  private afterStep(): void {
+  private afterStep(get: BlockQuery): void {
     const b = this.body;
     const hSpeed = Math.hypot(b.vx, b.vz);
     if (b.onGround && hSpeed > 0.5) {
       this.stepDistance += hSpeed * PHYSICS_DT;
       if (this.stepDistance > 1.95) {
         this.stepDistance = 0;
-        audio.play('step', { volume: this.crouching ? 0.4 : 1, pitch: 0.9 + Math.random() * 0.2 });
+        audio.play(stepSound(get, b.x, b.y, b.z), { volume: this.crouching ? 0.4 : 1, pitch: 0.9 + Math.random() * 0.2 });
       }
     }
     if (b.jumped) audio.play('jump');

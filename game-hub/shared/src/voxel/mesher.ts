@@ -7,7 +7,8 @@
  * Runs inside Web Workers on the client.
  *
  * Output: two vertex buffers per chunk:
- *   - opaque: solid + alpha-tested blocks (leaves, glass)
+ *   - opaque: solid + alpha-tested blocks (leaves, glass), lava, and every
+ *     non-cube shape (plants, slabs, torches, ladders...: a second, non-greedy pass)
  *   - liquid: water (alpha-blended pass)
  * plus the centre chunk's light levels (for lighting things that are not
  * terrain, such as the held block).
@@ -22,14 +23,30 @@
  * light are uniform across them, which keeps lighting exact while still
  * collapsing large flat areas (fields, cliffs, sea, dark caves) into few quads.
  */
-import { Block, IS_EMISSIVE, IS_LIQUID, IS_TRANSPARENT, isWater, LIQUID_HEIGHT, TILE_BOTTOM, TILE_SIDE, TILE_TOP } from './blocks';
+import {
+  ATLAS_COLS,
+  Block,
+  BlockShape,
+  IS_DECOR,
+  IS_EMISSIVE,
+  IS_LIQUID,
+  IS_TRANSPARENT,
+  isWater,
+  LIQUID_HEIGHT,
+  SHAPE,
+  SHAPE_BOUNDS,
+  TILE_BOTTOM,
+  TILE_SIDE,
+  TILE_TOP,
+  USE_NEIGHBOUR_LIGHT,
+} from './blocks';
 import { blockIndex } from './chunk';
 import { CHUNK_HEIGHT, CHUNK_SIZE, CHUNK_VOLUME } from './constants';
 import { changesLight, computeLight, lightAboveTop, MAX_LIGHT } from './light';
 
 export const REGION_SIZE = CHUNK_SIZE * 3; // 48
 export const REGION_VOLUME = REGION_SIZE * REGION_SIZE * CHUNK_HEIGHT;
-export const ATLAS_COLS = 8;
+export { ATLAS_COLS };
 
 /** Offset of the centre chunk inside the region on x and z. */
 const BORDER = CHUNK_SIZE;
@@ -255,10 +272,56 @@ const uniformBytes = (bits: number): boolean => bits === Math.imul(bits & 0xff, 
 /** Average of `n` light levels summing to `sum`, as a 0..255 byte. */
 const lightByte = (sum: number, n: number): number => Math.round((sum * 17) / n);
 
+export interface MeshOptions {
+  /** Draw dense ground cover (tall grass, ferns, dry grass). False on the 'low' quality preset. Default true. */
+  decor?: boolean;
+}
+
+/** Scratch list for the light fix-up: index, sky, block per entry. */
+let fixups = new Int32Array(0);
+
+/**
+ * Light-opaque blocks that are not full cubes (slabs, chests, cactus) are dark
+ * inside: they take the brightest light of their 6 neighbours instead (not
+ * propagated further). Covers the cells one past the chunk edge that faces read.
+ */
+function fixNeighbourLight(region: Uint8Array, sky: Uint8Array, blk: Uint8Array): void {
+  const S = REGION_SIZE;
+  const layer = S * S;
+  let n = 0;
+  for (let y = 0; y < CHUNK_HEIGHT; y++) {
+    for (let z = -1; z <= CHUNK_SIZE; z++) {
+      for (let x = -1; x <= CHUNK_SIZE; x++) {
+        const i = regionIndex(x, y, z);
+        if (!USE_NEIGHBOUR_LIGHT[region[i]]) continue;
+        let s = Math.max(sky[i + 1], sky[i - 1], sky[i + S], sky[i - S], sky[i + layer]);
+        let b = Math.max(blk[i + 1], blk[i - 1], blk[i + S], blk[i - S], blk[i + layer]);
+        if (y > 0) {
+          s = Math.max(s, sky[i - layer]);
+          b = Math.max(b, blk[i - layer]);
+        }
+        if (fixups.length < (n + 1) * 3) {
+          const grown = new Int32Array(Math.max(96, fixups.length * 2));
+          grown.set(fixups);
+          fixups = grown;
+        }
+        fixups[n * 3] = i;
+        fixups[n * 3 + 1] = s;
+        fixups[n * 3 + 2] = b;
+        n++;
+      }
+    }
+  }
+  for (let k = 0; k < n; k++) {
+    sky[fixups[k * 3]] = fixups[k * 3 + 1];
+    blk[fixups[k * 3]] = fixups[k * 3 + 2];
+  }
+}
+
 /**
  * Lights the region (see light.ts) and builds the mesh for its centre chunk.
  */
-export function meshChunk(region: Uint8Array): ChunkMesh {
+export function meshChunk(region: Uint8Array, opts: MeshOptions = {}): ChunkMesh {
   opaqueBuilder ??= new Builder(4096);
   liquidBuilder ??= new Builder(1024);
   opaqueBuilder.reset();
@@ -269,6 +332,7 @@ export function meshChunk(region: Uint8Array): ChunkMesh {
   }
   computeLight(region, REGION_SIZE, CHUNK_HEIGHT, REGION_SIZE, skyLight, blockLight);
   lightAboveTop(blockLight, REGION_SIZE, CHUNK_HEIGHT, REGION_SIZE);
+  fixNeighbourLight(region, skyLight, blockLight);
   const sky = skyLight;
   const blk = blockLight;
 
@@ -304,7 +368,7 @@ export function meshChunk(region: Uint8Array): ChunkMesh {
             let key = 0;
             let skyBits = 0;
             let blockBits = 0;
-            if (b !== 0) {
+            if (b !== 0 && SHAPE[b] === BlockShape.Cube) {
               q[0] = pos[0];
               q[1] = pos[1];
               q[2] = pos[2];
@@ -313,7 +377,7 @@ export function meshChunk(region: Uint8Array): ChunkMesh {
               let visible: boolean;
               // Liquid beside a lower liquid surface: only the strip above that surface shows.
               let lower = 0;
-              if (IS_LIQUID[b] && IS_LIQUID[n]) {
+              if (IS_LIQUID[b] && IS_LIQUID[n] && isWater(b) === isWater(n)) {
                 visible = axis !== 1 && liquidTop(pos[0], pos[1], pos[2], b) > liquidTop(q[0], q[1], q[2], n);
                 lower = n;
               } else if (IS_LIQUID[b]) {
@@ -419,6 +483,8 @@ export function meshChunk(region: Uint8Array): ChunkMesh {
     }
   }
 
+  emitShapes(get, sky, blk, opts.decor !== false);
+
   const light = new Uint8Array(CHUNK_VOLUME);
   for (let y = 0; y < CHUNK_HEIGHT; y++) {
     for (let z = 0; z < CHUNK_SIZE; z++) {
@@ -508,5 +574,160 @@ function emitQuad(
   const tile = axis === 1 ? (sign > 0 ? TILE_TOP[b] : TILE_BOTTOM[b]) : TILE_SIDE[b];
   // Split the quad along the diagonal that keeps light gradients symmetric.
   const flip = bright[0] + bright[2] < bright[1] + bright[3];
-  (liquid ? liquidBuilder! : opaqueBuilder!).quad(corners, uvc, tile, shade, skyV, blockV, IS_EMISSIVE[b] === 1, flip);
+  (liquid && b !== Block.Lava ? liquidBuilder! : opaqueBuilder!).quad(corners, uvc, tile, shade, skyV, blockV, IS_EMISSIVE[b] === 1, flip);
 }
+
+// ---- special shapes (plants, slabs, torches, ladders, lily pads) -------------------------
+
+const sc = new Array<number>(12);
+const suv = new Array<number>(8);
+const sShade = [0, 0, 0, 0];
+const sSky = [0, 0, 0, 0];
+const sBlk = [0, 0, 0, 0];
+
+/** Uniform-light quad in the opaque buffer (corners CCW from the front); `both` also emits the back side. */
+function shapeQuad(c: number[], uv: number[], tile: number, shadeV: number, skyB: number, blkB: number, emissive: boolean, both: boolean): void {
+  sShade.fill(shadeV);
+  sSky.fill(skyB);
+  sBlk.fill(blkB);
+  opaqueBuilder!.quad(c, uv, tile, sShade, sSky, sBlk, emissive, false);
+  if (!both) return;
+  const rc = [c[9], c[10], c[11], c[6], c[7], c[8], c[3], c[4], c[5], c[0], c[1], c[2]];
+  const ruv = [uv[6], uv[7], uv[4], uv[5], uv[2], uv[3], uv[0], uv[1]];
+  opaqueBuilder!.quad(rc, ruv, tile, sShade, sSky, sBlk, emissive, false);
+}
+
+const setCorner = (k: number, x: number, y: number, z: number, u: number, v: number): void => {
+  sc[k * 3] = x;
+  sc[k * 3 + 1] = y;
+  sc[k * 3 + 2] = z;
+  suv[k * 2] = u;
+  suv[k * 2 + 1] = v;
+};
+
+/**
+ * The 6 faces of a box at cell (x, y, z) with cell-relative bounds (block
+ * units), in FACE_SHADE order (+x, -x, +y, -y, +z, -z). Corners are CCW seen
+ * from outside; UVs are the matching part of the tile (side faces keep "up" =
+ * +Y and are not mirrored, like the greedy faces). Shared with the client's
+ * held-block geometry. `emit(face)` false skips a face.
+ */
+export function boxFaces(
+  x: number, y: number, z: number,
+  x0: number, y0: number, z0: number, x1: number, y1: number, z1: number,
+  emit: (face: number) => boolean,
+  out: (face: number, corners: number[], uvs: number[]) => void,
+): void {
+  const X0 = x + x0, X1 = x + x1, Y0 = y + y0, Y1 = y + y1, Z0 = z + z0, Z1 = z + z1;
+  if (emit(0)) {
+    setCorner(0, X1, Y0, Z1, 1 - z1, y0); setCorner(1, X1, Y0, Z0, 1 - z0, y0); setCorner(2, X1, Y1, Z0, 1 - z0, y1); setCorner(3, X1, Y1, Z1, 1 - z1, y1);
+    out(0, sc, suv);
+  }
+  if (emit(1)) {
+    setCorner(0, X0, Y0, Z0, z0, y0); setCorner(1, X0, Y0, Z1, z1, y0); setCorner(2, X0, Y1, Z1, z1, y1); setCorner(3, X0, Y1, Z0, z0, y1);
+    out(1, sc, suv);
+  }
+  if (emit(2)) {
+    setCorner(0, X0, Y1, Z0, x0, z0); setCorner(1, X0, Y1, Z1, x0, z1); setCorner(2, X1, Y1, Z1, x1, z1); setCorner(3, X1, Y1, Z0, x1, z0);
+    out(2, sc, suv);
+  }
+  if (emit(3)) {
+    setCorner(0, X0, Y0, Z0, x0, z0); setCorner(1, X1, Y0, Z0, x1, z0); setCorner(2, X1, Y0, Z1, x1, z1); setCorner(3, X0, Y0, Z1, x0, z1);
+    out(3, sc, suv);
+  }
+  if (emit(4)) {
+    setCorner(0, X0, Y0, Z1, x0, y0); setCorner(1, X1, Y0, Z1, x1, y0); setCorner(2, X1, Y1, Z1, x1, y1); setCorner(3, X0, Y1, Z1, x0, y1);
+    out(4, sc, suv);
+  }
+  if (emit(5)) {
+    setCorner(0, X1, Y0, Z0, 1 - x1, y0); setCorner(1, X0, Y0, Z0, 1 - x0, y0); setCorner(2, X0, Y1, Z0, 1 - x0, y1); setCorner(3, X1, Y1, Z0, 1 - x1, y1);
+    out(5, sc, suv);
+  }
+}
+
+/**
+ * The planes of a sprite-like shape (Cross: 2 diagonal planes; Pad: 1
+ * horizontal; Ladder: 1 vertical against its wall) for block `b` at cell
+ * (x, y, z). Each is drawn from both sides. `jitter` nudges plants (x, z).
+ */
+export function spritePlanes(b: number, x: number, y: number, z: number, jx: number, jz: number, out: (corners: number[], uvs: number[]) => void): void {
+  const o = b * 6;
+  const bx0 = SHAPE_BOUNDS[o], by0 = SHAPE_BOUNDS[o + 1], bz0 = SHAPE_BOUNDS[o + 2];
+  const bx1 = SHAPE_BOUNDS[o + 3], by1 = SHAPE_BOUNDS[o + 4], bz1 = SHAPE_BOUNDS[o + 5];
+  const shape = SHAPE[b];
+  if (shape === BlockShape.Cross) {
+    const h = by1;
+    const ax = x + CROSS_LO + jx, bx = x + CROSS_HI + jx;
+    const az = z + CROSS_LO + jz, bz = z + CROSS_HI + jz;
+    setCorner(0, ax, y, az, 0, 0); setCorner(1, bx, y, bz, 1, 0); setCorner(2, bx, y + h, bz, 1, h); setCorner(3, ax, y + h, az, 0, h);
+    out(sc, suv);
+    setCorner(0, ax, y, bz, 0, 0); setCorner(1, bx, y, az, 1, 0); setCorner(2, bx, y + h, az, 1, h); setCorner(3, ax, y + h, bz, 0, h);
+    out(sc, suv);
+  } else if (shape === BlockShape.Pad) {
+    const py = y + by0;
+    setCorner(0, x + bx0, py, z + bz0, bx0, 1 - bz0); setCorner(1, x + bx0, py, z + bz1, bx0, 1 - bz1); setCorner(2, x + bx1, py, z + bz1, bx1, 1 - bz1); setCorner(3, x + bx1, py, z + bz0, bx1, 1 - bz0);
+    out(sc, suv);
+  } else if (shape === BlockShape.Ladder) {
+    const t = 1 / 16;
+    if (bz1 - bz0 < 0.5) {
+      const pz = z + (bz0 === 0 ? t : 1 - t);
+      setCorner(0, x, y, pz, 0, 0); setCorner(1, x + 1, y, pz, 1, 0); setCorner(2, x + 1, y + 1, pz, 1, 1); setCorner(3, x, y + 1, pz, 0, 1);
+    } else {
+      const px = x + (bx0 === 0 ? t : 1 - t);
+      setCorner(0, px, y, z + 1, 0, 0); setCorner(1, px, y, z, 1, 0); setCorner(2, px, y + 1, z, 1, 1); setCorner(3, px, y + 1, z + 1, 0, 1);
+    }
+    out(sc, suv);
+  }
+}
+
+/** Face directions in FACE_SHADE order: +x, -x, +y, -y, +z, -z. */
+const FACE_DIR = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+const CROSS_LO = 0.146;
+const CROSS_HI = 0.854;
+
+/** Second pass: every non-cube cell of the centre chunk; not merged, no AO, lit by its own (fixed-up) cell. */
+function emitShapes(get: (x: number, y: number, z: number) => number, sky: Uint8Array, blk: Uint8Array, decor: boolean): void {
+  for (let y = 0; y < CHUNK_HEIGHT; y++) {
+    for (let z = 0; z < CHUNK_SIZE; z++) {
+      for (let x = 0; x < CHUNK_SIZE; x++) {
+        const b = get(x, y, z);
+        const shape = SHAPE[b];
+        if (shape === BlockShape.Cube) continue;
+        if (!decor && IS_DECOR[b]) continue;
+        const ri = regionIndex(x, y, z);
+        const emissive = IS_EMISSIVE[b] === 1;
+        const skyB = lightByte(sky[ri], 1);
+        const blkB = lightByte(blk[ri], 1);
+        if (shape === BlockShape.Box) {
+          const o = b * 6;
+          const bx0 = SHAPE_BOUNDS[o], by0 = SHAPE_BOUNDS[o + 1], bz0 = SHAPE_BOUNDS[o + 2];
+          const bx1 = SHAPE_BOUNDS[o + 3], by1 = SHAPE_BOUNDS[o + 4], bz1 = SHAPE_BOUNDS[o + 5];
+          boxFaces(
+            x, y, z, bx0, by0, bz0, bx1, by1, bz1,
+            (face) => {
+              // Only faces on the cell boundary can be hidden: by an opaque neighbour or the same block.
+              const onEdge = face === 0 ? bx1 === 1 : face === 1 ? bx0 === 0 : face === 2 ? by1 === 1 : face === 3 ? by0 === 0 : face === 4 ? bz1 === 1 : bz0 === 0;
+              if (!onEdge) return true;
+              const d = FACE_DIR[face];
+              const n = get(x + d[0], y + d[1], z + d[2]);
+              return IS_TRANSPARENT[n] === 1 && n !== b;
+            },
+            (face, c, uv) => shapeQuad(c, uv, face === 2 ? TILE_TOP[b] : face === 3 ? TILE_BOTTOM[b] : TILE_SIDE[b], FACE_SHADE[face], skyB, blkB, emissive, false),
+          );
+        } else {
+          let jx = 0;
+          let jz = 0;
+          if (shape === BlockShape.Cross) {
+            // Plants are nudged per cell so fields of grass do not line up.
+            const hsh = Math.imul((x * 73856093) ^ (y * 19349663) ^ (z * 83492791), 1);
+            jx = ((hsh & 3) - 1.5) * 0.06;
+            jz = (((hsh >> 2) & 3) - 1.5) * 0.06;
+          }
+          const tile = shape === BlockShape.Pad ? TILE_TOP[b] : TILE_SIDE[b];
+          spritePlanes(b, x, y, z, jx, jz, (c, uv) => shapeQuad(c, uv, tile, 0.9, skyB, blkB, emissive, true));
+        }
+      }
+    }
+  }
+}
+
