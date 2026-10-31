@@ -18,7 +18,7 @@ test.describe('Arcfire Arena practice', () => {
   test('starts in the loadout phase and lets you pick a weapon', async ({ page }) => {
     await startPractice(page, '1 vs 1');
     await expect(page.getByTestId('loadout')).toBeVisible();
-    await page.getByTestId('loadout-sct').click();
+    await page.getByTestId('loadout-shotgun').click();
     await expect.poll(() => arena(page)(() => (window as unknown as { __arena: A }).__arena.predicted?.weapons[0].id)).toBe(1);
     await expect.poll(() => arena(page)(() => (window as unknown as { __arena: A }).__arena.match.phase), { timeout: 15_000 }).toBe('live');
     await expect(page.getByTestId('loadout')).toBeHidden();
