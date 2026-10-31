@@ -55,6 +55,11 @@ test.describe('Arcfire Arena practice', () => {
 
   test('winning the deciding round shows the end-of-match screen, then a new map vote', async ({ page }) => {
     await startPractice(page, '1 vs 1');
+    // Only a live round matters here: skip the loadout (busy CI machines run the in-page sim slower than real time).
+    await page.evaluate(() => {
+      const sim = (window as unknown as { __arena: A }).__arena.backend.sim;
+      if (sim.phase === 'loadout') sim.phaseTimer = 0;
+    });
     await expect.poll(() => arena(page)(() => (window as unknown as { __arena: A }).__arena.match.phase), { timeout: 15_000 }).toBe('live');
     const map0 = await arena(page)(() => (window as unknown as { __arena: A }).__arena.match.mapIndex);
     await page.evaluate(() => {
