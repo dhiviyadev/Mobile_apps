@@ -68,6 +68,10 @@ test.describe('Arcfire Arena practice', () => {
       for (const p of sim.players.values()) if (p.id !== 'you') sim.eliminate(p.id);
     });
     await expect(page.getByTestId('arena-banner')).toContainText('Round won');
+    await expect.poll(() => arena(page)(() => (window as unknown as { __arena: A }).__arena.backend.sim.phase)).toBe('roundEnd');
+    await page.evaluate(() => {
+      (window as unknown as { __arena: A }).__arena.backend.sim.phaseTimer = 0; // the round-end pause
+    });
     await expect(page.getByTestId('match-end')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('match-end')).toContainText('Victory');
     await expect(page.getByTestId('match-end')).toContainText('vote for the next map');
