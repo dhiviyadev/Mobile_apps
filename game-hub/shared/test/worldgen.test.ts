@@ -174,11 +174,16 @@ describe('generator 2', () => {
     const chunks: Uint8Array[] = [];
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) chunks.push(g.generateChunk(at![0] + dx, at![1] + dz));
     const region = buildRegion(chunks);
-    meshChunk(region);
-    const t0 = performance.now();
-    for (let i = 0; i < 3; i++) meshChunk(region);
-    const ms = (performance.now() - t0) / 3;
-    console.log(`[mesher] v2 rainforest region: ${ms.toFixed(2)} ms`);
+    for (let i = 0; i < 3; i++) meshChunk(region); // warm up the JIT
+    // Median of 5 runs: other test files run in parallel and can stall one run.
+    const runs: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const t0 = performance.now();
+      meshChunk(region);
+      runs.push(performance.now() - t0);
+    }
+    const ms = runs.sort((x, y) => x - y)[2];
+    console.log(`[mesher] v2 rainforest region: ${ms.toFixed(2)} ms (median of 5)`);
     expect(ms).toBeLessThan(80);
   });
 });

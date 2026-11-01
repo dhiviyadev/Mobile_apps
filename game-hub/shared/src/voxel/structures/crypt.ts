@@ -72,6 +72,13 @@ export const crypt: Template = {
     // Light for the middle of the hall: lamps in the ceiling.
     for (const [x, z] of [[18, 18], [13, 18], [23, 18], [18, 13], [18, 23]]) cat.set(x, 10, z, Block.Lamp);
     cat.fill(17, 2, 8, 19, 4, 8, Block.Air);
+    // Lanterns along the walls, so a fight is never in the dark.
+    for (let i = 11; i <= 25; i += 4) {
+      if (i !== 19) furnish(i, 2, 9, Block.Lantern);
+      furnish(9, 2, i, Block.Lantern);
+      furnish(27, 2, i, Block.Lantern);
+      if (i < 17 || i > 19) furnish(i, 2, 27, Block.Lantern);
+    }
     furnish(18, 2, 26, Block.BossAltar);
     furnish(18, 2, 27, Block.Chest);
     // Corridor from the shaft.

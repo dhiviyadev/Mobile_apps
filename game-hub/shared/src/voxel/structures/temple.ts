@@ -129,7 +129,7 @@ export const temple: Template = {
     }
     for (const [x, z] of [[12, 12], [12, 22], [22, 12], [22, 22]]) for (let ly = 2; ly <= 9; ly++) furnish(x, ly, z, Block.MarblePillar);
     for (const [x, z] of [[13, 13], [13, 21], [21, 13], [21, 21], [17, 17]]) v.set(x, 10, z, Block.Lamp);
-    for (const [x, z] of [[10, 10], [24, 10], [10, 24], [24, 24]]) furnish(x, 2, z, Block.Lantern);
+    for (const [x, z] of [[10, 10], [24, 10], [10, 24], [24, 24], [10, 13], [10, 21], [24, 13], [24, 21], [13, 24], [21, 24]]) furnish(x, 2, z, Block.Lantern);
     furnish(17, 2, 23, Block.BossAltar);
     furnish(17, 2, 24, Block.Chest);
     furnish(10, 2, 17, Block.Chest);
