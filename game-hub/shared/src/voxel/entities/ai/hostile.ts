@@ -4,12 +4,12 @@
  * with the daylight rules (drying, seeking shade, fleeing at dawn) and leashes
  * for structure guards and boss minions.
  */
-import { DamageKind, StatusKind } from '../../combat';
+import { DamageKind } from '../../combat';
 import { IS_SOLID } from '../../blocks';
 import { HazardKind, PROJECTILE_DEFS, type PlayerTarget } from '../api';
 import { variantHitEffects } from '../defs';
 import { openSky } from '../perception';
-import { AiState, BurstKind, MobAction, MobVariant, type Mob } from '../types';
+import { AiState, BurstKind, EntityEventType, MobAction, MobVariant, type Mob } from '../types';
 import type { EntityWorld } from '../world';
 import {
   aimAt,
@@ -199,7 +199,7 @@ export const rangedBrain: Brain = {
       lookAt(m, t.x, t.y + 1.4, t.z);
       if (m.state === AiState.Windup) {
         m.t1 -= dt;
-        if (!w.sees(m.x, m.eyeY, m.z, t.x, t.y + 1.4, t.z, 'shoot', true)) {
+        if (w.tick % 4 === m.thinkSlot && !w.sees(m.x, m.eyeY, m.z, t.x, t.y + 1.4, t.z, 'shoot', true)) {
           m.setState(AiState.Kite);
           m.cooldown = 0.5;
           return;
@@ -284,7 +284,7 @@ export const climberBrain: Brain = {
           m.onGround = false;
           m.t1 = 0;
           m.setState(AiState.Lunge);
-          w.emit({ type: 3, id: m.id, action: MobAction.Charge, param: 0, x: m.x, y: m.y, z: m.z });
+          w.emit({ type: EntityEventType.MobAction, id: m.id, action: MobAction.Charge, param: 0, x: m.x, y: m.y, z: m.z });
         } else m.setState(AiState.Recover, 0.5);
         return;
       case AiState.Lunge: {
@@ -464,8 +464,6 @@ export const flyerBrain: Brain = {
       if (IS_SOLID[get(Math.floor(ax), Math.floor(m.y + 0.3), Math.floor(az))]) it.vy = Math.max(it.vy ?? 0, 4);
       it.faceYaw = yawTo(m, m.x + it.vx, m.z + it.vz);
     }
-    void StatusKind;
   },
 };
 
-export const hostileBrains = { meleeBrain, rangedBrain, climberBrain, bursterBrain, flyerBrain, hdist };

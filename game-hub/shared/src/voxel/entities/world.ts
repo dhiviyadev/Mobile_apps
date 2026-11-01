@@ -163,7 +163,7 @@ export class EntityWorld implements EntityWorldApi {
     this.spawner.tick();
 
     const get = this.host.getBlock;
-    for (const m of [...this.mobs.values()]) {
+    for (const m of this.mobs.values()) {
       if (!m.alive) {
         if (--m.dyingTicks <= 0) this.removeMob(m);
         continue;
@@ -247,6 +247,7 @@ export class EntityWorld implements EntityWorldApi {
         if (CONTACT_DAMAGE[b] > worst) worst = CONTACT_DAMAGE[b];
         if (b === Block.Lava) lava = true;
       }
+      m.contactTimer = 0.2;
       if (worst > 0 && !(lava && def.fireImmune)) {
         m.contactTimer = 0.5;
         this.damageMob(m.id, { amount: worst * 0.5, kind: lava ? DamageKind.Fire : DamageKind.Contact, attacker: null, fromX: m.x, fromY: m.y, fromZ: m.z, knockback: 0, lift: 0, ignoreArmor: true, unblockable: true });

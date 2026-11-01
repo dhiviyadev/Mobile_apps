@@ -14,24 +14,38 @@ export function segmentBox(
 ): number {
   let tmin = 0;
   let tmax = 1;
-  const d = [x1 - x0, y1 - y0, z1 - z0];
-  const o = [x0, y0, z0];
-  const lo = [bx0, by0, bz0];
-  const hi = [bx1, by1, bz1];
-  for (let a = 0; a < 3; a++) {
-    if (Math.abs(d[a]) < 1e-9) {
-      if (o[a] < lo[a] || o[a] > hi[a]) return -1;
-      continue;
-    }
-    let t0 = (lo[a] - o[a]) / d[a];
-    let t1 = (hi[a] - o[a]) / d[a];
-    if (t0 > t1) {
-      const s = t0;
-      t0 = t1;
-      t1 = s;
-    }
-    if (t0 > tmin) tmin = t0;
-    if (t1 < tmax) tmax = t1;
+  // Unrolled per axis: this runs for every projectile sub-step and mob nearby (no allocations).
+  const dx = x1 - x0;
+  if (Math.abs(dx) < 1e-9) {
+    if (x0 < bx0 || x0 > bx1) return -1;
+  } else {
+    let a = (bx0 - x0) / dx;
+    let b = (bx1 - x0) / dx;
+    if (a > b) [a, b] = [b, a];
+    if (a > tmin) tmin = a;
+    if (b < tmax) tmax = b;
+    if (tmin > tmax) return -1;
+  }
+  const dy = y1 - y0;
+  if (Math.abs(dy) < 1e-9) {
+    if (y0 < by0 || y0 > by1) return -1;
+  } else {
+    let a = (by0 - y0) / dy;
+    let b = (by1 - y0) / dy;
+    if (a > b) [a, b] = [b, a];
+    if (a > tmin) tmin = a;
+    if (b < tmax) tmax = b;
+    if (tmin > tmax) return -1;
+  }
+  const dz = z1 - z0;
+  if (Math.abs(dz) < 1e-9) {
+    if (z0 < bz0 || z0 > bz1) return -1;
+  } else {
+    let a = (bz0 - z0) / dz;
+    let b = (bz1 - z0) / dz;
+    if (a > b) [a, b] = [b, a];
+    if (a > tmin) tmin = a;
+    if (b < tmax) tmax = b;
     if (tmin > tmax) return -1;
   }
   return tmin;

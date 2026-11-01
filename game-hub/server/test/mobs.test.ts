@@ -204,6 +204,37 @@ describe('creatures online', () => {
   });
 });
 
+describe('creature CPU on the server (logged)', () => {
+  it('40 creatures and a boss fight stay within the per-tick budget', async () => {
+    const a = await join('survival');
+    await warm(a.server);
+    a.server.state.timeOfDay = 0;
+    const ent = a.server.entities!;
+    const me = a.server.state.players.get(a.room.sessionId)!;
+    const kinds = [MobKind.Woolback, MobKind.Hopling, MobKind.Cluckit, MobKind.Fernhart, MobKind.Mudlurch, MobKind.Rattlebow, MobKind.Cragcrawler, MobKind.Puffcap];
+    for (let i = 0; i < 40; i++) {
+      const x = me.x + ((i * 37) % 50) - 25;
+      const z = me.z + ((i * 53) % 50) - 25;
+      let y = 63;
+      while (y > 1 && !a.server.world.getBlock(Math.floor(x), y - 1, Math.floor(z))) y--;
+      ent.sim.spawnMob(kinds[i % kinds.length], x, y, z);
+    }
+    await wait(1000); // JIT warm-up and the first paths
+    const samples: number[] = [];
+    const t0 = Date.now();
+    while (Date.now() - t0 < 3000) {
+      await wait(50);
+      samples.push(ent.sim.stats().stepMs);
+    }
+    samples.sort((p, q) => p - q);
+    const mean = samples.reduce((p, q) => p + q, 0) / samples.length;
+    console.log(`[perf] server: ${ent.sim.stats().mobs} creatures, step ${mean.toFixed(3)} ms mean, p95 ${samples[Math.floor(samples.length * 0.95)].toFixed(3)} ms, governor level ${ent.governorLevel}`);
+    // Generous: client and server share this process, and the suite runs in parallel.
+    expect(mean).toBeLessThan(12);
+    await a.room.leave();
+  });
+});
+
 describe('ServerVoxelWorld chunk views', () => {
   it('reader() agrees with getBlock on 10,000 random cells with edits', () => {
     const w = new ServerVoxelWorld(77, 'sandbox');
