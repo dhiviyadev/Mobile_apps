@@ -560,3 +560,33 @@ npm test && npm run e2e
 ### Known issues / notes
 - Play-testing on real tablets is still needed for the slide and auto-shoot feel.
 - A few e2e tests wait in real time for the 8 s loadout, so they can be slow on a busy machine.
+
+---
+
+## Upgrade: Voxelvale survival, creatures, biomes and bosses ✅
+
+### What was built
+- **Blocks and world:**
+  - 98 new blocks with procedural textures in a 16x16 atlas, including plants, slabs, ladders, torches, lanterns, chests and lava.
+  - Terrain generator 2 with 18 blended biomes, ores, lava caves and 6 tree species. Saved worlds keep generator 1, so their builds never float.
+- **Rare structures:** 4 boss structures (temple, frost citadel, shrine, crypt) on a 256-block grid, about 7–12 per world, with arenas, altars and loot chests.
+- **Survival mode:**
+  - Health and food; damage from falls, drowning, cactus and lava; tool tiers, mining with drops, a 37-slot bag and 89 recipes.
+  - The Lost Satchel on death, and the Bedroll respawn point.
+  - Server-authoritative online, with the same shared code offline.
+- **Weapons:** swords, axes, three shields, bow and two crossbows, with arrows and bolts that fly with gravity, plus four unique boss weapons.
+- **Creatures:**
+  - 5 friendly and 5 hostile, with biome variants, spawning by light and biome, pathfinding and taming.
+  - 4 bosses, each with 3 phases and telegraphed attacks.
+  - 10 Hz online sync, and a CPU governor for the free server.
+- **Movement:** Voxelvale walking speed rose from 4.3 to 5.0 and sprint from 5.8 to 6.7; parkour courses are unchanged.
+
+### How to test
+```bash
+npm test && npm run e2e
+```
+
+### Known issues / notes
+- Bosses and arrow hits were played in test arenas and unit-tested across packages. A full playthrough on a real tablet, including finding a ruin and beating its boss, is still to do.
+- The free Render server has 0.1 CPU. The creature governor lowers creature caps when a tick takes too long, so busy rooms may see fewer creatures.
+- Doors, stairs and flowing lava need per-block state, which would be a major architecture change, so they are not included.

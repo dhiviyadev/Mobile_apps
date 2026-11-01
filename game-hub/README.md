@@ -5,7 +5,7 @@ that run in the browser, on iPad and Android tablets as well as keyboard and mou
 
 | | |
 | --- | --- |
-| **Voxelvale**: build, explore and race in a shared, procedurally generated block world (sandbox and parkour modes, up to 16 players). | **Arcfire Arena**: fast round-based shooter: 1v1, 2v2 and free-for-all, first to 5 rounds, six large maps with trampolines and launchers, a map vote before every match, twelve weapons, sliding, optional auto-shoot, bots on Easy, Normal or Hard. |
+| **Voxelvale**: build, survive, explore and race in a shared, procedurally generated block world: sandbox, survival and parkour modes, 18 biomes, friendly and hostile creatures, four rare boss ruins, swords, axes, shields, bows and crossbows, up to 16 players. | **Arcfire Arena**: fast round-based shooter: 1v1, 2v2 and free-for-all, first to 5 rounds, six large maps with trampolines and launchers, a map vote before every match, twelve weapons, sliding, optional auto-shoot, bots on Easy, Normal or Hard. |
 | ![Voxelvale](docs/screenshots/voxel-sandbox.png) | ![Arcfire Arena](docs/screenshots/arena-live.png) |
 
 All names, art, music and sound are original. Textures are painted in code, audio is synthesised with WebAudio, and maps and terrain are generated, so there are **no third-party assets** to license and the download stays small.
@@ -92,6 +92,15 @@ Voxelvale sandbox worlds you build online are saved to `server/data/` (gitignore
 | Other | Hotbar: tap or slide your finger across it · Chat · Menu | Scoreboard · Chat · Menu |
 
 Every button can be **moved and resized**: Menu → *Edit touch layout*. You can also turn on **left-handed mode**, change button size and opacity, look sensitivity and invert-Y in Settings → Controls.
+
+**Voxelvale survival.**
+- **Survival mode:** health, a light food meter, falls, drowning and lava hurt. Mine with tools, collect drops, and craft from a searchable recipe list (hand, workbench, furnace).
+- **Death:** you drop a Lost Satchel you can walk over to recover. A Bedroll sets your respawn point.
+- **Weapons:** swords and axes (an axe knocks a shield down), shields (hold Z or the Guard button), bows (hold to draw) and crossbows (load, then fire).
+- **Creatures:** friendly ones appear in sandbox and survival (Woolback, Hopling, Cluckit, Fernhart, Glimmerfin); feed them to tame and name them. Hostile ones come out in the dark in survival (Mudlurch, Rattlebow, Cragcrawler, Puffcap, Duskwing).
+- **Bosses:** four rare ruins (Sunscorch Temple, Frost Citadel, Overgrown Shrine, Ashen Crypt) each guard a boss with three phases and a unique weapon.
+- **Keys:** E or I bag · Q drop · F swap hands · Z guard · B block picker (sandbox) · middle click picks a block.
+- **Room rules:** the host can turn PvP and "keep items on death" on from the pause menu.
 
 **Arcfire Arena extras.**
 - **Weapons:**
