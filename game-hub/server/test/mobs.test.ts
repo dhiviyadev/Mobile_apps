@@ -17,7 +17,7 @@ import {
   MobKind,
   packPos,
   StructureType,
-  TerrainGenerator,
+  createWorldGenerator,
   VoxelMsg,
   type PlayerHooks,
 } from '@hub/shared';
@@ -36,7 +36,7 @@ afterAll(async () => {
 });
 
 const SEED = 4242;
-const gen = new TerrainGenerator(SEED);
+const gen = createWorldGenerator(SEED, 'sandbox');
 const spawn = gen.findSpawn();
 
 function collect(room: Room, type: string): Uint8Array[] {
@@ -90,9 +90,18 @@ describe('creatures online', () => {
     const a = await join('sandbox');
     await warm(a.server);
     const sim = a.server.entities!.sim;
-    const x = Math.floor(spawn.x) + 2;
-    const z = Math.floor(spawn.z);
-    const y = gen.column(x, z).height + 1;
+    // A clear surface cell near spawn: solid ground with two air cells above (no plant in the way).
+    const { x, y, z } = (() => {
+      for (let dx = 2; dx < 14; dx++) {
+        const x = Math.floor(spawn.x) + dx;
+        const z = Math.floor(spawn.z);
+        const g = gen.surfaceHeight(x, z);
+        const chunk = gen.generateChunk(Math.floor(x / 16), Math.floor(z / 16));
+        const at = (yy: number) => chunk[(yy * 16 + (((z % 16) + 16) % 16)) * 16 + (((x % 16) + 16) % 16)];
+        if (at(g) !== Block.Air && at(g + 1) === Block.Air && at(g + 2) === Block.Air) return { x, y: g + 1, z };
+      }
+      throw new Error('no clear surface next to spawn');
+    })();
     const m = sim.spawnMob(MobKind.Woolback, x + 0.5, y, z + 0.5)!;
     m.speedMul = 0;
     m.panicUntil = 0;
@@ -103,7 +112,8 @@ describe('creatures online', () => {
     await until(() => a.rejects.length > 0);
     expect(decodeEdit(a.rejects[0]).id).toBe(Block.Air);
     sim.removeMob(m);
-    a.room.sendBytes(VoxelMsg.Edit, encodeEdit({ x, y: y + 1, z, id: Block.Torch }));
+    // A torch needs support: it goes on the ground where the creature stood.
+    a.room.sendBytes(VoxelMsg.Edit, encodeEdit({ x, y, z, id: Block.Torch }));
     await until(() => edits.flatMap((b) => decodeEdits(b)).some((e) => e.id === Block.Torch));
     await a.room.leave();
   });
