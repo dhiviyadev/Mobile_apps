@@ -3,6 +3,9 @@
 .survival-hud { position: absolute; inset: 0; pointer-events: none; z-index: 21; }
 .voxel-hud.survival .block-label { bottom: calc(122px + var(--safe-bottom)); }
 
+/* Icons are inline canvases: undo the game root's full-screen canvas rule. */
+.game-root .survival-hud canvas, .game-root .inv-screen canvas, .game-root .slot-popover canvas { position: static; inset: auto; display: inline-block; }
+
 /* ---- vitals ------------------------------------------------------------- */
 .vitals {
   position: absolute;

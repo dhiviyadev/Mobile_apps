@@ -7,11 +7,11 @@
  * Lit like the cell the eye is in (dark in caves, warm near lamps).
  */
 import * as THREE from 'three';
-import { FIRST_ITEM, Item, ItemKind, itemDef } from '@hub/shared';
+import { FIRST_ITEM, ItemKind, itemDef } from '@hub/shared';
 import { createBlockGeometry } from '../world/blockGeometry';
 import type { VoxelUniforms } from '../world/materials';
 import { createItemMaterial } from './itemMaterial';
-import { buildItemModel } from './itemModels';
+import { buildItemModel, buildProjectileModel } from './itemModels';
 
 type SwingKind = 'sword' | 'axe' | 'fist' | 'tool' | 'use';
 
@@ -65,7 +65,7 @@ export class HeldItemView {
     sg.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(12), 3));
     this.string = new THREE.LineSegments(sg, new THREE.LineBasicMaterial({ color: 0xe8e0d0 }));
     this.string.visible = false;
-    this.arrow = new THREE.Mesh(buildItemModel(Item.Arrow, 'fp').clone(), this.itemMat);
+    this.arrow = new THREE.Mesh(buildProjectileModel('arrow').clone(), this.itemMat);
     this.arrow.visible = false;
     this.pivot.add(this.string, this.arrow);
   }
@@ -177,16 +177,16 @@ export class HeldItemView {
       case 'sword':
       case 'axe':
       case 'tool':
-        px = 0.3; py = -0.36; pz = -0.55; rx = -0.55; ry = -0.25; rz = -0.32;
+        px = 0.36; py = -0.4; pz = -0.6; rx = -0.75; ry = -0.2; rz = 0.32; scale = 0.62;
         break;
       case 'shield':
-        px = 0.32; py = -0.24; pz = -0.6; rx = 0; ry = -0.35; rz = 0;
+        px = 0.36; py = -0.3; pz = -0.62; rx = 0; ry = -0.35; rz = 0; scale = 0.62;
         break;
       case 'bow':
-        px = 0.26; py = -0.2; pz = -0.62; rx = 0.05; ry = 0.15; rz = 0.25;
+        px = 0.3; py = -0.24; pz = -0.6; rx = 0.05; ry = 0.55; rz = 0.3; scale = 0.5;
         break;
       case 'crossbow':
-        px = 0.24; py = -0.24; pz = -0.42; rx = 0.08; ry = 0.05; rz = 0;
+        px = 0.26; py = -0.28; pz = -0.42; rx = 0.08; ry = 0.05; rz = 0; scale = 0.62;
         break;
       case 'sprite':
         px = 0.32; py = -0.24; pz = -0.6; rx = 0.1; ry = -0.5; rz = 0.15;
@@ -201,8 +201,8 @@ export class HeldItemView {
       px = lerp(px, 0.06, d);
       py = lerp(py, -0.16, d);
       pz = lerp(pz, -0.55, d);
-      rz = lerp(rz, 0.35, d);
-      ry = lerp(ry, 0.02, d);
+      rz = lerp(rz, 0.4, d);
+      ry = lerp(ry, 0.75, d);
       if (this.draw >= 1) {
         px += Math.sin(this.time * 30) * 0.003;
         py += Math.cos(this.time * 27) * 0.003;
@@ -290,8 +290,9 @@ export class HeldItemView {
 
     // Off-hand shield: left side, raised in front when guarding.
     const g = e(this.guard);
-    this.offPivot.position.set(lerp(-0.42, -0.08, g), lerp(-0.34, -0.2, g) + bob, lerp(-0.58, -0.46, g));
-    this.offPivot.rotation.set(0, lerp(0.45, 0.1, g), 0);
+    this.offPivot.position.set(lerp(-0.46, -0.16, g), lerp(-0.36, -0.24, g) + bob, lerp(-0.62, -0.64, g));
+    this.offPivot.rotation.set(0, lerp(0.5, 0.12, g), 0);
+    this.offPivot.scale.setScalar(0.55);
 
     this.updateString();
     this.updateLight(light);
@@ -315,8 +316,8 @@ export class HeldItemView {
       pos.setXYZ(3, 0, -tipY, tipZ);
       this.arrow.visible = this.draw > 0.05;
       if (this.arrow.visible) {
-        this.arrow.position.set(0.03, 0, mz - 0.2);
-        this.arrow.rotation.set(-Math.PI / 2, 0, -Math.PI / 4);
+        this.arrow.position.set(0.03, 0, mz);
+        this.arrow.rotation.set(0, 0, 0);
       }
     } else {
       // Crossbow: prod tips to the latch (loaded) or the prod (empty).
@@ -327,9 +328,10 @@ export class HeldItemView {
       pos.setXYZ(3, 0.29, 0.04, -0.3);
       this.arrow.visible = this.loaded;
       if (this.loaded) {
-        this.arrow.position.set(0, 0.07, -0.18);
-        this.arrow.rotation.set(-Math.PI / 2, 0, Math.PI / 4);
-      }
+        this.arrow.position.set(0, 0.06, 0);
+        this.arrow.rotation.set(0, 0, 0);
+        this.arrow.scale.setScalar(0.7);
+      } else this.arrow.scale.setScalar(1);
     }
     pos.needsUpdate = true;
   }
