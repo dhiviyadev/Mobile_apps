@@ -142,9 +142,28 @@ export class World {
   };
 
   // ---- fast reader for the offline creature sim (WP-C may replace this body; keep the region) ----
-  /** Hot-loop block reader. WP0: getBlock. */
+  /**
+   * Hot-loop block reader for the offline creature sim: caches the last chunk
+   * by integer chunk coordinates (take a fresh reader per sim step: it does
+   * not notice chunks unloaded meanwhile), Bedrock where a chunk has no blocks.
+   */
   reader(): (x: number, y: number, z: number) => number {
-    return this.getBlock;
+    let lcx = NaN;
+    let lcz = NaN;
+    let last: Chunk | undefined;
+    return (x, y, z) => {
+      if (y < 0) return Block.Bedrock;
+      if (y >= CHUNK_HEIGHT) return Block.Air;
+      const cx = x >> 4;
+      const cz = z >> 4;
+      if (cx !== lcx || cz !== lcz || !last?.blocks) {
+        lcx = cx;
+        lcz = cz;
+        last = this.chunks.get(chunkKey(cx, cz));
+      }
+      const b = last?.blocks;
+      return b ? b[((y << 4) + (z & 15)) * 16 + (x & 15)] : Block.Bedrock;
+    };
   }
   // ---- end fast reader ----
 

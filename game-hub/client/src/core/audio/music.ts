@@ -8,7 +8,7 @@
  */
 import { mulberry32 } from '@hub/shared';
 
-export type MusicMood = 'menu' | 'voxel' | 'arena';
+export type MusicMood = 'menu' | 'voxel' | 'arena' | 'boss';
 
 interface MoodDef {
   bpm: number;
@@ -26,6 +26,8 @@ const MOODS: Record<MusicMood, MoodDef> = {
   menu: { bpm: 84, root: 57, progression: [[0, 3, 7, 10], [-4, 0, 3, 7], [-7, -3, 0, 5], [-2, 2, 5, 9]], arpType: 'triangle', arpDensity: 0.45, drums: false, bass: true },
   voxel: { bpm: 72, root: 60, progression: [[0, 4, 7, 11], [-5, -1, 2, 7], [-3, 0, 4, 9], [-7, -3, 0, 5]], arpType: 'sine', arpDensity: 0.35, drums: false, bass: true },
   arena: { bpm: 116, root: 50, progression: [[0, 3, 7], [-4, 0, 3], [3, 7, 10], [-2, 2, 5]], arpType: 'square', arpDensity: 0.7, drums: true, bass: true },
+  // Voxelvale boss fights (WP-C).
+  boss: { bpm: 128, root: 45, progression: [[0, 3, 7], [-4, 0, 3], [-2, 2, 5], [-5, -1, 2]], arpType: 'square', arpDensity: 0.8, drums: true, bass: true },
 };
 
 const midiToFreq = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
