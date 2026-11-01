@@ -105,8 +105,7 @@ export function installGestureGuards(): void {
     'touchmove',
     (e) => {
       if (!inGame()) return;
-      const t = e.target as HTMLElement | null;
-      if (t?.closest('.scrollable')) return;
+      if (insideScroller(e.target as Element | null)) return;
       e.preventDefault();
     },
     { passive: false },
@@ -165,4 +164,20 @@ export class ScreenWakeLock {
       this.sentinel = null;
     }
   }
+}
+
+/**
+ * True when a touch on `t` should scroll a panel: it is inside a `.scrollable`
+ * element, or inside one whose content overflows (loadout picker, map vote,
+ * bag, block picker, chat log), so those panels scroll by finger in game.
+ */
+export function insideScroller(t: Element | null): boolean {
+  for (let el = t; el && el !== document.body; el = el.parentElement) {
+    if (el.classList.contains('scrollable')) return true;
+    if (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1) {
+      const cs = getComputedStyle(el);
+      if (/(auto|scroll)/.test(cs.overflowY + cs.overflowX)) return true;
+    }
+  }
+  return false;
 }

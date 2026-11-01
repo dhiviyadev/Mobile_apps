@@ -123,7 +123,7 @@
 }
 
 /* ---- loadout picker ------------------------------------------------------------------------- */
-.loadout { width: min(1000px, 96vw); max-height: 92vh; }
+.loadout { width: min(1000px, 96vw); max-height: calc(100dvh - 16px - var(--safe-top) - var(--safe-bottom)); }
 .lo-section h3 { margin: 6px 0 6px; font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
 .lo-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
 .lo-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }

@@ -80,6 +80,40 @@ test.describe('Arcfire Arena weapons', () => {
     await expect.poll(() => arena(page, (a) => a.predicted?.weapons.map((w) => w.id).join())).toBe('5,10,4');
   });
 
+  test('on a phone the loadout picker scrolls by finger to the sidearms', async ({ page }, info) => {
+    test.skip(!info.project.use.hasTouch, 'touch only');
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width: 844, height: 390 }); // a phone held in landscape
+    await startArenaPractice(page, '1 vs 1');
+    const picker = page.getByTestId('loadout');
+    await expect(picker).toBeVisible();
+    // The picker fits on screen and its content is taller than it, so it must scroll.
+    const box = (await picker.boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(390 + 1);
+    expect(await picker.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+    const sidearm = page.getByTestId('loadout-hand-cannon');
+    // Real finger swipes upwards on the picker, through the browser's touch input (not a programmatic scroll).
+    const cdp = await page.context().newCDPSession(page);
+    const x = Math.round(box.x + box.width / 2);
+    for (let swipe = 0; swipe < 3 && (await sidearm.boundingBox())!.y + 40 > 390; swipe++) {
+      let y = Math.round(box.y + box.height * 0.85);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      for (let i = 0; i < 12; i++) {
+        y -= 18;
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] });
+        await page.waitForTimeout(16);
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await page.waitForTimeout(300);
+    }
+    expect(await picker.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    const card = (await sidearm.boundingBox())!;
+    expect(card.y + card.height / 2).toBeLessThan(390);
+    await sidearm.tap();
+    await expect(sidearm).toHaveClass(/active/);
+  });
+
   test('auto-shoot is off by default, fires on an enemy when on, never at a wall', async ({ page }, info) => {
     const touch = !!info.project.use.hasTouch;
     await startArenaPractice(page, '1 vs 1');

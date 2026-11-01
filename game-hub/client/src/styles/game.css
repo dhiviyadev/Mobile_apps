@@ -618,6 +618,10 @@ html.touch .ammo-panel { right: auto; left: 50%; transform: translateX(10%); bot
   width: min(860px, 94vw);
   max-height: 90%;
   overflow-y: auto;
+  /* Scroll by finger on phones; the game root blocks touch scrolling everywhere else. */
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 16px 18px;
   border-radius: var(--radius);
   background: rgba(16, 22, 42, 0.92);
