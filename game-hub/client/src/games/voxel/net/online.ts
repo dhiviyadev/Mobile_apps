@@ -1,6 +1,7 @@
 /** Online Voxelvale: build the game from the room's seed and attach the network layer. */
 import { isGenVersion, type VoxelMode } from '@hub/shared';
 import { setPauseNote } from '../../common/PauseMenu';
+import { LEGACY_NOTE } from '../world/WorldFeatures';
 import type { GameInstance, GameLaunchContext } from '../../types';
 import { VoxelGame } from '../VoxelGame';
 import { VoxelNet } from './VoxelNet';
@@ -38,7 +39,8 @@ export async function launchOnline(ctx: GameLaunchContext, fallbackMode: VoxelMo
   const net = new VoxelNet(session, game, ctx.container);
   game.setNet(net);
   // Tell players whether the server keeps this world (read when the menu opens).
-  setPauseNote(ctx.container, () => net.saveNote());
+  const legacy = game.generator.genVersion === 1 && mode !== 'parkour';
+  setPauseNote(ctx.container, () => [net.saveNote(), legacy ? LEGACY_NOTE : null].filter(Boolean).join(' ') || null);
   await game.start();
   return {
     dispose: () => {

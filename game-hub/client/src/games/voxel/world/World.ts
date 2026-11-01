@@ -16,6 +16,7 @@ import {
   chunkKey,
   toChunkCoord,
   toLocal,
+  type GenVersion,
   type VoxelMode,
 } from '@hub/shared';
 import {
@@ -67,6 +68,13 @@ interface Chunk {
   light: Uint8Array | null;
 }
 
+/** What terrain a world streams: seed, mode and generator version. */
+export interface WorldSpec {
+  seed: number;
+  mode: VoxelMode;
+  genVersion: GenVersion;
+}
+
 export interface WorldStats {
   chunks: number;
   meshed: number;
@@ -94,15 +102,32 @@ export class World {
   private readonly spareRegions: Uint8Array[] = [];
   private readonly regionChunks: (Uint8Array | null)[] = new Array(9).fill(null);
   renderDistance = 4;
+  readonly seed: number;
+  readonly mode: VoxelMode;
+  readonly genVersion: GenVersion;
+  private decorOn = true;
 
   constructor(
     private readonly pool: WorkerPool,
-    readonly seed: number,
-    readonly mode: VoxelMode,
+    spec: WorldSpec,
     private readonly opaqueMaterial: THREE.Material,
     private readonly liquidMaterial: THREE.Material,
   ) {
+    this.seed = spec.seed;
+    this.mode = spec.mode;
+    this.genVersion = spec.genVersion;
     this.group.name = 'voxel-world';
+  }
+
+  /** Dense ground cover (tall grass, ferns, dry grass) is drawn; off on the 'low' quality preset. */
+  get decor(): boolean {
+    return this.decorOn;
+  }
+
+  set decor(on: boolean) {
+    if (on === this.decorOn) return;
+    this.decorOn = on;
+    for (const c of this.chunks.values()) if (c.blocks) this.markDirty(c, PRIORITY_NEIGHBOUR);
   }
 
   // ---- block access -------------------------------------------------------------
@@ -368,7 +393,7 @@ export class World {
   private generate(c: Chunk): void {
     c.generating = true;
     this.pool
-      .generate(this.seed, this.mode, c.cx, c.cz)
+      .generate(this.seed, this.mode, this.genVersion, c.cx, c.cz)
       .then(({ blocks }) => {
         c.generating = false;
         if (this.disposed || this.chunks.get(c.key) !== c) return;
@@ -395,7 +420,7 @@ export class World {
     c.priority = PRIORITY_STREAM;
     c.meshedAt = performance.now();
     this.pool
-      .mesh(region)
+      .mesh(region, this.decorOn)
       .then(({ mesh, region }) => {
         c.meshing = false;
         if (this.spareRegions.length < 8) this.spareRegions.push(region);

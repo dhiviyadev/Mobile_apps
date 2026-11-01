@@ -1,1 +1,171 @@
-/* Voxelvale styles owned by WP-A: .block-picker, .bp-*. */
+/* Voxelvale world area (WP-A): the creative Block Picker. */
+.block-picker {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(12px, var(--safe-top, 0px)) max(12px, var(--safe-right, 0px)) max(12px, var(--safe-bottom, 0px)) max(12px, var(--safe-left, 0px));
+  background: rgba(8, 12, 24, 0.55);
+  touch-action: none;
+}
+.block-picker .bp-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(760px, 100%);
+  max-height: 82vh;
+  padding: 14px;
+  border-radius: var(--radius, 18px);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+.block-picker .bp-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.block-picker .bp-head h2 {
+  margin: 0 6px 0 0;
+  font-size: 20px;
+}
+.block-picker .bp-search {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+}
+.block-picker button {
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+}
+.block-picker .bp-pick,
+.block-picker .bp-close,
+.block-picker .bp-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+.block-picker .bp-pick .svg svg {
+  width: 18px;
+  height: 18px;
+}
+.block-picker .bp-close {
+  width: 44px;
+  justify-content: center;
+  font-size: 24px;
+}
+.block-picker .bp-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.block-picker .bp-tab {
+  flex: none;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: transparent;
+  white-space: nowrap;
+}
+.block-picker .bp-tab[aria-selected='true'] {
+  background: var(--voxel);
+  border-color: var(--voxel);
+  color: #0d1b12;
+  font-weight: 700;
+}
+.block-picker .bp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 6px;
+  overflow-y: auto;
+  min-height: 120px;
+  padding: 2px;
+  touch-action: pan-y;
+}
+.block-picker .bp-cell {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: var(--panel);
+}
+.block-picker .bp-cell:hover,
+.block-picker .bp-cell:focus-visible {
+  border-color: var(--accent);
+}
+.block-picker .bp-cell .bp-icon {
+  width: 48px;
+  height: 48px;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.block-picker .bp-empty {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  text-align: center;
+}
+.block-picker .bp-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.block-picker .bp-mini-hotbar {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.block-picker .bp-slot {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 2px solid var(--line);
+  background: var(--panel);
+}
+.block-picker .bp-slot canvas {
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+.block-picker .bp-slot.target {
+  border-color: var(--accent);
+}
+.block-picker .bp-slot.flash {
+  animation: bp-flash 0.35s ease-out;
+}
+@keyframes bp-flash {
+  from {
+    background: var(--accent);
+  }
+}
+@media (max-height: 500px) {
+  .block-picker .bp-panel {
+    max-height: 94vh;
+    padding: 10px;
+    gap: 8px;
+  }
+}

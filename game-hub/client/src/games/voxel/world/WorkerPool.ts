@@ -3,7 +3,7 @@
  * jobs at a time so it is never idle while the main thread uploads results.
  */
 import type { ChunkMesh } from '@hub/shared/voxel/mesher';
-import type { VoxelMode } from '@hub/shared';
+import type { GenVersion, VoxelMode } from '@hub/shared';
 
 interface Slot {
   worker: Worker;
@@ -42,13 +42,13 @@ export class WorkerPool {
     return c;
   }
 
-  generate(seed: number, mode: VoxelMode, cx: number, cz: number): Promise<{ blocks: Uint8Array }> {
-    return this.submit({ type: 'gen', seed, mode, cx, cz }, []);
+  generate(seed: number, mode: VoxelMode, gen: GenVersion, cx: number, cz: number): Promise<{ blocks: Uint8Array }> {
+    return this.submit({ type: 'gen', seed, mode, gen, cx, cz }, []);
   }
 
-  /** Lights and meshes a 3x3 chunk region; the region buffer is transferred and handed back. */
-  mesh(region: Uint8Array): Promise<{ mesh: ChunkMesh; region: Uint8Array }> {
-    return this.submit({ type: 'mesh', region }, [region.buffer as ArrayBuffer]);
+  /** Lights and meshes a 3x3 chunk region (decor: draw dense ground cover); the region buffer is transferred and handed back. */
+  mesh(region: Uint8Array, decor = true): Promise<{ mesh: ChunkMesh; region: Uint8Array }> {
+    return this.submit({ type: 'mesh', region, decor }, [region.buffer as ArrayBuffer]);
   }
 
   dispose(): void {
