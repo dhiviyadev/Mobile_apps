@@ -167,6 +167,11 @@ export class ServerEntities implements VoxelSubsystem {
     this.sim.onBlockChanged(e.x, e.y, e.z);
   }
 
+  /** Cells the world's support cascade removed: stuck arrows there drop too. */
+  blocksRemoved(cells: readonly BlockEdit[]): void {
+    for (const c of cells) this.sim.onBlockChanged(c.x, c.y, c.z);
+  }
+
   /** Dev/test: a synthetic structure (testArena) the sim treats like a generated one. */
   addStructure(info: StructureInfo): void {
     this.sim.extraStructures.push(info);

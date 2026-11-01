@@ -907,6 +907,11 @@ export class EntityView implements VoxelModule {
     }
   }
 
+  /** Offline edits (player, support cascades, boss altar): stuck arrows in the cell drop or vanish. */
+  afterLocalEdit(x: number, y: number, z: number): void {
+    this.game.localEntities?.sim.onBlockChanged(x, y, z);
+  }
+
   dispose(): void {
     for (const off of this.offs) off();
     this.game.scene.remove(this.renderer.group, this.decals.mesh, this.fx.mesh, this.tagGroup);
