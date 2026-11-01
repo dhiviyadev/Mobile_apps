@@ -108,7 +108,9 @@ export class SurvivalRoomHost implements VoxelSubsystem {
     this.rng = mulberry32((room.state.seed ^ 0x5eed5eed) >>> 0);
     this.sim = new SurvivalSim(
       {
-        getBlock: () => room.world.reader(),
+        // Survival reads only near players, so it may generate the chunk it needs; the creature
+        // sim's reader() never generates and reads a missing chunk as Bedrock (walls in LOS, false ground).
+        getBlock: () => (x, y, z) => room.world.getBlock(x, y, z),
         generator: room.world.generator,
         now: () => Date.now(),
         random: () => this.rng(),

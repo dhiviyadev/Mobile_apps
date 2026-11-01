@@ -17,7 +17,9 @@ import {
   MobKind,
   packPos,
   StructureType,
+  blockItem,
   createWorldGenerator,
+  encodeHand,
   VoxelMsg,
   type PlayerHooks,
 } from '@hub/shared';
@@ -125,6 +127,9 @@ describe('creatures online', () => {
     const me = a.server.state.players.get(a.room.sessionId)!;
     const near = sim.spawnMob(MobKind.Woolback, me.x + 2, me.y, me.z)!;
     const far = sim.spawnMob(MobKind.Woolback, me.x + 10, me.y, me.z)!;
+    // Feeding uses the item in hand; a sandbox (creative) player picks any block item.
+    a.room.sendBytes(VoxelMsg.Hand, encodeHand(0, 0, blockItem(Block.HayBale)));
+    await wait(100);
     a.room.sendBytes(VoxelMsg.MobInteract, encodeMobInteract(far.id, 'block:HayBale'));
     a.room.sendBytes(VoxelMsg.MobInteract, encodeMobInteract(near.id, 'block:HayBale'));
     await until(() => a.mr.length > 0);
