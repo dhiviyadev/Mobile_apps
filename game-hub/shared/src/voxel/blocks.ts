@@ -268,7 +268,7 @@ const def = (id: Block, name: string, tiles: [number, number, number], color: nu
 /**
  * Atlas tile indices. 0..22 are the original tiles (never moved); 23..132 are
  * painted by the world area (and 131..132 per the survival design); item
- * sprites use 160..239. Crack0 moves to 240 when the atlas grows to 16x16 (WP-A).
+ * sprites use 160..239; the crack overlay uses 240..247.
  */
 export const Tile = {
   GrassTop: 0,
@@ -396,8 +396,12 @@ export const Tile = {
   BedrollSide: 132,
   /** First item sprite tile (survival registry: 160..239). */
   ItemSprites: 160,
-  Crack0: 56, // last row of the 8x8 atlas: 8 break stages (WP-A moves this to 240 with the 16x16 atlas)
+  /** 8 break stages, 240..247. */
+  Crack0: 240,
 } as const;
+
+/** Columns (and rows) of the 16x16 tile atlas: tile = row * ATLAS_COLS + col. */
+export const ATLAS_COLS = 16;
 
 const T = Tile;
 const same = (t: number): [number, number, number] => [t, t, t];

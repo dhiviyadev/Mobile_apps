@@ -42,7 +42,7 @@ import {
   encodeEdit,
   encodeEdits,
   encodeTeleport,
-  IS_LIQUID,
+  collectUnsupported,
   IS_SOLID,
   isPlaceable,
   isPlayerKey,
@@ -61,6 +61,7 @@ import {
   VOXEL_MAX_PLAYERS,
   VoxelMsg,
   type VoxelMode,
+  placementError,
   WORLD_LIMIT,
   asBytes,
 } from '@hub/shared';
@@ -451,21 +452,34 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
   }
 
   /**
-   * Claims a free public slot of this room's mode: the one saved most recently,
-   * else the lowest. Null when all are busy. (WP-A changes the ordering: v2 saves
-   * first, then empty slots, then retire the oldest v1 save.)
+   * Claims a free public slot of this room's mode: saves on the current
+   * generator first (most recently saved first), then empty slots (lowest
+   * first). With only old-generator saves free, the least recently saved one
+   * is retired (kept on disk as .legacy until it expires) and a fresh world
+   * with the new biomes starts in its slot. Null when all are busy.
    */
   private async claimPublicSlot(): Promise<string | null> {
     const store = getWorldStore();
     const set = slotSet(this.mode as VoxelMode);
     const busy = new Set(await this.presence.smembers(set));
     const free = publicSlotIds(this.mode as VoxelMode).filter((id) => !busy.has(id));
-    const savedAt = await Promise.all(free.map((id) => store.savedAt(id).catch(() => null)));
-    const order = free
-      .map((id, i) => ({ id, i, savedAt: savedAt[i] ?? -1 }))
-      .sort((a, b) => b.savedAt - a.savedAt || a.i - b.i);
-    for (const { id } of order) {
+    const infos = await Promise.all(free.map((id) => store.info(id).catch(() => null)));
+    const slots = free.map((id, i) => ({ id, i, info: infos[i] }));
+    const current = slots.filter((s) => s.info && s.info.genVersion === LATEST_GEN_VERSION).sort((a, b) => b.info!.savedAt - a.info!.savedAt);
+    const empty = slots.filter((s) => !s.info);
+    const old = slots.filter((s) => s.info && s.info.genVersion !== LATEST_GEN_VERSION).sort((a, b) => a.info!.savedAt - b.info!.savedAt);
+    for (const { id } of [...current, ...empty]) {
       if (await this.claimInSet(set, id)) return id;
+    }
+    for (const { id } of old) {
+      if (!(await this.claimInSet(set, id))) continue;
+      try {
+        await store.retire(id);
+        this.log.info(`retired public world ${id} (made before the biomes update); a new world starts there`);
+      } catch (err) {
+        this.log.warn(`could not retire ${id}; restoring it instead`, err);
+      }
+      return id;
     }
     return null;
   }
@@ -611,11 +625,25 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
   }
 
   /**
-   * WP-A: support cascade (support.ts collectUnsupported): remove unsupported
-   * cells with applyServerEdit-like steps (not charged to the player's bucket),
-   * then call every subsystem's blocksRemoved(cells, before).
+   * Support cascade (support.ts): blocks that lost what held them (a flower on
+   * broken soil, a ladder whose wall went) are removed as server edits, not
+   * charged to the player's edit bucket, then subsystems get blocksRemoved
+   * (survival drops them as if harvested by hand).
    */
-  protected afterAcceptedEdit(_e: BlockEdit): void {}
+  protected afterAcceptedEdit(e: BlockEdit): void {
+    const cells = collectUnsupported((x, y, z) => this.world.getBlock(x, y, z), e.x, e.y, e.z);
+    if (!cells.length) return;
+    const removed: BlockEdit[] = [];
+    const before: number[] = [];
+    for (const [x, y, z] of cells) {
+      const was = this.world.getBlock(x, y, z);
+      if (this.applyServerEdit(x, y, z, Block.Air)) {
+        removed.push({ x, y, z, id: Block.Air });
+        before.push(was);
+      }
+    }
+    if (removed.length) for (const s of this.subsystems) s.blocksRemoved?.(removed, before);
+  }
 
   /** Returns a reason string if the edit is not allowed, or null. */
   validateEdit(sessionId: string, player: VoxelPlayer, rt: PlayerRuntime, e: BlockEdit): string | null {
@@ -627,8 +655,9 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
       if (!blockDef(current).breakable) return 'unbreakable';
     } else {
       if (!isPlaceable(e.id)) return 'not placeable';
-      // WP-A replaces the next line with placementError(get, x, y, z, id) (support, replaceable cells, slab merge).
-      if (current !== Block.Air && !IS_LIQUID[current]) return 'occupied by a block';
+      // Support, replaceable cells (plants, snow layers, liquids) and slab merging.
+      const placement = placementError((x, y, z) => this.world.getBlock(x, y, z), e.x, e.y, e.z, e.id);
+      if (placement) return placement;
       if (IS_SOLID[e.id] && this.overlapsPlayer(e.x, e.y, e.z)) return 'occupied by a player';
     }
     // Reach check from the eye to the block centre, with slack for latency.

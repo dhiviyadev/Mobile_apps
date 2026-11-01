@@ -6,7 +6,7 @@
  * against solid voxels (classic swept-AABB-by-axis approach). Shared so the
  * server can sanity-check reported positions with the same limits.
  */
-import { IS_LIQUID, IS_SOLID, LIQUID_HEIGHT, waterLevel } from './blocks';
+import { COLLISION_TOP, IS_CLIMBABLE, IS_LIQUID, IS_SOLID, LIQUID_HEIGHT, waterLevel } from './blocks';
 import { PLAYER_HEIGHT, PLAYER_WIDTH } from './constants';
 
 export const VOXEL_PHYSICS = {
@@ -99,8 +99,8 @@ export function collides(get: BlockQuery, x: number, y: number, z: number, heigh
 
 /**
  * True if a box (feet at y, half width `half`, `height` tall) overlaps any solid
- * block. Shared by players, mobs and item drops. The world area adds the
- * COLLISION_TOP rule here (slabs, chests, bedrolls).
+ * block. Shared by players, mobs and item drops. A solid cell only blocks up
+ * to its collision top (slabs 0.5, chests 0.875, bedrolls 0.3125).
  */
 export function collidesBox(get: BlockQuery, x: number, y: number, z: number, half: number, height: number): boolean {
   const x0 = Math.floor(x - half + EPS);
@@ -112,33 +112,62 @@ export function collidesBox(get: BlockQuery, x: number, y: number, z: number, ha
   for (let by = y0; by <= y1; by++) {
     for (let bz = z0; bz <= z1; bz++) {
       for (let bx = x0; bx <= x1; bx++) {
-        if (IS_SOLID[get(bx, by, bz)]) return true;
+        const b = get(bx, by, bz);
+        if (IS_SOLID[b] && y + EPS < by + COLLISION_TOP[b]) return true;
       }
     }
   }
   return false;
 }
 
+/** Highest collision top above `above` of the solid cells in rows y0..y1 under a box footprint, or -Infinity. */
+function topIn(get: BlockQuery, x: number, z: number, half: number, y0: number, y1: number, above: number): number {
+  const x0 = Math.floor(x - half + EPS);
+  const x1 = Math.floor(x + half - EPS);
+  const z0 = Math.floor(z - half + EPS);
+  const z1 = Math.floor(z + half - EPS);
+  let top = -Infinity;
+  for (let by = y0; by <= y1; by++) {
+    for (let bz = z0; bz <= z1; bz++) {
+      for (let bx = x0; bx <= x1; bx++) {
+        const b = get(bx, by, bz);
+        if (!IS_SOLID[b]) continue;
+        const t = by + COLLISION_TOP[b];
+        if (t > above && t > top) top = t;
+      }
+    }
+  }
+  return top;
+}
+
 /**
- * Feet height after landing on whatever stopped a fall at `ny` (WP0 stub: the
- * top of the full cell, today's behaviour; the world area returns slab/chest
- * collision tops).
+ * Feet height after landing on whatever stopped a fall at `ny`: the highest
+ * collision top the feet sank into (a slab's 0.5, a full block's 1).
  */
-export function landingHeight(_get: BlockQuery, _x: number, ny: number, _z: number, _half = HALF): number {
-  return Math.floor(ny) + 1;
+export function landingHeight(get: BlockQuery, x: number, ny: number, z: number, half = HALF): number {
+  const top = topIn(get, x, z, half, Math.floor(ny), Math.floor(ny + EPS), ny);
+  return top > -Infinity ? top : Math.floor(ny) + 1;
 }
 
 /**
  * New feet y when a body blocked horizontally at (x, y, z) can step up a low
- * ledge (≤ VOXEL_PHYSICS.stepHeight) without jumping, else null.
- * WP0 stub: null (no step-up; full blocks still use auto-jump). World area implements.
+ * ledge (≤ VOXEL_PHYSICS.stepHeight: slabs, chests, bedrolls) without jumping,
+ * else null. Full blocks are left to auto-jump.
  */
-export function stepUpTarget(_get: BlockQuery, _x: number, _y: number, _z: number, _half = HALF, _height = PLAYER_HEIGHT): number | null {
-  return null;
+export function stepUpTarget(get: BlockQuery, x: number, y: number, z: number, half = HALF, height = PLAYER_HEIGHT): number | null {
+  const up = topIn(get, x, z, half, Math.floor(y + EPS), Math.floor(y + VOXEL_PHYSICS.stepHeight), y);
+  if (up === -Infinity || up - y > VOXEL_PHYSICS.stepHeight + EPS) return null;
+  return collidesBox(get, x, up, z, half, height) ? null : up;
 }
 
-/** True when the box overlaps a climbable cell (ladders). WP0 stub: false. World area implements with IS_CLIMBABLE. */
-export function overlapsClimbable(_get: BlockQuery, _x: number, _y: number, _z: number, _half = HALF, _height = PLAYER_HEIGHT): boolean {
+/** True when the box overlaps a climbable cell (ladders) at its feet or chest height. */
+export function overlapsClimbable(get: BlockQuery, x: number, y: number, z: number, half = HALF, height = PLAYER_HEIGHT): boolean {
+  const x0 = Math.floor(x - half + EPS);
+  const x1 = Math.floor(x + half - EPS);
+  const z0 = Math.floor(z - half + EPS);
+  const z1 = Math.floor(z + half - EPS);
+  const rows = [Math.floor(y + EPS), Math.floor(y + Math.min(0.9, height * 0.5))];
+  for (const by of rows) for (let bz = z0; bz <= z1; bz++) for (let bx = x0; bx <= x1; bx++) if (IS_CLIMBABLE[get(bx, by, bz)]) return true;
   return false;
 }
 
@@ -196,7 +225,13 @@ export function stepBody(body: PlayerBody, input: MoveInput, get: BlockQuery, dt
   body.vz = approach(body.vz, targetVz, accel * dt);
 
   // ---- vertical ------------------------------------------------------------------
-  if (body.inWater) {
+  const climb = !body.inWater && overlapsClimbable(get, body.x, body.y, body.z);
+  if (climb) {
+    // Ladders: hold jump or forward to climb, crouch to hold on, otherwise slide down slowly.
+    if (input.jump || input.forward > 0.3) body.vy = P.climbSpeed;
+    else if (input.crouch) body.vy = 0;
+    else body.vy = Math.max(body.vy - P.gravity * dt, -P.climbSlide);
+  } else if (body.inWater) {
     body.vy -= P.waterGravity * dt;
     body.vy *= Math.max(0, 1 - P.waterDrag * dt);
     if (input.jump) body.vy = Math.max(body.vy, P.swimUpVelocity);
@@ -236,8 +271,13 @@ export function stepBody(body: PlayerBody, input: MoveInput, get: BlockQuery, dt
   let blockedX = false;
   let blockedZ = false;
 
+  // Low ledges (slabs, chests) are stepped onto without a jump.
+  const canStep = (body.onGround || climb) && !body.inWater;
   let nx = body.x + body.vx * dt;
-  if (collides(get, nx, body.y, body.z) || (crouchEdge && !collides(get, nx, body.y - 0.1, body.z))) {
+  let stepY: number | null = null;
+  if (collides(get, nx, body.y, body.z) && canStep && (stepY = stepUpTarget(get, nx, body.y, body.z)) !== null) {
+    body.y = stepY;
+  } else if (collides(get, nx, body.y, body.z) || (crouchEdge && !collides(get, nx, body.y - 0.1, body.z))) {
     blockedX = collides(get, nx, body.y, body.z);
     nx = body.x;
     body.vx = 0;
@@ -245,7 +285,9 @@ export function stepBody(body: PlayerBody, input: MoveInput, get: BlockQuery, dt
   body.x = nx;
 
   let nz = body.z + body.vz * dt;
-  if (collides(get, body.x, body.y, nz) || (crouchEdge && !collides(get, body.x, body.y - 0.1, nz))) {
+  if (collides(get, body.x, body.y, nz) && canStep && (stepY = stepUpTarget(get, body.x, body.y, nz)) !== null) {
+    body.y = stepY;
+  } else if (collides(get, body.x, body.y, nz) || (crouchEdge && !collides(get, body.x, body.y - 0.1, nz))) {
     blockedZ = collides(get, body.x, body.y, nz);
     nz = body.z;
     body.vz = 0;
@@ -253,7 +295,7 @@ export function stepBody(body: PlayerBody, input: MoveInput, get: BlockQuery, dt
   body.z = nz;
 
   // ---- auto-jump: walked into a 1-block step with headroom ------------------------
-  if (input.autoJump && body.knockTime <= 0 && body.onGround && !body.inWater && (blockedX || blockedZ) && len > 0.3) {
+  if (input.autoJump && !climb && body.knockTime <= 0 && body.onGround && !body.inWater && (blockedX || blockedZ) && len > 0.3) {
     const probeX = body.x + Math.sign(wx) * (blockedX ? HALF + 0.2 : 0);
     const probeZ = body.z + Math.sign(wz) * (blockedZ ? HALF + 0.2 : 0);
     const stepFree = !collides(get, probeX, body.y + 1.01, probeZ);

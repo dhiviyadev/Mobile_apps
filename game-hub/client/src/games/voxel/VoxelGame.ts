@@ -165,7 +165,7 @@ export class VoxelGame {
     const opaque = createOpaqueMaterial(this.uniforms);
     const liquid = createLiquidMaterial(this.uniforms);
     this.pool = new WorkerPool(defaultWorkerCount());
-    this.world = new World(this.pool, seed, mode, opaque, liquid);
+    this.world = new World(this.pool, { seed, mode, genVersion: opts.genVersion ?? LATEST_GEN_VERSION }, opaque, liquid);
     this.applyRenderDistance();
     this.scene.add(this.world.group);
 
@@ -214,6 +214,7 @@ export class VoxelGame {
       },
       this.fx,
     );
+    this.interaction.decorHidden = !this.world.decor;
     this.player.onStep = (b) => {
       for (const m of this.modules) m.onStep?.(b);
     };
@@ -225,7 +226,10 @@ export class VoxelGame {
 
     // Input
     this.kbm = new KeyboardMouse(this.input, this.renderer.canvas);
-    this.kbm.onUnlock = () => this.openPause();
+    // The block picker releases the pointer itself: that is not a pause.
+    this.kbm.onUnlock = () => {
+      if (!this.modules.some((m) => m.isModalOpen?.())) this.openPause();
+    };
     this.touch = isTouchDevice()
       ? new TouchControls(
           this.input,
@@ -266,6 +270,7 @@ export class VoxelGame {
             h('h2', null, 'Click to play'),
             h('p', null, 'WASD move · Space jump · Shift sprint · Ctrl crouch'),
             h('p', null, 'Left click break · Right click place · Wheel / 1-0 pick block · Esc menu'),
+            mode === 'sandbox' ? h('p', null, 'B blocks · Middle click pick block') : null,
           ),
         );
     if (this.clickToPlay) container.appendChild(this.clickToPlay);
@@ -478,6 +483,9 @@ export class VoxelGame {
       u.uFogFar.value = 22;
     } else {
       u.uFogColor.value.copy(this.sky.horizon);
+      // Biome fog tint (WorldFeatures eases it between biomes).
+      const tint = this.worldFeatures.fogTint;
+      if (tint.weight > 0) u.uFogColor.value.lerp(tint.color, (0.15 + 0.15 * this.sky.daylight) * tint.weight);
       u.uFogNear.value = far * 0.6;
       u.uFogFar.value = far * 0.95;
     }
@@ -613,6 +621,9 @@ export class VoxelGame {
     // The slider wins; low-quality devices are capped to keep frame time sane.
     const cap = this.renderer.profile.preset === 'low' ? 3 : this.renderer.profile.preset === 'medium' ? 5 : 8;
     this.world.renderDistance = Math.min(cap, s.renderDistance);
+    // Dense ground cover costs vertices: hidden on the low preset (and not targeted then).
+    this.world.decor = this.renderer.profile.preset !== 'low';
+    if (this.interaction) this.interaction.decorHidden = !this.world.decor;
     const far = this.world.renderDistance * 16 + 32;
     this.camera.far = Math.max(SKY_RADIUS * 1.2, far);
     this.camera.updateProjectionMatrix();

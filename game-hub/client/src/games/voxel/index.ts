@@ -3,8 +3,10 @@
  * localStorage (one world per saved mode); online play attaches the network layer.
  */
 import { type GenVersion, isGenVersion, isVoxelMode, LATEST_GEN_VERSION, packPos, unpackPos, type VoxelMode } from '@hub/shared';
+import { setPauseNote } from '../common/PauseMenu';
 import type { GameInstance, GameLaunchContext } from '../types';
 import { VoxelGame } from './VoxelGame';
+import { LEGACY_NOTE } from './world/WorldFeatures';
 
 /** Sandbox keeps the original key (old saves load unchanged); survival has its own world. */
 const SAVE_KEYS: Partial<Record<VoxelMode, string>> = {
@@ -102,6 +104,13 @@ export async function launch(ctx: GameLaunchContext): Promise<GameInstance> {
         : undefined,
     });
   game = create(false);
+  // Worlds saved before the biomes update keep their terrain; say so in the pause menu.
+  if (game.generator.genVersion === 1 && mode !== 'parkour') setPauseNote(ctx.container, () => LEGACY_NOTE);
   await game.start();
-  return { dispose: () => game?.dispose() };
+  return {
+    dispose: () => {
+      setPauseNote(ctx.container, null);
+      game?.dispose();
+    },
+  };
 }

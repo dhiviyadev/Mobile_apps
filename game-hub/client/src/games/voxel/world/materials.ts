@@ -8,6 +8,7 @@
  * fragment shader wraps them into the right atlas tile with fract().
  */
 import * as THREE from 'three';
+import { Tile } from '@hub/shared';
 import { ATLAS_TILES } from './atlas';
 
 export interface VoxelUniforms {
@@ -18,6 +19,8 @@ export interface VoxelUniforms {
   uFogNear: { value: number };
   uFogFar: { value: number };
   uTime: { value: number };
+  /** Atlas col/row of the lava tile: its texture scrolls slowly. */
+  uLavaTile: { value: THREE.Vector2 };
 }
 
 export function createVoxelUniforms(atlas: THREE.Texture): VoxelUniforms {
@@ -28,6 +31,7 @@ export function createVoxelUniforms(atlas: THREE.Texture): VoxelUniforms {
     uFogNear: { value: 40 },
     uFogFar: { value: 70 },
     uTime: { value: 0 },
+    uLavaTile: { value: new THREE.Vector2(Tile.Lava % ATLAS_TILES, Math.floor(Tile.Lava / ATLAS_TILES)) },
   };
 }
 
@@ -85,8 +89,12 @@ export function createOpaqueMaterial(u: VoxelUniforms): THREE.ShaderMaterial {
     vertexShader: VERT,
     fragmentShader: /* glsl */ `
       ${FRAG_COMMON}
+      uniform vec2 uLavaTile;
       void main() {
-        vec4 c = atlasSample(vUv);
+        vec2 uv = vUv;
+        // Lava creeps (one compare per fragment).
+        if (abs(vTile.x - uLavaTile.x) + abs(vTile.y - uLavaTile.y) < 0.5) uv += vec2(uTime * 0.03, uTime * 0.02);
+        vec4 c = atlasSample(uv);
         if (c.a < 0.5) discard;
         gl_FragColor = vec4(applyFog(c.rgb * vLight), 1.0);
       }

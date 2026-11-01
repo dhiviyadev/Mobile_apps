@@ -33,12 +33,15 @@ class FakePool {
     return this.jobs.length;
   }
 
-  generate(_seed: number, _mode: string, _cx: number, _cz: number): Promise<{ blocks: Uint8Array }> {
+  readonly generated: number[] = [];
+
+  generate(_seed: number, _mode: string, gen: number, _cx: number, _cz: number): Promise<{ blocks: Uint8Array }> {
+    this.generated.push(gen);
     return this.job(() => ({ blocks: flatChunk() }));
   }
 
-  mesh(region: Uint8Array): Promise<{ mesh: ChunkMesh; region: Uint8Array }> {
-    return this.job(() => ({ mesh: meshChunk(region), region }));
+  mesh(region: Uint8Array, decor = true): Promise<{ mesh: ChunkMesh; region: Uint8Array }> {
+    return this.job(() => ({ mesh: meshChunk(region, { decor }), region }));
   }
 
   /** Runs every job submitted so far. */
@@ -60,9 +63,9 @@ class FakePool {
   }
 }
 
-function makeWorld() {
+function makeWorld(genVersion: 1 | 2 = 2) {
   const pool = new FakePool();
-  const world = new World(pool as unknown as WorkerPool, 1, 'sandbox', new THREE.MeshBasicMaterial(), new THREE.MeshBasicMaterial());
+  const world = new World(pool as unknown as WorkerPool, { seed: 1, mode: 'sandbox', genVersion }, new THREE.MeshBasicMaterial(), new THREE.MeshBasicMaterial());
   world.renderDistance = 1;
   const meshes = vi.spyOn(pool, 'mesh');
   /** Streams until an update starts no more jobs (rate-limited water remeshes may still wait). */
@@ -82,6 +85,18 @@ afterEach(() => {
 });
 
 describe('client world', () => {
+  it('streams its generator version and remeshes when decor is toggled', async () => {
+    const { pool, world, meshes, settle } = makeWorld(1);
+    await settle();
+    expect(world.genVersion).toBe(1);
+    expect(new Set(pool.generated)).toEqual(new Set([1]));
+    const before = meshes.mock.calls.length;
+    world.decor = false;
+    await settle();
+    expect(meshes.mock.calls.length).toBeGreaterThan(before);
+    expect(meshes.mock.calls.at(-1)![1]).toBe(false);
+  });
+
   it('keeps the light of each meshed chunk and reports it per cell', async () => {
     const { world, settle } = makeWorld();
     await settle();

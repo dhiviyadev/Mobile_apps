@@ -8,11 +8,15 @@ import {
   type BlockQuery,
   blockDef,
   CHUNK_HEIGHT,
-  IS_LIQUID,
+  IS_DECOR,
+  IS_SOLID,
+  placementError,
   PLAYER_HEIGHT,
   PLAYER_WIDTH,
   raycastVoxels,
   REACH,
+  resolvePlacement,
+  type SoundMaterial,
   type VoxelHit,
 } from '@hub/shared';
 import { audio } from '../../../core/audio/audio';
@@ -39,6 +43,8 @@ export interface InteractionHost {
 }
 
 const PLACE_REPEAT = 0.28;
+/** Dig sound pitch per material. */
+const DIG_PITCH: Record<SoundMaterial, number> = { stone: 1.15, glass: 1.3, wood: 0.85, dirt: 0.8, grass: 0.8, sand: 0.75, snow: 0.7, cloth: 0.9, plant: 0.9, liquid: 1 };
 const BREAK_COOLDOWN = 0.12;
 
 export class BlockInteraction {
@@ -50,6 +56,12 @@ export class BlockInteraction {
   private digSoundTimer = 0;
   /** Swing animation trigger for the held item (0..1). */
   swing = 0;
+  /** Dense ground cover is hidden (low quality preset): the crosshair passes through it. */
+  decorHidden = false;
+  private readonly visibleGet: BlockQuery = (x, y, z) => {
+    const b = this.host.getBlock(x, y, z);
+    return this.decorHidden && IS_DECOR[b] ? 0 : b;
+  };
 
   constructor(
     private readonly host: InteractionHost,
@@ -61,10 +73,9 @@ export class BlockInteraction {
    * block item selected). `yaw`: camera yaw (WP-A: ladder orientation).
    */
   update(dt: number, frame: InputFrame, eye: THREE.Vector3, dir: THREE.Vector3, selected: Block | null, feet: { x: number; y: number; z: number }, yaw = 0): void {
-    void yaw;
     this.swing = Math.max(0, this.swing - dt * 4);
     this.breakCooldown -= dt;
-    const get = this.host.getBlock;
+    const get = this.visibleGet;
     this.target = raycastVoxels(get, eye.x, eye.y, eye.z, dir.x, dir.y, dir.z, REACH);
     const entityFirst = (this.host.entityDistance?.() ?? Infinity) < (this.target?.distance ?? Infinity);
     if (entityFirst) {
@@ -76,17 +87,17 @@ export class BlockInteraction {
     }
     const wantSecondary = frame.pressed.has('secondary') || frame.held.has('secondary');
     if (wantSecondary && this.host.onSecondary?.(this.target, frame.pressed.has('secondary'))) {
-      if (this.target) this.fx.showHighlight(this.target.x, this.target.y, this.target.z);
+      if (this.target) this.fx.showHighlight(this.target.x, this.target.y, this.target.z, this.target.block);
       return;
     }
     const t = this.target;
     if (!t || !this.host.canEdit()) {
       this.fx.hideHighlight();
       this.progress = 0;
-      if (t) this.fx.showHighlight(t.x, t.y, t.z);
+      if (t) this.fx.showHighlight(t.x, t.y, t.z, t.block);
       return;
     }
-    this.fx.showHighlight(t.x, t.y, t.z);
+    this.fx.showHighlight(t.x, t.y, t.z, t.block);
 
     // ---- breaking -------------------------------------------------------------
     const def = blockDef(t.block);
@@ -101,19 +112,19 @@ export class BlockInteraction {
       this.swing = Math.max(this.swing, 0.6);
       this.digSoundTimer -= dt;
       if (this.digSoundTimer <= 0) {
-        audio.play('dig', { pitch: 0.9 + Math.random() * 0.2 });
+        audio.play('dig', { pitch: DIG_PITCH[def.sound] * (0.9 + Math.random() * 0.2) });
         this.digSoundTimer = 0.22;
       }
       if (this.progress >= 1) {
         this.host.edit(t.x, t.y, t.z, Block.Air);
         this.fx.burst(t.x, t.y, t.z, t.block);
-        audio.play('break', { pitch: 0.9 + Math.random() * 0.2 });
+        audio.play(def.sound === 'glass' ? 'breakGlass' : def.sound === 'plant' ? 'breakPlant' : 'break', { pitch: 0.9 + Math.random() * 0.2 });
         this.progress = 0;
         this.progressKey = '';
         this.breakCooldown = BREAK_COOLDOWN;
         this.fx.setCrack(0, 0, 0, 0);
       } else {
-        this.fx.setCrack(t.x, t.y, t.z, this.progress);
+        this.fx.setCrack(t.x, t.y, t.z, this.progress, t.block);
       }
     } else {
       this.progress = 0;
@@ -126,21 +137,21 @@ export class BlockInteraction {
     const wantPlace = frame.pressed.has('secondary') || (frame.held.has('secondary') && this.placeTimer <= 0);
     if (wantPlace && selected !== null) {
       this.placeTimer = PLACE_REPEAT;
-      const px = t.x + t.nx;
-      const py = t.y + t.ny;
-      const pz = t.z + t.nz;
-      if (this.canPlaceAt(px, py, pz, feet)) {
-        this.host.edit(px, py, pz, selected);
+      const p = resolvePlacement(this.host.getBlock, t, selected, yaw);
+      if (p && this.canPlaceAt(p.x, p.y, p.z, p.id, feet)) {
+        this.host.edit(p.x, p.y, p.z, p.id);
         audio.play('place', { pitch: 0.95 + Math.random() * 0.1 });
         this.swing = 1;
       }
     }
   }
 
-  private canPlaceAt(x: number, y: number, z: number, feet: { x: number; y: number; z: number }): boolean {
+  private canPlaceAt(x: number, y: number, z: number, id: number, feet: { x: number; y: number; z: number }): boolean {
     if (y < 1 || y >= CHUNK_HEIGHT) return false;
-    const existing = this.host.getBlock(x, y, z);
-    if (existing !== Block.Air && !IS_LIQUID[existing]) return false;
+    // Same rules as the server: replaceable cells, slab merging, support.
+    if (placementError(this.host.getBlock, x, y, z, id)) return false;
+    // Plants, torches and ladders may go where bodies are.
+    if (!IS_SOLID[id]) return true;
     // Don't place inside the local player.
     const half = PLAYER_WIDTH / 2;
     const overlaps =

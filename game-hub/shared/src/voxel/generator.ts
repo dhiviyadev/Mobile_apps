@@ -3,7 +3,7 @@ import type { VoxelMode } from '../constants';
 import { SEA_LEVEL } from './constants';
 import { generateParkourChunk, generateParkourCourse, type ParkourCourse } from './parkour';
 import type { StructureInfo } from './structures/types';
-import { Biome, TerrainGenerator } from './worldgen';
+import { Biome, TerrainGeneratorV1, TerrainGeneratorV2 } from './worldgen';
 
 /**
  * Terrain generator version, stored with every saved world (CVW2 header, offline
@@ -11,11 +11,8 @@ import { Biome, TerrainGenerator } from './worldgen';
  * ores and structures (world area). Worlds without a version are 1.
  */
 export type GenVersion = 1 | 2;
-/**
- * Version new worlds get. WP0 keeps 1 (v2 does not exist yet); WP-A flips it to
- * 2 in the same change that adds TerrainGeneratorV2.
- */
-export const LATEST_GEN_VERSION: GenVersion = 1;
+/** Version new worlds get. */
+export const LATEST_GEN_VERSION: GenVersion = 2;
 
 export function isGenVersion(v: unknown): v is GenVersion {
   return v === 1 || v === 2;
@@ -60,8 +57,34 @@ export function createWorldGenerator(seed: number, mode: VoxelMode, genVersion: 
       structureAt: () => null,
     };
   }
-  // Sandbox and survival. WP-A: genVersion 2 -> TerrainGeneratorV2 (with structures).
-  const terrain = new TerrainGenerator(seed);
+  if (genVersion === 2) {
+    const v2 = new TerrainGeneratorV2(seed);
+    let list: readonly StructureInfo[] | null = null;
+    const all = () => (list ??= v2.structures());
+    return {
+      mode,
+      genVersion,
+      course: null,
+      generateChunk: (cx, cz, out) => v2.generateChunk(cx, cz, out),
+      findSpawn: () => v2.findSpawn(),
+      biomeAt: (x, z) => v2.column(Math.floor(x), Math.floor(z)).biome,
+      surfaceHeight: (x, z) => v2.column(Math.floor(x), Math.floor(z)).height,
+      structures: all,
+      structuresNear: (x, z, radius) =>
+        all().filter((s) => {
+          const b = s.bounds;
+          const dx = Math.max(b.x0 - x, 0, x - b.x1);
+          const dz = Math.max(b.z0 - z, 0, z - b.z1);
+          return dx * dx + dz * dz <= radius * radius;
+        }),
+      structureAt: (x, y, z) => {
+        const fx = Math.floor(x), fy = Math.floor(y), fz = Math.floor(z);
+        return all().find((s) => fx >= s.bounds.x0 && fx < s.bounds.x1 && fy >= s.bounds.y0 && fy < s.bounds.y1 && fz >= s.bounds.z0 && fz < s.bounds.z1) ?? null;
+      },
+    };
+  }
+  // Generator 1: frozen terrain, no structures.
+  const terrain = new TerrainGeneratorV1(seed);
   let spawn: { x: number; y: number; z: number } | null = null;
   return {
     mode,

@@ -83,6 +83,12 @@ export interface SavedWorld {
   sections?: ReadonlyMap<string, Uint8Array>;
 }
 
+/** What info() reads from a save's header. */
+export interface WorldInfo {
+  savedAt: number;
+  genVersion: GenVersion;
+}
+
 /** Tells prune() (and eviction) that an open room holds this world, so it must stay. */
 export type WorldInUse = (id: string) => Promise<boolean>;
 
@@ -111,6 +117,14 @@ export interface WorldStore {
   exists(id: string): Promise<boolean>;
   /** savedAt of a saved world without loading its edits, or null. */
   savedAt(id: string): Promise<number | null>;
+  /** savedAt and terrain generator of a saved world from its header only, or null. */
+  info(id: string): Promise<WorldInfo | null>;
+  /**
+   * Takes a world out of rotation (public slots made before the biomes update):
+   * the file store keeps it as <id>.cvw.legacy until prune() expires it; the
+   * memory store deletes it. Resolves once nothing is stored under id.
+   */
+  retire(id: string): Promise<void>;
   /** Returns true if a world was deleted. */
   delete(id: string): Promise<boolean>;
   /**
@@ -398,6 +412,15 @@ export class MemoryWorldStore implements WorldStore {
     return this.worlds.get(id)?.savedAt ?? null;
   }
 
+  async info(id: string): Promise<WorldInfo | null> {
+    const w = isValidWorldId(id) ? this.worlds.get(id) : undefined;
+    return w ? { savedAt: w.savedAt, genVersion: w.genVersion ?? 1 } : null;
+  }
+
+  async retire(id: string): Promise<void> {
+    await this.delete(id);
+  }
+
   async delete(id: string): Promise<boolean> {
     return isValidWorldId(id) && this.remove(id);
   }
@@ -534,6 +557,24 @@ export class FileWorldStore implements WorldStore {
     return this.readSavedAt(this.file(id));
   }
 
+  async info(id: string): Promise<WorldInfo | null> {
+    if (!isValidWorldId(id)) return null;
+    await this.settled(id);
+    return this.readInfo(this.file(id));
+  }
+
+  retire(id: string): Promise<void> {
+    if (!isValidWorldId(id)) return Promise.resolve();
+    return this.enqueue(id, async () => {
+      try {
+        await this.moveAside(this.file(id), '.legacy');
+      } catch (err) {
+        if (!isNotFound(err)) throw err;
+      }
+      await this.forget(id);
+    });
+  }
+
   delete(id: string): Promise<boolean> {
     if (!isValidWorldId(id)) return Promise.resolve(false);
     return this.enqueue(id, async () => {
@@ -572,8 +613,8 @@ export class FileWorldStore implements WorldStore {
         if (!isValidWorldId(id)) continue;
         const savedAt = (await this.readSavedAt(full)) ?? (await this.mtime(full));
         if (savedAt !== null) entries.push({ id, savedAt });
-      } else if (name.endsWith('.tmp') || name.endsWith('.corrupt')) {
-        // Interrupted writes and quarantined files are only kept for a while.
+      } else if (name.endsWith('.tmp') || name.endsWith('.corrupt') || name.endsWith('.legacy')) {
+        // Interrupted writes, quarantined and retired files are only kept for a while.
         const mtime = await this.mtime(full);
         const limit = name.endsWith('.tmp') ? STALE_TMP_MS : maxAgeMs;
         if (mtime !== null && now - mtime > limit) await fs.unlink(full).catch(() => undefined);
@@ -696,9 +737,9 @@ export class FileWorldStore implements WorldStore {
     }
   }
 
-  /** Renames file to <file>.corrupt (replacing an older one), where prune() expires it. */
-  private async moveAside(file: string): Promise<void> {
-    const target = `${file}.corrupt`;
+  /** Renames file to <file>.corrupt (or another suffix, replacing an older one), where prune() expires it. */
+  private async moveAside(file: string, suffix = '.corrupt'): Promise<void> {
+    const target = `${file}${suffix}`;
     await fs.rename(file, target);
     // rename keeps the old mtime: restart the expiry clock for the quarantined copy.
     const now = new Date();
@@ -759,6 +800,26 @@ export class FileWorldStore implements WorldStore {
     } catch (err) {
       await fs.unlink(tmp).catch(() => undefined);
       throw err;
+    }
+  }
+
+  /** savedAt and genVersion from a file's header (format 1: generator 1), or null. */
+  private async readInfo(file: string): Promise<WorldInfo | null> {
+    let handle: FileHandle | null = null;
+    try {
+      handle = await fs.open(file, 'r');
+      const head = new Uint8Array(HEADER2_BYTES);
+      const { bytesRead } = await handle.read(head, 0, HEADER2_BYTES, 0);
+      if (bytesRead < HEADER_BYTES || MAGIC.some((b, i) => head[i] !== b)) return null;
+      const view = new DataView(head.buffer);
+      const savedAt = view.getFloat64(15, true);
+      if (!Number.isFinite(savedAt)) return null;
+      const gen = head[4] === FORMAT_VERSION && bytesRead >= HEADER2_BYTES ? head[23] : 1;
+      return { savedAt, genVersion: isGenVersion(gen) ? gen : 1 };
+    } catch {
+      return null;
+    } finally {
+      await handle?.close();
     }
   }
 

@@ -8,7 +8,7 @@ import {
   decodeTeleport,
   encodeEdit,
   encodeMove,
-  TerrainGenerator,
+  createWorldGenerator,
   VoxelMsg,
   waterLevel,
 } from '@hub/shared';
@@ -45,11 +45,22 @@ async function joinSandbox(seed: number, nickname: string, roomId?: string) {
 }
 
 const SEED = 4242;
-const gen = new TerrainGenerator(SEED);
+const gen = createWorldGenerator(SEED, 'sandbox');
 const spawn = gen.findSpawn();
 
 /** A block next to spawn: the surface block, which is breakable. */
-const surface = { x: Math.floor(spawn.x) + 1, y: gen.column(Math.floor(spawn.x) + 1, Math.floor(spawn.z)).height, z: Math.floor(spawn.z) };
+/** A surface block next to spawn with nothing (no plant) on top: breaking it changes only itself. */
+const surface = (() => {
+  for (let dx = 1; dx < 12; dx++) {
+    const x = Math.floor(spawn.x) + dx;
+    const z = Math.floor(spawn.z);
+    const y = gen.surfaceHeight(x, z);
+    const chunk = gen.generateChunk(Math.floor(x / 16), Math.floor(z / 16));
+    const at = (yy: number) => chunk[(yy * 16 + (((z % 16) + 16) % 16)) * 16 + (((x % 16) + 16) % 16)];
+    if (at(y) !== Block.Air && at(y + 1) === Block.Air && at(y + 2) === Block.Air) return { x, y, z };
+  }
+  throw new Error('no clear surface next to spawn');
+})();
 
 describe('Voxelvale room', () => {
   it('uses the requested seed in tests and spawns players at the seed spawn', async () => {

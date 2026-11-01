@@ -3,7 +3,7 @@
  * breaking, and a pooled instanced particle burst when a block breaks.
  */
 import * as THREE from 'three';
-import { blockDef, Tile } from '@hub/shared';
+import { ATLAS_COLS, blockDef, SHAPE_BOUNDS, Tile } from '@hub/shared';
 
 const MAX_PARTICLES = 160;
 
@@ -57,9 +57,19 @@ export class BlockFx {
     this.effects = level;
   }
 
-  showHighlight(x: number, y: number, z: number): void {
+  /** Outlines the target cell, shrunk to the block's shape (slabs, plants, torches...). */
+  showHighlight(x: number, y: number, z: number, block = 1): void {
     this.highlight.visible = true;
-    this.highlight.position.set(x + 0.5, y + 0.5, z + 0.5);
+    this.fitToShape(this.highlight, x, y, z, block);
+  }
+
+  /** Scales and moves a unit-cube object to the shape bounds of `block` at (x, y, z). */
+  private fitToShape(o: THREE.Object3D, x: number, y: number, z: number, block: number): void {
+    const b = block * 6;
+    const x0 = SHAPE_BOUNDS[b], y0 = SHAPE_BOUNDS[b + 1], z0 = SHAPE_BOUNDS[b + 2];
+    const x1 = SHAPE_BOUNDS[b + 3], y1 = SHAPE_BOUNDS[b + 4], z1 = SHAPE_BOUNDS[b + 5];
+    o.scale.set(Math.max(0.02, x1 - x0), Math.max(0.02, y1 - y0), Math.max(0.02, z1 - z0));
+    o.position.set(x + (x0 + x1) / 2, y + (y0 + y1) / 2, z + (z0 + z1) / 2);
   }
 
   hideHighlight(): void {
@@ -68,17 +78,17 @@ export class BlockFx {
   }
 
   /** @param progress 0..1, hides the overlay at 0 */
-  setCrack(x: number, y: number, z: number, progress: number): void {
+  setCrack(x: number, y: number, z: number, progress: number, block = 1): void {
     if (progress <= 0) {
       this.crack.visible = false;
       return;
     }
     const stage = Math.min(7, Math.floor(progress * 8));
     const tile = Tile.Crack0 + stage;
-    for (let i = 0; i < this.crackTiles.count; i++) this.crackTiles.setXY(i, tile % 8, Math.floor(tile / 8));
+    for (let i = 0; i < this.crackTiles.count; i++) this.crackTiles.setXY(i, tile % ATLAS_COLS, Math.floor(tile / ATLAS_COLS));
     this.crackTiles.needsUpdate = true;
     this.crack.visible = true;
-    this.crack.position.set(x + 0.5, y + 0.5, z + 0.5);
+    this.fitToShape(this.crack, x, y, z, block);
   }
 
   burst(x: number, y: number, z: number, block: number): void {
