@@ -38,6 +38,7 @@ import {
   placementItem,
   ProjectileKind,
   RefType,
+  sandboxItems,
   REACH,
   rayAabb,
   boxAt,
@@ -162,6 +163,8 @@ export class SurvivalController implements VoxelModule {
     protected readonly opts: SurvivalControllerOptions,
   ) {
     this.creative = opts.mode !== 'survival';
+    // Sandbox: weapons, tools, ammo and food in the Block Picker.
+    if (this.creative) game.worldFeatures.addPickerTab({ id: 'items', label: 'Items', items: () => sandboxItems() });
     this.hotbar = this.creative
       ? null
       : {

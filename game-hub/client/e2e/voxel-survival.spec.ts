@@ -112,10 +112,12 @@ test.describe('Voxelvale survival (offline)', () => {
     await expect(page.getByTestId('death-screen')).toBeVisible();
     await expect(page.getByTestId('death-screen')).toContainText('satchel');
     await expect.poll(() => count(page, 312)).toBe(0);
+    await expect(page.getByTestId('satchel-chip')).toBeVisible();
     await page.getByTestId('respawn').click();
     await expect(page.getByTestId('death-screen')).toBeHidden();
     await expect(page.locator('.gem.full')).toHaveCount(10);
-    await expect(page.getByTestId('satchel-chip')).toBeVisible();
+    // We respawn where we fell (no bedroll, world spawn): walking over the satchel gives everything back.
+    await expect.poll(() => count(page, 312), { timeout: 10_000 }).toBe(1);
   });
 
   test('touch: a shield in the off hand shows the Guard button', async ({ page }, info) => {
