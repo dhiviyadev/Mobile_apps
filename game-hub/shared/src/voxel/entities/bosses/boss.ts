@@ -333,10 +333,13 @@ export class BossController {
       return;
     }
     switch (this.mode) {
-      case 'awakening':
+      case 'awakening': {
         this.scale();
+        const t = targets[0];
+        if (t) this.face(t.x, t.z);
         if (this.modeTime >= AWAKEN_SECONDS) this.setMode('fight');
         return;
+      }
       case 'transition':
         if (this.modeTime >= TRANSITION_SECONDS) this.setMode('fight');
         return;

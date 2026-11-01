@@ -24,7 +24,8 @@ const VERT = /* glsl */ `
     float shade = n.y > 0.5 ? 1.0 : (n.y < -0.5 ? 0.55 : (abs(n.x) > 0.5 ? 0.82 : 0.68));
     float sky = brightness(aLight.x) * mix(0.16, 1.0, uDaylight);
     vec3 lamp = brightness(aLight.y) * vec3(1.0, 0.85, 0.62);
-    vec3 lit = max(max(vec3(sky), lamp), vec3(0.07));
+    // Creatures read a little brighter than terrain so they stand out in dim places.
+    vec3 lit = min(max(max(vec3(sky), lamp) * 1.25, vec3(0.2)), vec3(1.1));
     vLight = mix(shade * lit, vec3(1.0), aLight.w);
     vColor = mix(aColor, vec3(1.0, 0.32, 0.28), aLight.z * 0.75);
     vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
@@ -134,7 +135,6 @@ const tmpEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 const tmpQ = new THREE.Quaternion();
 const tmpV = new THREE.Vector3();
 const tmpS = new THREE.Vector3();
-const ONE = new THREE.Vector3(1, 1, 1);
 
 export class EntityRenderer {
   readonly group = new THREE.Group();
@@ -212,4 +212,3 @@ export class EntityRenderer {
   }
 }
 
-export { ONE };

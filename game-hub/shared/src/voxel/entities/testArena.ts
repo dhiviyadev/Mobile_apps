@@ -18,11 +18,15 @@ export interface TestArena {
 const HALF = 8;
 const HEIGHT = 8;
 
+/**
+ * Original blocks (ids 0..29) only, so the arena renders with any atlas; the
+ * altar and the crypt's lava braziers are the only newer blocks.
+ */
 const STYLE: Record<StructureType, { wall: number; floor: number; pillar: number; ceiling: number; trim: number }> = {
-  [StructureType.SunscorchTemple]: { wall: Block.SandstoneBricks, floor: Block.Marble, pillar: Block.MarblePillar, ceiling: Block.SandstoneBricks, trim: Block.SealedRune },
-  [StructureType.FrostCitadel]: { wall: Block.StoneBricks, floor: Block.StoneBricks, pillar: Block.IceBricks, ceiling: Block.PackedIce, trim: Block.IceBricks },
-  [StructureType.OvergrownShrine]: { wall: Block.MossyStoneBricks, floor: Block.MudBricks, pillar: Block.MossyStoneBricks, ceiling: Block.MossyStoneBricks, trim: Block.SealedRune },
-  [StructureType.AshenCrypt]: { wall: Block.BasaltBricks, floor: Block.BasaltBricks, pillar: Block.RuneBricks, ceiling: Block.BasaltBricks, trim: Block.RuneBricks },
+  [StructureType.SunscorchTemple]: { wall: Block.Brick, floor: Block.Sand, pillar: Block.Planks, ceiling: Block.Brick, trim: Block.Lamp },
+  [StructureType.FrostCitadel]: { wall: Block.Cobble, floor: Block.Stone, pillar: Block.Ice, ceiling: Block.Snow, trim: Block.Lamp },
+  [StructureType.OvergrownShrine]: { wall: Block.Cobble, floor: Block.Dirt, pillar: Block.Log, ceiling: Block.Leaves, trim: Block.Lamp },
+  [StructureType.AshenCrypt]: { wall: Block.Stone, floor: Block.Gravel, pillar: Block.Cobble, ceiling: Block.Stone, trim: Block.Lamp },
 };
 
 /** Builds a test arena of `type` centred on (cx, cz) with its floor surface at feet height `floorY`. */
@@ -68,7 +72,7 @@ export function buildTestArena(type: StructureType, cx: number, floorY: number, 
   }
   if (type === StructureType.AshenCrypt) {
     for (const [px, pz] of [[cx - 7, cz - 7], [cx + 7, cz - 7], [cx - 7, cz + 7], [cx + 7, cz + 7]]) {
-      set(px, F, pz, Block.BasaltBricks);
+      set(px, F, pz, Block.Cobble);
       set(px, F + 1, pz, Block.Lava);
     }
   }
