@@ -1,1 +1,58 @@
 /* Voxelvale styles owned by WP-C: .boss-bar, .bb-*, .mob-target, .mt-*. */
+
+.boss-bar {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(520px, 60vw);
+  pointer-events: none;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.3s;
+  z-index: 6;
+  font-family: ui-rounded, system-ui, sans-serif;
+}
+.boss-bar.on { opacity: 1; }
+.boss-bar .bb-head { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 4px; }
+.boss-bar .bb-name { color: #fff; font-size: 16px; font-weight: 700; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); letter-spacing: 0.02em; }
+.boss-bar .bb-scale { color: #ffd98a; font-size: 12px; font-weight: 700; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8); }
+.boss-bar .bb-tag { color: #ffe680; font-size: 12px; font-weight: 700; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8); }
+.boss-bar .bb-pips { display: flex; gap: 4px; }
+.boss-bar .bb-pip { width: 9px; height: 9px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.7); background: rgba(0, 0, 0, 0.4); }
+.boss-bar .bb-pip.on { background: var(--bb-color, #f2c63a); }
+.boss-bar .bb-track {
+  position: relative;
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(10, 12, 24, 0.7);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.boss-bar .bb-chip,
+.boss-bar .bb-fill { position: absolute; left: 0; top: 0; bottom: 0; }
+.boss-bar .bb-chip { background: rgba(255, 255, 255, 0.85); }
+.boss-bar .bb-fill { background: var(--bb-color, #f2c63a); }
+.boss-bar.invulnerable .bb-fill {
+  background: repeating-linear-gradient(45deg, #8a8a92 0 6px, #6a6a72 6px 12px);
+}
+.boss-bar.flash .bb-track { box-shadow: 0 0 0 2px #fff, 0 0 14px #fff; }
+
+.mob-target {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 28px);
+  transform: translateX(-50%);
+  pointer-events: none;
+  text-align: center;
+  font-family: ui-rounded, system-ui, sans-serif;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 5;
+}
+.mob-target.on { opacity: 1; }
+.mob-target .mt-name { color: #fff; font-size: 13px; font-weight: 700; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85); white-space: nowrap; }
+.mob-target .mt-bar { width: 60px; height: 5px; margin: 3px auto 0; border-radius: 3px; background: rgba(0, 0, 0, 0.5); overflow: hidden; }
+.mob-target .mt-fill { height: 100%; background: #6fdc6a; }
+.mob-target.hostile .mt-fill { background: #ff6a5a; }
+.mob-target .mt-hint { color: #dfe8ff; font-size: 11px; margin-top: 3px; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85); white-space: nowrap; }

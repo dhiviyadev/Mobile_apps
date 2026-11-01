@@ -223,8 +223,8 @@ export class ServerEntities implements VoxelSubsystem {
       out.push({
         id, eid: p.eid, name: p.name, x: p.x, y: p.y, z: p.z, vx: t.vx, vy: t.vy, vz: t.vz, yaw: p.yaw,
         crouching: (p.flags & 1) !== 0, sprinting: Math.hypot(t.vx, t.vz) > 5.5,
-        // Without survival's hooks nobody is a target (sandbox).
-        targetable: false, alive: true, halfWidth: PLAYER_WIDTH / 2, height: PLAYER_HEIGHT, blockingYaw: null,
+        // Survival's hooks decide; until then survival players are noticed (but never hurt).
+        targetable: this.room.mode === 'survival', alive: true, halfWidth: PLAYER_WIDTH / 2, height: PLAYER_HEIGHT, blockingYaw: null,
       });
     });
     this.targets = out;

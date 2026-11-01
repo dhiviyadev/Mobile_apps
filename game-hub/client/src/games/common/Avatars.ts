@@ -297,7 +297,7 @@ function hashId(id: string): number {
   return h;
 }
 
-function makeNameSprite(name: string, color: number): THREE.Sprite {
+export function makeNameSprite(name: string, color: number): THREE.Sprite {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d')!;
   const font = '700 40px ui-rounded, system-ui, sans-serif';
