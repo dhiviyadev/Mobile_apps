@@ -22,7 +22,7 @@
 import { constants as fsConstants } from 'node:fs';
 import fs, { type FileHandle } from 'node:fs/promises';
 import path from 'node:path';
-import { ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH, VOXEL_MODES, type VoxelMode } from '@hub/shared';
+import { type GenVersion, isGenVersion, ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH, VOXEL_MODES, type VoxelMode } from '@hub/shared';
 import { logger } from '../log';
 
 const log = logger('WorldStore');
@@ -31,6 +31,40 @@ const log = logger('WorldStore');
 export const PUBLIC_WORLD_SLOTS = 8;
 
 export const publicWorldId = (slot: number): string => `public-${slot}`;
+
+/** Number of public survival worlds kept (survival-1..survival-N). */
+export const PUBLIC_SURVIVAL_SLOTS = 4;
+
+export const publicSurvivalId = (slot: number): string => `survival-${slot}`;
+
+/** Public slot ids for a saved mode (parkour: none). */
+export function publicSlotIds(mode: VoxelMode): string[] {
+  if (mode === 'sandbox') return Array.from({ length: PUBLIC_WORLD_SLOTS }, (_, i) => publicWorldId(i + 1));
+  if (mode === 'survival') return Array.from({ length: PUBLIC_SURVIVAL_SLOTS }, (_, i) => publicSurvivalId(i + 1));
+  return [];
+}
+
+/**
+ * CVW2 section tags (4 ASCII chars). EDIT is required; the others belong to one
+ * package each and start with their own u8 version. Unknown tags are kept and
+ * written back unchanged.
+ */
+export const SECTION_TAGS = {
+  edits: 'EDIT',
+  /** Survival players by hashed playerKey (WP-B). */
+  players: 'PLYR',
+  /** Chest contents (WP-B). */
+  chests: 'CHST',
+  /** Lost Satchels (WP-B). */
+  satchels: 'SATC',
+  /** Survival room rules and day counter (WP-B). */
+  survival: 'SURV',
+  /** Tamed creatures (WP-C). */
+  mobs: 'MOBS',
+  /** Reserved. */
+  inventory: 'INVT',
+} as const;
+const MAX_SECTIONS = 32;
 
 export interface SavedWorld {
   id: string;
@@ -43,6 +77,10 @@ export interface SavedWorld {
   savedAt: number;
   /** Edit list as encoded by encodeEdits(list, true): u32 count, then 6-byte edits. */
   edits: Uint8Array;
+  /** Terrain generator version (format-1 files: 1). Optional when saving: defaults to 1. */
+  genVersion?: GenVersion;
+  /** Extra sections by tag (never 'EDIT'); kept and re-saved even when this server does not understand them. */
+  sections?: ReadonlyMap<string, Uint8Array>;
 }
 
 /** Tells prune() (and eviction) that an open room holds this world, so it must stay. */
@@ -93,7 +131,7 @@ export interface WorldStore {
   flush(): Promise<void>;
 }
 
-const ID_PATTERN = new RegExp(`^(?:[${ROOM_CODE_ALPHABET}]{${ROOM_CODE_LENGTH}}|public-[1-${PUBLIC_WORLD_SLOTS}])$`);
+const ID_PATTERN = new RegExp(`^(?:[${ROOM_CODE_ALPHABET}]{${ROOM_CODE_LENGTH}}|public-[1-${PUBLIC_WORLD_SLOTS}]|survival-[1-${PUBLIC_SURVIVAL_SLOTS}])$`);
 
 /** True for a 6-character room code or a public slot id; everything else is rejected. */
 export function isValidWorldId(id: unknown): id is string {
@@ -196,35 +234,86 @@ class Serial {
 
 // ---- binary format ----------------------------------------------------------------
 
-const MAGIC = [0x43, 0x56, 0x57, 0x31]; // "CVW1"
-const FORMAT_VERSION = 1;
-/** Bytes before the edit section (which starts with its u32 count). */
+const MAGIC = [0x43, 0x56, 0x57, 0x31]; // "CVW1" (kept for format 2: the magic names the family)
+/** Written by this build. Format 1 (no genVersion, no sections) is still read. */
+const FORMAT_VERSION = 2;
+/** Format 1 and 2 share these first bytes (magic .. savedAt), so readSavedAt() works on both. */
 const HEADER_BYTES = 23;
+/** Format 2 header: + u8 genVersion, u8 flags, u16 sectionCount. */
+const HEADER2_BYTES = 27;
 const EDIT_BYTES = 6;
 
-/** Size of a world as encodeWorld() writes it. */
-const encodedSize = (world: SavedWorld): number => HEADER_BYTES + world.edits.byteLength;
+const tagBytes = (tag: string): number[] => Array.from(tag, (c) => c.charCodeAt(0) & 0x7f);
+const tagOf = (data: Uint8Array, at: number): string => String.fromCharCode(data[at], data[at + 1], data[at + 2], data[at + 3]);
+const isTag = (tag: string): boolean => /^[A-Z0-9]{4}$/.test(tag);
 
+/** Extra sections encodeWorld() writes (valid tags other than EDIT). */
+const extraSections = (world: SavedWorld): [string, Uint8Array][] =>
+  [...(world.sections ?? [])].filter(([tag]) => tag !== SECTION_TAGS.edits && isTag(tag));
+
+/** Format 1 still holds every world on generator 1 without extra sections (old servers can read it). */
+const needsFormat2 = (world: SavedWorld): boolean => (world.genVersion ?? 1) !== 1 || extraSections(world).length > 0;
+
+/** Size of a world as encodeWorld() writes it. */
+const encodedSize = (world: SavedWorld): number => {
+  if (!needsFormat2(world)) return HEADER_BYTES + world.edits.byteLength;
+  let n = HEADER2_BYTES + 8 + world.edits.byteLength;
+  for (const [, bytes] of extraSections(world)) n += 8 + bytes.byteLength;
+  return n;
+};
+
+/**
+ * Format 1 (unchanged): the 23-byte header, then the edit list. Written while a
+ * world needs nothing more (generator 1, no sections).
+ * Format 2, little-endian:
+ *   0 "CVW1" | 4 u8 formatVersion = 2 | 5 u8 mode (index in VOXEL_MODES) | 6 u8 private
+ *   7 u32 seed | 11 f32 timeOfDay | 15 f64 savedAt | 23 u8 genVersion | 24 u8 flags (0)
+ *   25 u16 sectionCount | 27.. sections: 4 ASCII tag, u32 byteLength, payload
+ * EDIT (required, first) = encodeEdits(list, true).
+ */
 export function encodeWorld(world: SavedWorld): Uint8Array {
-  const out = new Uint8Array(HEADER_BYTES + world.edits.byteLength);
+  const format2 = needsFormat2(world);
+  const sections: [string, Uint8Array][] = [[SECTION_TAGS.edits, world.edits], ...extraSections(world)];
+  if (sections.length > MAX_SECTIONS) throw new Error(`too many sections (${sections.length})`);
+  const out = new Uint8Array(encodedSize(world));
   const view = new DataView(out.buffer);
   out.set(MAGIC, 0);
-  view.setUint8(4, FORMAT_VERSION);
+  view.setUint8(4, format2 ? FORMAT_VERSION : 1);
   view.setUint8(5, Math.max(0, VOXEL_MODES.indexOf(world.mode)));
   view.setUint8(6, world.private ? 1 : 0);
   view.setUint32(7, world.seed >>> 0, true);
   view.setFloat32(11, world.timeOfDay, true);
   view.setFloat64(15, world.savedAt, true);
-  out.set(world.edits, HEADER_BYTES);
+  if (!format2) {
+    out.set(world.edits, HEADER_BYTES);
+    return out;
+  }
+  view.setUint8(23, world.genVersion ?? 1);
+  view.setUint8(24, 0);
+  view.setUint16(25, sections.length, true);
+  let o = HEADER2_BYTES;
+  for (const [tag, bytes] of sections) {
+    out.set(tagBytes(tag), o);
+    view.setUint32(o + 4, bytes.byteLength, true);
+    out.set(bytes, o + 8);
+    o += 8 + bytes.byteLength;
+  }
   return out;
 }
 
-/** Parses a world file. Throws on anything malformed, including truncation. */
+function checkEdits(edits: Uint8Array): void {
+  if (edits.byteLength < 4) throw new Error('edit section too short');
+  const count = new DataView(edits.buffer, edits.byteOffset, edits.byteLength).getUint32(0, true);
+  if (edits.byteLength !== 4 + count * EDIT_BYTES) throw new Error(`expected ${count} edits, file is truncated or padded`);
+}
+
+/** Parses a world file (format 1 or 2). Throws on anything malformed, including truncation. */
 export function decodeWorld(id: string, data: Uint8Array): SavedWorld {
   if (data.byteLength < HEADER_BYTES + 4) throw new Error('file too short');
   for (let i = 0; i < MAGIC.length; i++) if (data[i] !== MAGIC[i]) throw new Error('bad magic');
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  if (view.getUint8(4) !== FORMAT_VERSION) throw new Error(`unsupported version ${view.getUint8(4)}`);
+  const version = view.getUint8(4);
+  if (version !== 1 && version !== FORMAT_VERSION) throw new Error(`unsupported version ${version}`);
   const mode = VOXEL_MODES[view.getUint8(5)];
   if (!mode) throw new Error('bad mode');
   const flag = view.getUint8(6);
@@ -232,22 +321,48 @@ export function decodeWorld(id: string, data: Uint8Array): SavedWorld {
   const timeOfDay = view.getFloat32(11, true);
   const savedAt = view.getFloat64(15, true);
   if (!Number.isFinite(timeOfDay) || !Number.isFinite(savedAt)) throw new Error('bad header values');
-  const count = view.getUint32(HEADER_BYTES, true);
-  if (data.byteLength !== HEADER_BYTES + 4 + count * EDIT_BYTES) throw new Error(`expected ${count} edits, file is truncated or padded`);
-  return {
-    id,
-    seed: view.getUint32(7, true),
-    mode,
-    private: flag === 1,
-    timeOfDay: ((timeOfDay % 1) + 1) % 1,
-    savedAt,
-    edits: data.subarray(HEADER_BYTES),
-  };
+  const base = { id, seed: view.getUint32(7, true), mode, private: flag === 1, timeOfDay: ((timeOfDay % 1) + 1) % 1, savedAt };
+  if (version === 1) {
+    const edits = data.subarray(HEADER_BYTES);
+    checkEdits(edits);
+    return { ...base, edits }; // no genVersion (= 1), no sections
+  }
+  if (data.byteLength < HEADER2_BYTES) throw new Error('file too short');
+  const genVersion = view.getUint8(23);
+  if (!isGenVersion(genVersion)) throw new Error(`bad generator version ${genVersion}`);
+  const count = view.getUint16(25, true);
+  if (count < 1 || count > MAX_SECTIONS) throw new Error(`bad section count ${count}`);
+  const sections = new Map<string, Uint8Array>();
+  let edits: Uint8Array | null = null;
+  let o = HEADER2_BYTES;
+  for (let i = 0; i < count; i++) {
+    if (o + 8 > data.byteLength) throw new Error('section header overruns the file');
+    const tag = tagOf(data, o);
+    const len = view.getUint32(o + 4, true);
+    if (o + 8 + len > data.byteLength) throw new Error(`section ${tag} overruns the file`);
+    const payload = data.subarray(o + 8, o + 8 + len);
+    if (tag === SECTION_TAGS.edits) {
+      if (edits) throw new Error('duplicate EDIT section');
+      edits = payload;
+    } else {
+      if (!isTag(tag) || sections.has(tag)) throw new Error(`bad or duplicate section ${JSON.stringify(tag)}`);
+      sections.set(tag, payload);
+    }
+    o += 8 + len;
+  }
+  if (o !== data.byteLength) throw new Error('trailing bytes after the last section');
+  if (!edits) throw new Error('missing EDIT section');
+  checkEdits(edits);
+  return { ...base, edits, genVersion, sections };
 }
 
 // ---- in-memory store -------------------------------------------------------------------
 
-const copyWorld = (w: SavedWorld): SavedWorld => ({ ...w, edits: w.edits.slice() });
+const copyWorld = (w: SavedWorld): SavedWorld => ({
+  ...w,
+  edits: w.edits.slice(),
+  ...(w.sections ? { sections: new Map([...w.sections].map(([tag, b]) => [tag, b.slice()])) } : {}),
+});
 
 export class MemoryWorldStore implements WorldStore {
   readonly durable = false;

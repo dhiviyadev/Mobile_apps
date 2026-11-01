@@ -4,6 +4,7 @@
  * parallel "download game bundle" + "join room", then hand-off to the game.
  */
 import { GAME_TITLES, type GameId, type JoinOptions, PROTOCOL_TEXT } from '@hub/shared';
+import { getPlayerKey } from '../core/playerKey';
 import { enterFullscreen, exitFullscreen, isTouchDevice, ScreenWakeLock } from '../core/device';
 import { settings } from '../core/settings';
 import { h } from '../core/ui/dom';
@@ -51,7 +52,7 @@ class UnsupportedError extends Error {
 export function profileOptions(mode?: string): JoinOptions {
   const s = settings.get();
   // botDifficulty only matters for an arena room this player creates; the server validates it.
-  return { nickname: s.nickname, color: s.color, mode, botDifficulty: s.arenaBotDifficulty };
+  return { nickname: s.nickname, color: s.color, mode, botDifficulty: s.arenaBotDifficulty, playerKey: getPlayerKey() };
 }
 
 export async function launchGame(req: LaunchRequest, hooks: LaunchHooks): Promise<void> {

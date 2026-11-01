@@ -19,4 +19,12 @@ export const GAME_ICONS = {
   /** Arcfire Arena: the crouch button while a slide is possible. */
   slide: svg('<path d="M3 19h18M5 15h11M13 12l3 3-3 3"/>'),
   autofire: svg('<circle cx="12" cy="12" r="8"/><path d="M9 15.5l3-7.5 3 7.5M10.2 13h3.6"/>'),
+  // ---- Voxelvale (world, survival) ----
+  blocks: svg('<rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/>'),
+  eyedropper: svg('<path d="M19 5l-3-3-4 4 3 3zM15 9l-9 9H4v-2l9-9"/>'),
+  bag: svg('<path d="M6 8h12l-1 12H7z"/><path d="M9 8a3 3 0 0 1 6 0"/>'),
+  sword: svg('<path d="M14 4h6v6L9 21l-3-3z"/><path d="M5 15l4 4M3 21l2-2"/>'),
+  shield: svg('<path d="M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6z"/>'),
+  bow: svg('<path d="M6 3c8 3 12 9 15 15M6 3l15 15M3 12h9"/>'),
+  eat: svg('<path d="M8 4c-2 3-2 7 1 9v7M12 4v6M16 4c2 3 2 7-1 9v7"/>'),
 };

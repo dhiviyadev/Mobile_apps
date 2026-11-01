@@ -24,11 +24,53 @@ export const VoxelMsg = {
   Chat: 'chat',
   /** C→S parkour progress event (JSON) */
   Parkour: 'pk',
+
+  // ---- survival (WP-B; codecs in voxel/survival/protocol.ts; layouts in INTEGRATION-voxel.md §1.5) ----
+  /** C→S hand state: u8 slot, u8 HandFlags, u16 creativeItem */
+  Hand: 'hd',
+  /** C→S melee swing: u16 seq, u8 targetRefType, u16 targetId, f32 ex, ey, ez, angle yaw, angle pitch, u8 flags */
+  Attack: 'k',
+  /** C→S bow/crossbow shot: u16 seq, f32 ox, oy, oz, angle yaw, angle pitch, u8 charge */
+  Shoot: 's',
+  /** C→S started digging a cell: i16 x, u8 y, i16 z */
+  DigStart: 'g',
+  /** C→S inventory operation: u16 seq, u8 op, payload */
+  InvOp: 'i',
+  /** C→S interact with a block: u8 InteractKind, i16 x, u8 y, i16 z */
+  Interact: 'x',
+  /** C→S respawn after death: u8 0 */
+  Respawn: 'r',
+  /** C→S room rules (JSON {pvp?, keepInventory?}), host of a private survival room only */
+  Rules: 'rules',
+  /** S→C batched survival events: u8 count, count × (u8 type, u8 len, payload) */
+  SurvivalEvents: 'S',
+  /** S→C inventory sync (owner): u16 ack, u8 flags, u8 n, n × (u8 ref, u16 item, u8 count, u16 meta) */
+  InvSync: 'I',
+  /** S→C own vitals: u8 hpHalf, u8 foodHalf, u8 air, u8 VitalFlags, u8 slowPct, u8 slowTenths, u8 burnTenths */
+  Vitals: 'vt',
+  /** S→C container opened/closed: u8 open, i16 x, u8 y, i16 z, u8 size, u8 flags */
+  Container: 'C',
+  /** S→C you died (JSON {cause, satchel}) */
+  Dead: 'dead',
+
+  // ---- creatures (WP-C; codecs in voxel/entities/net.ts) ----
+  /** S→C entity snapshot, 10 Hz per client */
+  Entities: 'N',
+  /** S→C entity events, every tick with events for that client */
+  EntityEvents: 'V',
+  /** C→S feed/tame/name a creature: u16 mobId, u8 keyLen, key bytes (ASCII) */
+  MobInteract: 'mi',
+  /** S→C interaction result: u16 mobId, u8 result */
+  MobInteractResult: 'mr',
+  /** C→S rename own tamed creature (JSON {id, name}) */
+  MobName: 'mn',
 } as const;
 
 export const MoveFlags = {
   Crouch: 1,
   InWater: 2,
+  /** Sprinting (survival food drain, mob perception). */
+  Sprint: 4,
 } as const;
 
 export interface BlockEdit {

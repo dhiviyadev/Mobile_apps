@@ -1,5 +1,5 @@
 /** Online Voxelvale: build the game from the room's seed and attach the network layer. */
-import type { VoxelMode } from '@hub/shared';
+import { isGenVersion, type VoxelMode } from '@hub/shared';
 import { setPauseNote } from '../../common/PauseMenu';
 import type { GameInstance, GameLaunchContext } from '../../types';
 import { VoxelGame } from '../VoxelGame';
@@ -31,6 +31,9 @@ export async function launchOnline(ctx: GameLaunchContext, fallbackMode: VoxelMo
     // Use the server's idea of where we are (matters after a reconnect / page reload).
     initialPlayer: me ? { x: me.x, y: me.y, z: me.z, yaw: me.yaw, pitch: me.pitch } : null,
     initialTime: state.timeOfDay,
+    // A server without the field (or an old world) means generator 1.
+    genVersion: isGenVersion(state.genVersion) ? state.genVersion : 1,
+    online: true,
   });
   const net = new VoxelNet(session, game, ctx.container);
   game.setNet(net);

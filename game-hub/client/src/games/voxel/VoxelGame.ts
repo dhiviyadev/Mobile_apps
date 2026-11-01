@@ -6,11 +6,14 @@
 import * as THREE from 'three';
 import {
   Block,
+  blockDef,
   createWorldGenerator,
   DAY_LENGTH_SECONDS,
   forwardFromYawPitch,
-  HOTBAR_BLOCKS,
+  type GenVersion,
+  LATEST_GEN_VERSION,
   StreamedFluids,
+  type WorldGenerator,
   type VoxelMode,
   WORLD_LIMIT,
 } from '@hub/shared';
@@ -27,6 +30,13 @@ import { dialog, type LoadingScreen } from '../../core/ui/overlays';
 import { isSettingsOpen } from '../../core/ui/settingsMenu';
 import { PauseMenu } from '../common/PauseMenu';
 import { voxelTouchLayout } from './controls';
+import { EntityView } from './entities/EntityView';
+import { LocalEntities } from './entities/LocalEntities';
+import type { HotbarSource, InteractionHooks, MoveMods, VoxelModule } from './modules';
+import type { VoxelNet } from './net/VoxelNet';
+import { SurvivalController } from './survival/SurvivalController';
+import { createItemIcons } from './ui/itemIcons';
+import { WorldFeatures } from './world/WorldFeatures';
 import { BlockFx } from './fx/BlockFx';
 import { ParkourRun } from './parkour/ParkourRun';
 import { BlockInteraction } from './player/BlockInteraction';
@@ -74,6 +84,13 @@ export interface VoxelGameOptions {
   /** Persist offline worlds (called periodically and on exit). */
   onSave?: (game: VoxelGame) => void;
   onResetWorld?: () => void;
+  /** Terrain generator version of this world (online: VoxelState.genVersion; offline: save `gen`). Default LATEST. */
+  genVersion?: GenVersion;
+  /** Played through a server (set by net/online.ts): no local creature sim. */
+  online?: boolean;
+  /** Offline save payloads owned by packages (index.ts OfflineSave.mobs / .survival). */
+  initialMobs?: unknown;
+  initialSurvival?: unknown;
 }
 
 const OFFLINE_SAVE_INTERVAL = 30;
@@ -91,6 +108,19 @@ export class VoxelGame {
   readonly hud: VoxelHud;
   readonly parkour: ParkourRun | null;
   net: VoxelNetHooks | null = null;
+  /** Same generator the workers use (biomes, structures, spawn). */
+  readonly generator: WorldGenerator;
+  // ---- packages (see modules.ts) ----
+  readonly worldFeatures: WorldFeatures;
+  /** Sandbox and survival (creative in sandbox); null in parkour. */
+  readonly survival: SurvivalController | null;
+  /** Creatures as rendered; null in parkour. */
+  readonly entities: EntityView | null;
+  /** Offline creature sim; null online and in parkour. */
+  readonly localEntities: LocalEntities | null;
+  private readonly modules: VoxelModule[];
+  /** Touch controls (packages relabel buttons with setButton). */
+  readonly touchControls: TouchControls | null;
 
   private readonly pool: WorkerPool;
   private readonly uniforms;
@@ -103,7 +133,7 @@ export class VoxelGame {
   private readonly handScene = new THREE.Scene();
   private readonly handCamera = new THREE.PerspectiveCamera(60, 1, 0.01, 10);
   private held: THREE.Mesh;
-  private heldBlock: Block = HOTBAR_BLOCKS[0];
+  private heldBlock: number = Block.Grass;
   /** Sky and block light on the held block (0..15), easing toward the light at the eye. */
   private heldSky = 15;
   private heldLamp = 0;
@@ -148,7 +178,8 @@ export class VoxelGame {
     this.scene.add(this.fx.group);
 
     // Player at the generator's spawn (or the saved offline position).
-    const gen = createWorldGenerator(seed, mode);
+    const gen = createWorldGenerator(seed, mode, opts.genVersion ?? LATEST_GEN_VERSION);
+    this.generator = gen;
     const spawn = opts.initialPlayer ?? { ...gen.findSpawn(), yaw: 0, pitch: 0 };
     this.player = new LocalPlayer(this.camera, spawn.x, spawn.y, spawn.z);
     this.player.yaw = spawn.yaw;
@@ -160,15 +191,32 @@ export class VoxelGame {
     this.fluids = new StreamedFluids(this.world);
     this.fluids.restore(opts.initialEdits ?? []);
 
+    // Packages. Order matters for hooks: creatures first, then survival, then the world area.
+    this.worldFeatures = new WorldFeatures(this);
+    const combat = mode !== 'parkour';
+    this.survival = combat ? new SurvivalController(this, { mode: mode === 'survival' ? 'survival' : 'sandbox', online: !!opts.online, saved: opts.initialSurvival }) : null;
+    this.entities = combat ? new EntityView(this) : null;
+    this.localEntities = combat && !opts.online ? new LocalEntities(this, { mode, saved: opts.initialMobs }) : null;
+    this.survival?.setEntities(this.localEntities?.api ?? null);
+    this.modules = [this.entities, this.survival, this.worldFeatures].filter((m): m is NonNullable<typeof m> => m !== null);
+
+    const hook = <K extends keyof InteractionHooks>(k: K): InteractionHooks[K] | undefined => this.modules.find((m) => m.interaction?.[k])?.interaction?.[k];
     this.interaction = new BlockInteraction(
       {
         getBlock: this.world.getBlock,
         canEdit: () => !this.parkour,
         edit: (x, y, z, id) => this.requestEdit(x, y, z, id),
-        isOccupied: (x, y, z) => this.net?.isOccupied(x, y, z) ?? false,
+        isOccupied: (x, y, z) => (this.net?.isOccupied(x, y, z) ?? false) || (this.entities?.overlapsCell(x, y, z) ?? false),
+        breakSeconds: (b) => hook('breakSeconds')?.(b) ?? blockDef(b).hardness,
+        onDigStart: (x, y, z) => hook('onDigStart')?.(x, y, z),
+        entityDistance: () => hook('entityDistance')?.() ?? Infinity,
+        onSecondary: (t, pressed) => hook('onSecondary')?.(t, pressed) ?? false,
       },
       this.fx,
     );
+    this.player.onStep = (b) => {
+      for (const m of this.modules) m.onStep?.(b);
+    };
 
     // Held block in a separate overlay pass so it never clips into walls.
     this.handScene.add(new THREE.AmbientLight(0xffffff, 1));
@@ -179,14 +227,28 @@ export class VoxelGame {
     this.kbm = new KeyboardMouse(this.input, this.renderer.canvas);
     this.kbm.onUnlock = () => this.openPause();
     this.touch = isTouchDevice()
-      ? new TouchControls(this.input, voxelTouchLayout(() => this.openPause(), opts.chat ? () => this.net?.openChat?.() : null), container)
+      ? new TouchControls(
+          this.input,
+          voxelTouchLayout({
+            onMenu: () => this.openPause(),
+            onChat: opts.chat ? () => this.net?.openChat?.() : null,
+            onBlocks: mode === 'sandbox' ? () => this.worldFeatures.openPicker() : null,
+            onInventory: mode === 'survival' ? () => this.survival?.openInventory() : null,
+            combat,
+          }),
+          container,
+        )
       : null;
+    this.touchControls = this.touch;
+    this.touch?.setButton('guard', { hidden: true });
     if (this.parkour) {
       this.touch?.setButton('break', { hidden: true });
       this.touch?.setButton('place', { hidden: true });
     }
 
-    this.hud = new VoxelHud(container, atlasCanvas, (i) => this.input.selectSlot(i), !!this.parkour);
+    this.hud = new VoxelHud(container, createItemIcons(atlasCanvas).iconFor, (i) => this.input.selectSlot(i), !!this.parkour);
+    this.hud.onLongPress = mode === 'sandbox' ? (i) => this.worldFeatures.openPicker(i) : null;
+    this.syncHotbar(true);
     this.stats = new StatsOverlay(container, this.renderer, () => this.net?.ping() ?? null);
     this.pause = new PauseMenu(container, {
       title: this.parkour ? 'Voxelvale · Parkour' : 'Voxelvale',
@@ -244,6 +306,10 @@ export class VoxelGame {
 
   setNet(net: VoxelNetHooks): void {
     this.net = net;
+    if ('session' in net) {
+      this.survival?.attachNet(net as VoxelNet);
+      this.entities?.attachNet(net as VoxelNet);
+    }
     this.pause.setRoomCode(net.roomCode);
     this.fluids.clear();
   }
@@ -251,6 +317,23 @@ export class VoxelGame {
   /** Applies an edit coming from the server (or local offline play). */
   applyEdit(x: number, y: number, z: number, id: number): void {
     this.world.setBlock(x, y, z, id);
+  }
+
+  /**
+   * Offline gameplay edit (boss altar -> dormant, support cascades): applied,
+   * kept in the save like a player edit, seen by fluids and packages.
+   */
+  applyWorldEdit(x: number, y: number, z: number, id: number): void {
+    const before = this.world.getBlock(x, y, z);
+    if (before === id) return;
+    this.world.setBlock(x, y, z, id);
+    this.fluids.notifyEdit(x, y, z);
+    for (const m of this.modules) m.afterLocalEdit?.(x, y, z, before, id);
+  }
+
+  /** Hotbar owner in this mode (survival inventory, else the sandbox hotbar). */
+  get hotbar(): HotbarSource {
+    return this.survival?.hotbar ?? this.worldFeatures.hotbar;
   }
 
   /**
@@ -274,6 +357,8 @@ export class VoxelGame {
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.unsubscribeSettings();
     this.resizeOff();
+    for (const m of this.modules) m.dispose?.();
+    this.localEntities?.dispose();
     this.net?.dispose();
     this.kbm.dispose();
     this.touch?.dispose();
@@ -297,38 +382,53 @@ export class VoxelGame {
     if (!this.renderer.frameAllowed()) return;
     const dt = this.renderer.beginFrame();
     const input = this.input.consume();
-    const paused = this.pause.isOpen || isSettingsOpen() || this.touch?.isEditing() === true || this.net?.isChatOpen?.() === true;
+    const modal = this.modules.some((m) => m.isModalOpen?.());
+    const paused = modal || this.pause.isOpen || isSettingsOpen() || this.touch?.isEditing() === true || this.net?.isChatOpen?.() === true;
     this.input.setEnabled(!paused);
 
-    if (input.pressed.has('menu')) this.togglePause();
+    if (input.pressed.has('menu') && !modal) this.togglePause();
     if (input.pressed.has('chat')) this.net?.openChat?.();
     if (input.pressed.has('scoreboard')) this.hud.toggleHelp();
     this.handleHotbar(input);
 
+    // Packages adjust movement (guard, draw, eating, slow, starving; dead/resting lock it).
+    const mods: MoveMods = {};
+    for (const m of this.modules) {
+      const r = m.beforePhysics?.(dt, input);
+      if (!r) continue;
+      mods.speedMul = (mods.speedMul ?? 1) * (r.speedMul ?? 1);
+      mods.noSprint = mods.noSprint || r.noSprint;
+      mods.locked = mods.locked || r.locked;
+    }
+
     // Look + movement
     this.player.look(input.lookYaw, input.lookPitch);
     const b = this.player.body;
+    const locked = mods.locked === true;
     this.player.update(
       dt,
       {
-        strafe: input.moveX,
-        forward: input.moveY,
-        jump: input.held.has('jump'),
-        crouch: input.held.has('crouch'),
-        sprint: input.held.has('sprint') || input.stickSprint,
+        strafe: locked ? 0 : input.moveX,
+        forward: locked ? 0 : input.moveY,
+        jump: !locked && input.held.has('jump'),
+        crouch: !locked && input.held.has('crouch'),
+        sprint: !locked && (input.held.has('sprint') || input.stickSprint),
         autoJump: settings.get().autoJump,
+        speedMul: mods.speedMul,
+        noSprint: mods.noSprint,
       },
       this.world.getBlock,
       !this.world.isLoaded(b.x, b.z),
     );
     this.clampToWorld();
     this.world.update(b.x, b.z);
+    this.localEntities?.update(dt, paused);
 
     // Interaction
     forwardFromYawPitch(this.player.yaw, this.player.pitch, this.fwd);
     this.tmpDir.set(this.fwd.x, this.fwd.y, this.fwd.z);
     this.camera.getWorldPosition(this.tmpEye);
-    this.interaction.update(dt, input, this.tmpEye, this.tmpDir, HOTBAR_BLOCKS[this.hud.selected], b);
+    this.interaction.update(dt, input, this.tmpEye, this.tmpDir, locked ? null : this.hotbar.placeable(this.hud.selected), b, this.player.yaw);
 
     // Parkour rules
     if (this.parkour) this.updateParkour();
@@ -341,6 +441,9 @@ export class VoxelGame {
     this.updateLighting();
 
     this.fx.update(dt);
+    this.entities?.render(dt, this.camera, this.sky.daylight);
+    for (const m of this.modules) m.update?.(dt, input, paused);
+    this.syncHotbar(false);
     this.net?.sendState(b.x, b.y, b.z, this.player.yaw, this.player.pitch, (this.player.crouching ? 1 : 0) | (b.inWater ? 2 : 0));
     this.net?.update(dt, this.camera);
     this.updateHeldItem(dt);
@@ -383,25 +486,37 @@ export class VoxelGame {
   private handleHotbar(input: InputFrame): void {
     if (this.parkour) return;
     let idx = this.hud.selected;
-    if (input.slotSelect !== null && input.slotSelect < HOTBAR_BLOCKS.length) idx = input.slotSelect;
+    const n = this.hotbar.views().length;
+    if (input.slotSelect !== null && input.slotSelect < n) idx = input.slotSelect;
     if (input.slotDelta) idx += input.slotDelta;
     if (idx !== this.hud.selected) {
       this.hud.select(idx);
       audio.play('click');
-      this.setHeldBlock(HOTBAR_BLOCKS[this.hud.selected]);
+      this.setHeldBlock(this.hotbar.heldItem(this.hud.selected));
     }
   }
 
-  private setHeldBlock(block: Block): void {
-    if (block === this.heldBlock) return;
-    this.heldBlock = block;
+  /** Pushes hotbar changes from its owner to the HUD (and the held block). */
+  private syncHotbar(force: boolean): void {
+    const src = this.hotbar;
+    if (!src.takeChanged() && !force) return;
+    this.hud.setSlots(src.views());
+    this.hud.setOffhand(src.offhand?.());
+    this.setHeldBlock(src.heldItem(this.hud.selected));
+  }
+
+  /** WP-B replaces the held block with HeldItemView (items >= 256 are hidden until then). */
+  private setHeldBlock(item: number): void {
+    if (item === this.heldBlock) return;
+    this.heldBlock = item;
+    if (item <= 0 || item >= 256) return;
     this.held.geometry.dispose();
-    this.held.geometry = createBlockGeometry(block, 0.24);
+    this.held.geometry = createBlockGeometry(item, 0.24);
     this.heldLightKey = -1;
   }
 
   private updateHeldItem(dt: number): void {
-    this.held.visible = !this.parkour;
+    this.held.visible = !this.parkour && this.heldBlock > 0 && this.heldBlock < 256;
     const b = this.player.body;
     const speed = Math.hypot(b.vx, b.vz);
     const t = performance.now() / 1000;
@@ -437,8 +552,12 @@ export class VoxelGame {
     if (this.net) {
       if (!this.net.requestEdit(x, y, z, id)) return;
     }
+    const before = this.world.getBlock(x, y, z);
     this.world.setBlock(x, y, z, id);
-    if (!this.net) this.fluids.notifyEdit(x, y, z);
+    if (!this.net) {
+      this.fluids.notifyEdit(x, y, z);
+      for (const m of this.modules) m.afterLocalEdit?.(x, y, z, before, id);
+    }
   }
 
   /** Offline water: a few simulation steps per second, like the server. */

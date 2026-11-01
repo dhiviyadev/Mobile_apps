@@ -13,6 +13,18 @@ export class VoxelPlayer extends HubPlayer {
   /** Parkour: best finish time in ms (0 = none) and current checkpoint. */
   @type('uint32') bestMs = 0;
   @type('uint8') checkpoint = 0;
+  // ---- survival / combat (written by SurvivalRoomHost, WP-B) ----
+  /** Entity id in binary combat messages (1..999; 0 = none, parkour). */
+  @type('uint16') eid = 0;
+  /** Health rounded up (0..20); 20 in sandbox. */
+  @type('uint8') hp = 20;
+  /** Main-hand and off-hand item ids for third-person models (0 = empty). */
+  @type('uint16') held = 0;
+  @type('uint16') offhand = 0;
+  /** ActFlags: Guard 1, Draw 2, Load 4, Loaded 8, Eat 16, Dead 32, Rest 64, Burning 128. */
+  @type('uint8') act = 0;
+  /** Increments on every melee swing (remote clients play the swing when it changes). */
+  @type('uint8') swing = 0;
 }
 
 export class VoxelState extends HubState<VoxelPlayer> {
@@ -30,4 +42,10 @@ export class VoxelState extends HubState<VoxelPlayer> {
   @type('uint16') saveDays = 0;
   /** Private (code-only) room: the room code is what reopens a saved world. */
   @type('boolean') privateRoom = false;
+  /** Terrain generator version of this world (1 = original, 2 = biomes; world area). */
+  @type('uint8') genVersion = 1;
+  /** Survival RuleFlags (PvP 1, KeepInventory 2). */
+  @type('uint8') rules = 0;
+  /** Survival day counter (starts at 1; +1 when timeOfDay wraps or a night is skipped). */
+  @type('uint16') day = 1;
 }

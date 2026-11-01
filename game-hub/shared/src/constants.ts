@@ -14,8 +14,12 @@ export const GAME_TITLES: Record<GameId, string> = {
   arena: 'Arcfire Arena',
 };
 
-/** Voxel sandbox sub-modes. */
-export const VOXEL_MODES = ['sandbox', 'parkour'] as const;
+/**
+ * Voxelvale sub-modes. Append only: the index is the mode byte of saved world
+ * files (CVW), so 'survival' is 2 forever. Display order lives in the hub
+ * (GameSheet VOXEL_MODE_ORDER).
+ */
+export const VOXEL_MODES = ['sandbox', 'parkour', 'survival'] as const;
 export type VoxelMode = (typeof VOXEL_MODES)[number];
 
 /** Arena shooter match formats. */

@@ -1,3 +1,7 @@
+import { voxelMobSfx } from './sfxVoxelMobs';
+import { voxelSurvivalSfx } from './sfxVoxelSurvival';
+import { voxelWorldSfx } from './sfxVoxelWorld';
+
 /**
  * Synthesised sound effects. Each recipe builds a short-lived WebAudio graph
  * from oscillators and a shared noise buffer.
@@ -11,7 +15,7 @@ export interface Voice {
   pitch: number;
 }
 
-interface SfxDef {
+export interface SfxDef {
   play(v: Voice): void;
   /** Seconds until the voice is silent (for cleanup). */
   length?: number;
@@ -19,7 +23,7 @@ interface SfxDef {
   minGap?: number;
 }
 
-interface ToneOpts {
+export interface ToneOpts {
   type?: OscillatorType;
   freq: number;
   freqEnd?: number;
@@ -47,7 +51,7 @@ function tone(v: Voice, o: ToneOpts): void {
   osc.stop(t + o.dur + 0.02);
 }
 
-interface NoiseOpts {
+export interface NoiseOpts {
   dur: number;
   vol?: number;
   type?: BiquadFilterType;
@@ -103,7 +107,19 @@ function gun(v: Voice, g: GunVoice): void {
   if (g.tick) tone(v, { type: 'square', freq: g.tick[0], dur: g.tick[1], vol: g.tick[2] });
 }
 
+/** Helpers handed to recipe files (they import only types from here, so there is no import cycle). */
+export interface SynthKit {
+  tone(v: Voice, o: ToneOpts): void;
+  noise(v: Voice, o: NoiseOpts): void;
+  notes(v: Voice, freqs: number[], step: number, type: OscillatorType, vol?: number, dur?: number): void;
+}
+const KIT: SynthKit = { tone, noise, notes };
+
 const defs = {
+  // Voxelvale recipes live in one file per package (no merge conflicts here).
+  ...voxelWorldSfx(KIT),
+  ...voxelSurvivalSfx(KIT),
+  ...voxelMobSfx(KIT),
   click: { play: (v) => tone(v, { freq: 1300, freqEnd: 900, dur: 0.05, vol: 0.18 }), length: 0.1 },
   chat: { play: (v) => notes(v, [880, 1175], 0.06, 'sine', 0.12, 0.08), length: 0.2 },
   countdown: { play: (v) => tone(v, { type: 'square', freq: 660, dur: 0.12, vol: 0.12 }), length: 0.2 },

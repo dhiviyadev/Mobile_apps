@@ -35,6 +35,8 @@ export interface Settings {
   /** Voxelvale: hop up single blocks automatically while walking. */
   autoJump: boolean;
   aimAssist: boolean;
+  /** Voxelvale: floating damage numbers on hits. */
+  damageNumbers: boolean;
   touchButtonScale: number;
   touchOpacity: number;
   /** Per-button overrides keyed by "<layoutId>:<buttonId>". */
@@ -74,6 +76,7 @@ export const DEFAULT_SETTINGS: Settings = {
   leftHanded: false,
   autoJump: true,
   aimAssist: true,
+  damageNumbers: true,
   touchButtonScale: 1,
   touchOpacity: 0.85,
   touchLayout: {},

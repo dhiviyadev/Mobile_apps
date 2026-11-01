@@ -72,6 +72,7 @@ export function openSettings(opts: SettingsMenuOptions = {}): void {
         toggleRow('Left-handed layout', 'leftHanded', 'Joystick on the right, look and buttons on the left.'),
         toggleRow('Auto-jump (Voxelvale)', 'autoJump', 'Hop up single blocks automatically while walking.'),
         toggleRow('Aim assist (touch only)', 'aimAssist', 'Slightly slows aiming when your crosshair is over an opponent.'),
+        toggleRow('Damage numbers (Voxelvale)', 'damageNumbers', 'Show how much damage each hit deals.'),
         toggleRow('Auto-shoot (Arcfire Arena)', 'autoShoot', 'Fires automatically while your crosshair is on an opponent. Works with touch and mouse.'),
         toggleRow('Camera motion effects', 'cameraMotion', 'Speed zoom, slide tilt and landing dip in Arcfire Arena. Turn off if motion makes you uncomfortable.'),
         selectRow('Bot difficulty (Arcfire Arena)', 'arenaBotDifficulty', [
@@ -113,7 +114,7 @@ export function openSettings(opts: SettingsMenuOptions = {}): void {
           h('button', {
             class: 'btn btn-sm btn-danger',
             onclick: () => {
-              settings.reset(['quality', 'detectedQuality', 'renderDistance', 'dynamicResolution', 'fpsCap', 'showStats', 'lookSensitivity', 'mouseSensitivity', 'invertY', 'leftHanded', 'autoJump', 'aimAssist', 'touchButtonScale', 'touchOpacity', 'touchLayout', 'masterVolume', 'musicVolume', 'sfxVolume', 'autoShoot', 'cameraMotion', 'arenaBotDifficulty']);
+              settings.reset(['quality', 'detectedQuality', 'renderDistance', 'dynamicResolution', 'fpsCap', 'showStats', 'lookSensitivity', 'mouseSensitivity', 'invertY', 'leftHanded', 'autoJump', 'aimAssist', 'touchButtonScale', 'touchOpacity', 'touchLayout', 'masterVolume', 'musicVolume', 'sfxVolume', 'autoShoot', 'cameraMotion', 'arenaBotDifficulty', 'damageNumbers']);
               toast('Settings reset', 'success');
               renderBody();
             },
