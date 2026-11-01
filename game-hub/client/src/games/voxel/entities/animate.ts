@@ -150,7 +150,7 @@ export function animate(model: CompiledModel, s: AnimState, out: Pose): void {
         if (s.kind === MobKind.Cragcrawler) out.rot[r + 1] = (parts[i].at[0] < 0 ? 1 : -1) * (attacking ? 0.4 : Math.sin(t * 6) * 0.1);
         break;
       case 'jawTop':
-        out.rot[r] = attacking || a === MobAction.Roar ? 0.7 * Math.min(1, s.actionT * 3) : 0.1 + Math.sin(t * 1.4) * 0.05;
+        out.rot[r] = attacking || a === MobAction.Roar ? 0.3 + 0.6 * Math.min(1, s.actionT * 3) : 0.3 + Math.sin(t * 1.4) * 0.08;
         break;
       case 'cap':
         if (a === MobAction.Inflate) {
