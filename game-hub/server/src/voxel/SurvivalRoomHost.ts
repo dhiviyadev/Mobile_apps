@@ -291,9 +291,11 @@ export class SurvivalRoomHost implements VoxelSubsystem {
     this.sim.onEdit(sessionId, e.x, e.y, e.z, before, e.id);
   }
 
-  blocksRemoved(cells: readonly BlockEdit[], before: readonly number[]): void {
-    this.sim.blocksRemoved(cells, before);
-  }
+  /**
+   * Cascaded cells already reached afterEdit(null, …) through applyServerEdit
+   * (hand-harvest drops there), so nothing more to do here.
+   */
+  blocksRemoved(_cells: readonly BlockEdit[], _before: readonly number[]): void {}
 
   move(sessionId: string, m: MoveUpdate, accepted: boolean): void {
     if (!accepted) {

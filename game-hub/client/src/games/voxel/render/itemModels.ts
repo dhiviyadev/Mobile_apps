@@ -23,6 +23,8 @@ interface Box {
   e?: boolean;
   /** First person only (detail). */
   fp?: boolean;
+  /** Third person only (a cheaper stand-in for fp details). */
+  tp?: boolean;
 }
 
 const FACES: { n: [number, number, number]; v: [number, number, number][]; shade: number }[] = [
@@ -160,7 +162,8 @@ function shield(id: number): Box[] {
   const rim = wooden ? 0xc8743a : id === Item.IronShield ? 0x6a707c : GOLD;
   const out: Box[] = [];
   if (wooden) {
-    for (let i = 0; i < 5; i++) out.push({ s: [0.1, 0.3, 0.05], p: [-0.2 + i * 0.1, 0.07, 0], c: i % 2 ? 0x8a5f34 : 0x9a6b3c });
+    for (let i = 0; i < 5; i++) out.push({ s: [0.1, 0.3, 0.05], p: [-0.2 + i * 0.1, 0.07, 0], c: i % 2 ? 0x8a5f34 : 0x9a6b3c, fp: true });
+    out.push({ s: [0.5, 0.3, 0.05], p: [0, 0.07, 0], c: face, tp: true });
   } else out.push({ s: [0.5, 0.3, 0.05], p: [0, 0.07, 0], c: face });
   out.push(
     { s: [0.44, 0.16, 0.05], p: [0, -0.16, 0], c: face },
@@ -274,7 +277,7 @@ export function buildItemModel(id: number, lod: ModelLod): THREE.BufferGeometry 
     const boxes = boxesFor(id);
     if (boxes) {
       const b = new Builder();
-      for (const box of boxes) if (lod === 'fp' || !box.fp) b.box(box);
+      for (const box of boxes) if (lod === 'fp' ? !box.tp : !box.fp) b.box(box);
       g = b.geometry();
     } else g = extrude(id, lod === 'fp' ? 0.32 : 0.26);
   }

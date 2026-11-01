@@ -1001,7 +1001,9 @@ export class SurvivalSim implements PlayerHooks {
   /** Test and dev hook: damage that ignores shields and armor. */
   debugDamage(id: string, amount: number): void {
     const p = this.players.get(id);
-    if (p) this.envDamage(p, amount, DamageKind.Magic);
+    if (!p) return;
+    p.protectedUntil = 0;
+    this.envDamage(p, amount, DamageKind.Magic);
   }
 
   private deathMessage(p: SurvivalPlayer, req: DamageRequest): string {

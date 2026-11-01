@@ -60,6 +60,7 @@ export class InventoryScreen {
   private lastTap = { ref: -1, at: 0 };
   private stationTimer = 0;
   private stations = 0;
+  private openedAt = 0;
 
   constructor(private readonly parent: HTMLElement, private readonly host: InventoryScreenHost) {}
 
@@ -73,7 +74,10 @@ export class InventoryScreen {
     this.stationFilter = opts.station ?? null;
     if (this.stationFilter !== null) this.canMake = false;
     this.sel = IDLE;
-    if (!this.el) this.build();
+    if (!this.el) {
+      this.openedAt = performance.now();
+      this.build();
+    }
     this.renderSide();
     this.refresh();
     window.clearInterval(this.stationTimer);
@@ -124,7 +128,8 @@ export class InventoryScreen {
       main, h('div', { class: 'inv-divider' }), h('div', { class: 'inv-hotbar-line' }, hot, off), this.hintEl, this.footer,
     );
     this.el = h('div', { class: 'inv-screen', 'data-testid': 'inventory', role: 'dialog', 'aria-label': 'Inventory' },
-      h('div', { class: 'inv-backdrop', onclick: () => this.close() }),
+      // The tap that opened the bag (touch Bag button) must not close it again.
+      h('div', { class: 'inv-backdrop', onclick: () => performance.now() - this.openedAt > 400 && this.close() }),
       h('div', { class: 'inv-panels' }, bag, this.sideBody),
     );
     this.el.addEventListener('contextmenu', (e) => e.preventDefault());

@@ -85,3 +85,63 @@ test('two players share a Voxelvale world: edits, chat and avatars replicate', a
 
   await Promise.all([a.context().close(), b.context().close(), c.context().close()]);
 });
+
+test('survival PvP: the host turns PvP on and a punch hurts the other player', async ({ browser }, info) => {
+  test.skip(info.project.name !== 'desktop', 'desktop project only');
+  test.setTimeout(150_000);
+  type P = V & { input: { tap(a: string): void }; survival: unknown };
+  const a = await openPlayer(browser, 'Alpha');
+  await a.getByTestId('card-voxel').click();
+  await a.getByRole('tab', { name: 'Survival' }).click();
+  await a.getByTestId('create-private').click();
+  await waitForGame(a);
+  const code = await a.evaluate(() => (window as unknown as { __voxel: V }).__voxel.net!.roomCode);
+  const b = await openPlayer(browser, 'Bravo');
+  await b.getByTestId('room-code').fill(code);
+  await b.getByTestId('join-code').click();
+  await waitForGame(b);
+  await expect.poll(() => v(a)(() => (window as unknown as { __voxel: V }).__voxel.net!.players().length)).toBe(2);
+
+  // The host turns PvP on from the pause menu.
+  await a.bringToFront();
+  await a.keyboard.press('Escape');
+  await expect(a.getByTestId('pause-menu')).toBeVisible();
+  await a.getByRole('button', { name: /PvP: Off/ }).click();
+  await expect.poll(() => a.evaluate(() => (window as unknown as { __voxel: { net: { session: { state: { rules: number } } } } }).__voxel.net.session.state.rules)).toBe(1);
+  await expect(a.getByTestId('pause-menu')).toBeHidden();
+
+  // Bravo stands two blocks in front of Alpha (Alpha looks along -Z).
+  const pos = await a.evaluate(() => {
+    const g = (window as unknown as { __voxel: V }).__voxel;
+    g.player.yaw = 0;
+    g.player.pitch = 0;
+    return { x: g.player.body.x, y: g.player.body.y, z: g.player.body.z };
+  });
+  await b.bringToFront();
+  await b.evaluate((p) => (window as unknown as { __voxel: { player: { teleport(x: number, y: number, z: number): void } } }).__voxel.player.teleport(p.x, p.y, p.z - 2), pos);
+  await b.waitForTimeout(1500); // Bravo's frames send the new position
+  await a.bringToFront();
+  await a.waitForTimeout(2500); // spawn protection
+  const hp = () => b.evaluate(() => {
+    const g = (window as unknown as { __voxel: { net: { session: { state: { players: Map<string, { hp: number }> }; sessionId: string } } } }).__voxel;
+    return g.net.session.state.players.get(g.net.session.sessionId)!.hp;
+  });
+  await expect
+    .poll(async () => {
+      // Keep Bravo in front of Alpha (its own physics may have moved it).
+      await b.evaluate((p) => {
+        const g = (window as unknown as { __voxel: { player: { body: { x: number; z: number }; teleport(x: number, y: number, z: number): void } } }).__voxel;
+        if (Math.hypot(g.player.body.x - p.x, g.player.body.z - (p.z - 2)) > 0.6) g.player.teleport(p.x, p.y, p.z - 2);
+      }, pos);
+      await a.evaluate(() => {
+        const g = (window as unknown as { __voxel: P }).__voxel;
+        g.player.yaw = 0;
+        g.player.pitch = 0;
+        g.input.tap('primary');
+      });
+      return hp();
+    }, { timeout: 15_000 })
+    .toBeLessThan(20);
+  await expect(a.locator('.dmg-num.show').first()).toBeAttached();
+  await Promise.all([a.context().close(), b.context().close()]);
+});
