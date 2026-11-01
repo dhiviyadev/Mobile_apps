@@ -13,7 +13,7 @@ import {
   encodeEdits,
   isValidRoomCode,
   PROTOCOL_VERSION,
-  TerrainGenerator,
+  createWorldGenerator,
   VoxelMsg,
 } from '@hub/shared';
 import { isWorldOpen, VoxelRoom } from '../src/rooms/VoxelRoom';
@@ -363,10 +363,21 @@ describe('ServerVoxelWorld persistence hooks', () => {
 // ---- rooms ------------------------------------------------------------------------------
 
 const SEED = 4242;
-const gen = new TerrainGenerator(SEED);
+const gen = createWorldGenerator(SEED, 'sandbox');
 const spawn = gen.findSpawn();
 /** The surface block next to spawn (breakable, within reach), as in voxel.test.ts. */
-const surface = { x: Math.floor(spawn.x) + 1, y: gen.column(Math.floor(spawn.x) + 1, Math.floor(spawn.z)).height, z: Math.floor(spawn.z) };
+/** A surface block next to spawn with nothing (no plant) on top: breaking it changes only itself. */
+const surface = (() => {
+  for (let dx = 1; dx < 12; dx++) {
+    const x = Math.floor(spawn.x) + dx;
+    const z = Math.floor(spawn.z);
+    const y = gen.surfaceHeight(x, z);
+    const chunk = gen.generateChunk(Math.floor(x / 16), Math.floor(z / 16));
+    const at = (yy: number) => chunk[(yy * 16 + (((z % 16) + 16) % 16)) * 16 + (((x % 16) + 16) % 16)];
+    if (at(y) !== Block.Air && at(y + 1) === Block.Air && at(y + 2) === Block.Air) return { x, y, z };
+  }
+  throw new Error('no clear surface next to spawn');
+})();
 const PUBLIC_SLOT_SET = 'voxel:public-worlds';
 
 async function track(room: Room) {
@@ -604,7 +615,7 @@ describe('persistent Voxelvale rooms', () => {
 
   it('moves a public save that fails to restore aside and starts afresh in its slot', async () => {
     // The newest public save, so the next public room picks it.
-    await store.save(savedWorld('public-5', { private: false, seed: 99, savedAt: Date.now() + 60_000, edits: encodeEdits(makeEdits(10), true) }));
+    await store.save(savedWorld('public-5', { private: false, seed: 99, savedAt: Date.now() + 60_000, genVersion: 2, edits: encodeEdits(makeEdits(10), true) }));
     const hook = vi.spyOn(VoxelRoom.prototype as unknown as { onWorldRestored(): void }, 'onWorldRestored').mockImplementationOnce(() => {
       throw new Error('restore hook failed');
     });

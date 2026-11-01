@@ -57,7 +57,7 @@ describe('voxel foundation: ids and registries', () => {
   });
 
   it('exposes the generator API with v1 stubs', () => {
-    const g = createWorldGenerator(5, 'survival');
+    const g = createWorldGenerator(5, 'survival', 1);
     expect(g.genVersion).toBe(1);
     expect(g.structures()).toEqual([]);
     expect(g.findSpawn()).toEqual(g.findSpawn());
