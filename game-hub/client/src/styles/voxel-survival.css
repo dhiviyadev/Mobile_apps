@@ -1,1 +1,173 @@
-/* Voxelvale styles owned by WP-B: vitals, inventory, crafting, death screen, damage numbers. */
+/* Voxelvale survival and combat UI (WP-B): vitals, crosshair rings, hit feedback, bag, crafting, death screen. */
+
+.survival-hud { position: absolute; inset: 0; pointer-events: none; z-index: 21; }
+.voxel-hud.survival .block-label { bottom: calc(122px + var(--safe-bottom)); }
+
+/* Icons are inline canvases: undo the game root's full-screen canvas rule. */
+.game-root .survival-hud canvas, .game-root .inv-screen canvas, .game-root .slot-popover canvas { position: static; inset: auto; display: inline-block; }
+
+/* ---- vitals ------------------------------------------------------------- */
+.vitals {
+  position: absolute;
+  left: 50%;
+  bottom: calc(76px + var(--safe-bottom));
+  transform: translateX(-50%);
+  width: min(620px, 96vw);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+.vitals-left { display: flex; flex-direction: column; gap: 3px; }
+.vital-row { display: flex; gap: 2px; }
+.vital-row.food { flex-direction: row-reverse; }
+.vital-row.hidden { visibility: hidden; }
+.gem, .ration { width: 18px; height: 18px; display: block; position: relative; filter: drop-shadow(0 1px 1px #000a); }
+.gem { clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); }
+.gem.full { background: linear-gradient(160deg, #ff8fa0 0%, #ff6b81 35%, #c2183c 100%); box-shadow: inset 0 0 0 1px #ffffff55; }
+.gem.half { background: linear-gradient(90deg, #ff6b81 0 50%, #0a0e1c99 50% 100%); }
+.gem.empty { background: #0a0e1c99; box-shadow: inset 0 0 0 2px #ff6b8155; }
+.vital-row.hp.low { animation: gem-pulse 0.6s ease-in-out infinite alternate; }
+.vital-row.hp.regen .gem.full { animation: gem-sweep 0.4s ease-out; }
+@keyframes gem-pulse { to { transform: scale(1.08); } }
+@keyframes gem-sweep { 50% { filter: brightness(1.6) drop-shadow(0 0 3px #fff); } }
+.ration { border-radius: 5px 9px 5px 9px; }
+.ration::after { content: ''; position: absolute; left: 4px; right: 4px; top: 7px; height: 4px; border-radius: 2px; background: #0003; }
+.ration.full { background: linear-gradient(160deg, #ffc56a, #ffb347 40%, #e07a1f); }
+.ration.half { background: linear-gradient(270deg, #ffb347 0 50%, #0a0e1c99 50% 100%); }
+.ration.empty { background: #0a0e1c99; box-shadow: inset 0 0 0 2px #ffb34755; }
+.vital-row.food.starving .ration { animation: starve 1s steps(2) infinite; }
+@keyframes starve { 50% { background: #8a8f99; } }
+.bubble { width: 14px; height: 14px; border-radius: 50%; display: block; background: radial-gradient(circle at 35% 35%, #fff 0 18%, #bfe8ff 22%, #6fb8e8 100%); transition: transform 0.15s, opacity 0.15s; }
+.bubble.gone { transform: scale(1.5); opacity: 0; }
+.vital-effects { display: flex; gap: 4px; font-size: 16px; align-self: center; }
+.vital-effects .fx { filter: drop-shadow(0 1px 2px #000); }
+
+/* ---- crosshair rings and hit marker --------------------------------------- */
+.charge-ring, .cooldown { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.charge-ring { width: 44px; height: 44px; }
+.cooldown { width: 26px; height: 26px; top: calc(50% + 26px); opacity: 0.8; }
+.charge-ring.hidden, .cooldown.hidden { display: none; }
+.charge-ring svg, .cooldown svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring-bg { fill: none; stroke: #0007; stroke-width: 3; }
+.ring-fg { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; transition: stroke 0.1s; }
+.charge-ring.full .ring-fg, .charge-ring.loaded .ring-fg { stroke: #ffd166; }
+.charge-ring.loaded::after { content: ''; position: absolute; left: 50%; top: -6px; width: 4px; height: 10px; margin-left: -2px; border-radius: 2px; background: #ffd166; }
+.hitmarker { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%); opacity: 0; }
+.hitmarker.show { opacity: 1; }
+.hitmarker i { position: absolute; width: 9px; height: 2.5px; background: #fff; border-radius: 1px; box-shadow: 0 0 2px #000; }
+.hitmarker i:nth-child(1) { left: 0; top: 4px; transform: rotate(45deg); }
+.hitmarker i:nth-child(2) { right: 0; top: 4px; transform: rotate(-45deg); }
+.hitmarker i:nth-child(3) { left: 0; bottom: 4px; transform: rotate(-45deg); }
+.hitmarker i:nth-child(4) { right: 0; bottom: 4px; transform: rotate(45deg); }
+.hitmarker.crit i { background: #ffd166; }
+.hitmarker.blocked i { background: #9aa4b8; }
+.hitmarker.kill i { background: #ff4d5e; width: 12px; }
+
+/* ---- hurt ----------------------------------------------------------------- */
+.hurt-vignette { position: absolute; inset: 0; opacity: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(200, 16, 40, 0.75) 100%); }
+.hurt-vignette.on { animation: hurt-fade 0.45s ease-out; }
+@keyframes hurt-fade { from { opacity: var(--k, 0.55); } to { opacity: 0; } }
+.hurt-dir { position: absolute; left: 50%; top: 50%; width: 0; height: 0; opacity: 0; }
+.hurt-dir::before { content: ''; position: absolute; left: -36px; top: -34vh; width: 72px; height: 22px; background: radial-gradient(ellipse at 50% 100%, #ff3b4ecc, transparent 70%); clip-path: polygon(0 100%, 50% 0, 100% 100%); }
+.hurt-dir.on { animation: hurt-dir 0.6s ease-out; }
+@keyframes hurt-dir { from { opacity: 1; } to { opacity: 0; } }
+.shield-off { position: absolute; left: 50%; top: calc(50% + 34px); transform: translateX(-50%); width: 22px; height: 24px; background: #9aa4b8; clip-path: polygon(50% 0, 100% 15%, 100% 50%, 50% 100%, 0 50%, 0 15%); }
+.shield-off::after { content: ''; position: absolute; left: 10px; top: -2px; width: 3px; height: 30px; background: #ff4d5e; transform: rotate(40deg); }
+.shield-off.hidden { display: none; }
+
+/* ---- target, day, satchel, feed, rest, hints ----------------------------- */
+.target-info { position: absolute; left: 50%; top: calc(50% + 44px); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 3px; opacity: 0; transition: opacity 0.2s; font-weight: 800; font-size: 13px; color: #fff; text-shadow: 0 1px 2px #000; }
+.target-info.show { opacity: 1; }
+.ti-bar { width: 120px; height: 6px; border-radius: 3px; background: #0009; overflow: hidden; }
+.ti-bar i { display: block; height: 100%; background: linear-gradient(90deg, #c2183c, #ff6b81); transition: width 0.15s; }
+.day-badge { position: absolute; left: calc(12px + var(--safe-left, 0px)); top: calc(64px + var(--safe-top)); padding: 4px 10px; border-radius: 10px; background: rgba(10, 14, 28, 0.55); font-weight: 800; font-size: 13px; color: #ffe8a0; }
+.day-badge.night { color: #bfd4ff; }
+.satchel-chip { position: absolute; left: 50%; top: calc(10px + var(--safe-top)); transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; border: 1px solid #f2c63a66; background: rgba(10, 14, 28, 0.65); color: #fff; font-weight: 800; font-size: 13px; pointer-events: auto; cursor: pointer; }
+.satchel-chip.hidden { display: none; }
+.satchel-chip canvas { width: 22px; height: 22px; image-rendering: pixelated; }
+.sc-arrow { display: inline-block; color: #f2c63a; transition: transform 0.15s; }
+.pickup-feed { position: absolute; right: calc(14px + var(--safe-right, 0px)); top: 42%; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+.pf-line { display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 10px; background: rgba(10, 14, 28, 0.6); font-weight: 800; font-size: 13px; color: #fff; }
+.pf-line canvas { width: 24px; height: 24px; image-rendering: pixelated; }
+.pf-line.fade { animation: pf-in 2.6s ease-out forwards; }
+@keyframes pf-in { 0% { transform: translateX(20px); opacity: 0; } 8% { transform: none; opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+.rest-status { position: absolute; left: 50%; top: 38%; transform: translateX(-50%); padding: 10px 20px; border-radius: 14px; background: rgba(10, 14, 28, 0.7); font-weight: 800; color: #bfd4ff; }
+.rest-status.hidden { display: none; }
+.hint-toast { position: absolute; left: 50%; top: calc(54px + var(--safe-top)); transform: translate(-50%, -8px); max-width: min(520px, 90vw); padding: 8px 16px; border-radius: 12px; background: rgba(20, 28, 56, 0.9); border: 1px solid #ffd16655; color: #fff; font-weight: 700; font-size: 14px; text-align: center; opacity: 0; transition: opacity 0.3s, transform 0.3s; }
+.hint-toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ---- damage numbers ------------------------------------------------------- */
+.dmg-num { position: absolute; left: 0; top: 0; z-index: 21; opacity: 0; pointer-events: none; font: 900 18px/1 ui-rounded, system-ui, sans-serif; color: #fff; text-shadow: 0 2px 0 #000, 0 0 4px #000; white-space: nowrap; }
+.dmg-num.crit { color: #ffd166; font-size: 22px; }
+.dmg-num.blocked { color: #b8c2d8; font-size: 15px; }
+
+/* ---- off-hand slot (hotbar) ---------------------------------------------- */
+.hotbar .offhand-slot { width: clamp(36px, 4.6vw, 54px); height: clamp(36px, 4.6vw, 54px); border-radius: 10px; display: grid; place-items: center; background: rgba(255, 255, 255, 0.06); border: 2px dashed rgba(255, 255, 255, 0.18); }
+.hotbar .offhand-slot .slot-icon { width: 82%; height: 82%; image-rendering: pixelated; }
+
+/* ---- bag ------------------------------------------------------------------- */
+.inv-screen { position: absolute; inset: 0; z-index: 60; display: grid; place-items: center; --slot: clamp(40px, 5.6vw, 58px); }
+.inv-backdrop { position: absolute; inset: 0; background: rgba(6, 9, 20, 0.55); backdrop-filter: blur(2px); }
+.inv-panels { position: relative; display: flex; gap: 12px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow: auto; padding: 4px; align-items: flex-start; }
+.inv-panel { background: linear-gradient(180deg, #1f2a4d, #172040); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 18px; padding: 12px; box-shadow: 0 12px 40px #0008; color: var(--text); }
+.inv-panel header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.inv-panel h3 { margin: 0; font-size: 1.05rem; flex: 0 0 auto; }
+.inv-close { margin-left: auto; width: 34px; height: 34px; border-radius: 10px; border: none; background: rgba(255, 255, 255, 0.1); color: #fff; font-size: 22px; cursor: pointer; }
+.inv-grid { display: grid; grid-template-columns: repeat(9, var(--slot)); gap: 4px; }
+.inv-divider { height: 8px; }
+.inv-hotbar-line { display: flex; gap: 10px; align-items: flex-end; }
+.inv-offhand { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10px; font-weight: 800; color: #b8c2d8; }
+.inv-slot { position: relative; width: var(--slot); height: var(--slot); border-radius: 10px; background: rgba(5, 8, 20, 0.55); border: 2px solid rgba(255, 255, 255, 0.08); display: grid; place-items: center; cursor: pointer; touch-action: manipulation; user-select: none; transition: transform 0.08s, border-color 0.08s; }
+.inv-slot canvas { width: 78%; height: 78%; image-rendering: pixelated; pointer-events: none; }
+.inv-slot:hover { border-color: rgba(255, 255, 255, 0.3); }
+.inv-slot.lifted { border-color: #ffd166; box-shadow: 0 0 0 2px #ffd16655, 0 0 14px #ffd16688; transform: translateY(-2px) scale(1.04); }
+.inv-slot.offhand { border-style: dashed; }
+.inv-slot .slot-count { position: absolute; right: 4px; bottom: 2px; font: 800 13px/1 ui-rounded, system-ui, sans-serif; color: #fff; text-shadow: 0 1px 2px #000, 0 0 3px #000; pointer-events: none; }
+.inv-slot .slot-dur { position: absolute; left: 6px; right: 6px; bottom: 3px; height: 3px; border-radius: 2px; background: #0008; }
+.inv-slot .slot-dur i { display: block; height: 100%; border-radius: 2px; }
+.inv-slot .slot-loaded { position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: #ffd166; }
+.inv-hint { margin-top: 8px; min-height: 18px; font-size: 12px; color: #b8c2d8; }
+.inv-footer { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.inv-panel.side { width: min(440px, 92vw); max-height: calc(100dvh - 24px); display: flex; flex-direction: column; }
+.recipe-search { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(5, 8, 20, 0.5); color: #fff; font: inherit; }
+.chips { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 6px; }
+.chip { padding: 5px 10px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(255, 255, 255, 0.06); color: #dfe6ff; font-weight: 700; font-size: 12px; cursor: pointer; }
+.chip.on { background: #ffd166; color: #1a1f33; border-color: #ffd166; }
+.chip.ok { color: #9df0a8; }
+.chip.missing { color: #8a92a8; }
+.chip.on.ok, .chip.on.missing { color: #1a1f33; }
+.recipe-list { overflow: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 2px; min-height: 120px; }
+.recipe-row { display: grid; grid-template-columns: 1fr auto; grid-template-areas: 'out btns' 'ings btns'; gap: 4px 8px; padding: 8px; border-radius: 12px; background: rgba(5, 8, 20, 0.45); border: 1px solid rgba(255, 255, 255, 0.06); }
+.recipe-row.blocked { opacity: 0.6; }
+.recipe-out { grid-area: out; display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.recipe-out canvas { width: 36px; height: 36px; image-rendering: pixelated; }
+.recipe-station, .recipe-stat { font-size: 11px; }
+.recipe-ings { grid-area: ings; display: flex; gap: 6px; flex-wrap: wrap; }
+.ing { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px 2px 2px; border-radius: 8px; background: rgba(255, 255, 255, 0.06); font-size: 11px; font-weight: 800; color: #dfe6ff; }
+.ing canvas { width: 22px; height: 22px; image-rendering: pixelated; }
+.ing.short { color: #ff8a8a; background: rgba(255, 60, 60, 0.12); }
+.ing-tag { color: #8a92a8; font-weight: 600; }
+.recipe-btns { grid-area: btns; display: flex; flex-direction: column; gap: 4px; justify-content: center; }
+.recipe-btns .btn { min-width: 64px; }
+.recipe-empty { padding: 12px; font-size: 13px; }
+.chest-sealed { padding: 24px 12px; text-align: center; color: #c9b8ff; font-weight: 700; }
+@media (max-width: 860px) {
+  .inv-panels { flex-direction: column; align-items: center; }
+  .inv-panel.side { width: calc(var(--slot) * 9 + 56px); max-height: none; }
+}
+
+/* ---- hotbar long-press popover -------------------------------------------- */
+.slot-popover { position: absolute; inset: 0; z-index: 61; }
+.sp-backdrop { position: absolute; inset: 0; }
+.sp-card { position: absolute; left: 50%; bottom: calc(84px + var(--safe-bottom)); transform: translateX(-50%); display: flex; gap: 6px; align-items: center; padding: 8px 10px; border-radius: 14px; background: rgba(20, 28, 56, 0.95); border: 1px solid rgba(255, 255, 255, 0.15); color: #fff; }
+.sp-card b { margin-right: 4px; font-size: 13px; }
+
+/* ---- death screen ----------------------------------------------------------- */
+.death-screen { position: absolute; inset: 0; z-index: 62; display: grid; place-items: center; background: radial-gradient(ellipse at center, rgba(90, 0, 16, 0.45), rgba(40, 0, 8, 0.8)); animation: death-in 0.6s ease-out; }
+@keyframes death-in { from { opacity: 0; } }
+.death-card { text-align: center; color: #fff; padding: 24px 32px; max-width: 90vw; }
+.death-card h2 { margin: 0 0 8px; font-size: 2rem; text-shadow: 0 3px 12px #000; }
+.death-cause { font-weight: 700; color: #ffd0d6; }
+.death-satchel { color: #f2c63a; font-weight: 700; }
+.death-actions { display: flex; gap: 10px; justify-content: center; margin-top: 16px; }

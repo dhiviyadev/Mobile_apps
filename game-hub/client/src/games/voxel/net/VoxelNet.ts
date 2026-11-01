@@ -27,6 +27,7 @@ import { audio } from '../../../core/audio/audio';
 import type { NetSession } from '../../../net/session';
 import { AvatarRenderer, type AvatarPose } from '../../common/Avatars';
 import { ChatBox } from '../../common/ChatBox';
+import { buildThirdPersonModel } from '../render/itemModels';
 import type { VoxelGame, VoxelNetHooks } from '../VoxelGame';
 
 const SEND_INTERVAL = 1 / 15;
@@ -71,7 +72,8 @@ interface PlayerState {
 export class VoxelNet implements VoxelNetHooks {
   readonly roomCode: string;
   readonly chat: ChatBox;
-  private readonly avatars = new AvatarRenderer(16);
+  /** Held items use the survival item models (WP-B). */
+  private readonly avatars = new AvatarRenderer(16, { heldModel: buildThirdPersonModel });
   private readonly lights: THREE.Object3D[];
   private readonly remotes = new Map<string, Remote>();
   private readonly offs: (() => void)[] = [];

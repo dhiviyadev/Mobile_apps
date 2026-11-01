@@ -29,6 +29,17 @@ export interface AvatarPose {
   held?: number;
   /** Arena slide pose. */
   slide?: boolean;
+  // ---- Voxelvale combat (WP-B) ----
+  /** Off-hand item key (shields), drawn at the left hand. */
+  offhand?: number;
+  /** 0..1 phase of a melee swing of the right arm (0 = none). */
+  swing?: number;
+  /** Shield raised: left arm forward, shield in front of the body. */
+  guard?: boolean;
+  /** 0..1 bow draw / crossbow aim: both arms forward, right hand pulled back. */
+  draw?: number;
+  /** 0..1 red hit flash. */
+  flash?: number;
 }
 
 export interface AvatarOptions {
@@ -209,12 +220,17 @@ export class AvatarRenderer {
         this.setPart(this.legs, i * 2 + k, side, hipY, 0, legPitch, 0, this.c.setHex(a.color).multiplyScalar(0.45));
       }
       // Body
-      this.setPart(this.bodies, i, 0, hipY, 0, -lean, 0, this.c.setHex(a.color));
-      // Arms
+      this.setPart(this.bodies, i, 0, hipY, 0, -lean, 0, this.tint(this.c.setHex(a.color), a.flash));
+      // Arms (k 0 = left, 1 = right). Voxelvale combat: swing, guard and draw poses.
+      const swingPhase = a.swing ?? 0;
+      const draw = a.draw ?? 0;
       for (let k = 0; k < 2; k++) {
         const side = k === 0 ? -0.33 : 0.33;
-        const armPitch = a.aiming ? Math.PI / 2 + a.pitch * 0.8 : (k === 0 ? -swing : swing) * 0.9;
-        this.setPart(this.arms, i * 2 + k, side, shoulderY, shoulderZ, armPitch, 0, this.c.setHex(a.color).multiplyScalar(0.85));
+        let armPitch = a.aiming ? Math.PI / 2 + a.pitch * 0.8 : (k === 0 ? -swing : swing) * 0.9;
+        if (k === 1 && swingPhase > 0) armPitch = swingPhase < 0.35 ? lerp(armPitch, 2.6, swingPhase / 0.35) : lerp(2.6, -0.4, easeOut((swingPhase - 0.35) / 0.65));
+        else if (draw > 0) armPitch = Math.PI / 2 + a.pitch * 0.8 - (k === 1 ? draw * 0.25 : 0);
+        else if (k === 0 && a.guard) armPitch = Math.PI / 2 - 0.3;
+        this.setPart(this.arms, i * 2 + k, side, shoulderY, shoulderZ, armPitch, 0, this.tint(this.c.setHex(a.color).multiplyScalar(0.85), a.flash));
       }
       // Head (pitch follows the view)
       this.setPart(this.heads, i, 0, headY, headZ, a.pitch * 0.8, 0, this.c.setHex(skin));
@@ -229,9 +245,19 @@ export class AvatarRenderer {
       }
 
       // Held item in the right hand, following the view pitch.
+      if (a.offhand !== undefined) {
+        const pool = this.heldPool(a.offhand);
+        const g = a.guard ? 1 : 0;
+        this.local.compose(this.p.set(lerp(-0.34, -0.06, g), lerp(1.0, 1.25, g) - crouch, lerp(-0.12, -0.42, g)), this.q.setFromEuler(this.e.set(0, g ? 0 : 0.35, 0)), this.s.set(1, 1, 1));
+        this.m.multiplyMatrices(this.base, this.local);
+        if (pool.mesh) pool.mesh.setMatrixAt(pool.count++, this.m);
+      }
       if (a.held !== undefined) {
         const pool = this.heldPool(a.held);
-        this.local.compose(this.p.set(HELD_X, heldY, heldZ), this.q.setFromEuler(this.e.set(a.pitch * 0.8, 0, 0)), this.s.set(1, 1, 1));
+        // A swing sweeps the item down with the right arm.
+        const sp = a.swing ?? 0;
+        const sweep = sp > 0 ? (sp < 0.35 ? -1.2 * (sp / 0.35) : lerp(-1.2, 0.9, easeOut((sp - 0.35) / 0.65))) : 0;
+        this.local.compose(this.p.set(HELD_X, heldY + (sp > 0 ? 0.1 : 0), heldZ), this.q.setFromEuler(this.e.set(a.pitch * 0.8 - sweep, 0, 0)), this.s.set(1, 1, 1));
         this.m.multiplyMatrices(this.base, this.local);
         if (pool.mesh) pool.mesh.setMatrixAt(pool.count++, this.m);
         const at = this.heldAt.get(a.id);
@@ -301,6 +327,13 @@ export class AvatarRenderer {
     this.tags.clear();
   }
 
+  /** Mixes a part colour toward red for a hit flash. */
+  private tint(c: THREE.Color, flash: number | undefined): THREE.Color {
+    return flash ? c.lerp(this.flashColor, Math.min(1, flash) * 0.7) : c;
+  }
+
+  private readonly flashColor = new THREE.Color(0xff3030);
+
   private setPart(part: Part, index: number, x: number, y: number, z: number, pitch: number, roll: number, color: THREE.Color): void {
     this.local.compose(this.p.set(x, y, z), this.q.setFromEuler(this.e.set(pitch, 0, roll)), this.s.set(1, 1, 1));
     this.m.multiplyMatrices(this.base, this.local);
@@ -329,6 +362,9 @@ export class AvatarRenderer {
     (tag.sprite.material as THREE.SpriteMaterial).opacity = a.alpha ?? 1;
   }
 }
+
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const easeOut = (t: number) => 1 - (1 - Math.max(0, Math.min(1, t))) ** 3;
 
 function hashId(id: string): number {
   let h = 0;
