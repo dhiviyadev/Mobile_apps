@@ -162,9 +162,12 @@ export class TerrainGeneratorV1 {
 
   private isCave(x: number, y: number, z: number): boolean {
     // Two thin noise "sheets" intersecting form winding tunnels.
+    // (The second sheet is only read where the first is near zero: same result, half the noise.)
     const a = this.caves.noise3(x / 28, y / 18, z / 28);
-    const b = this.caves.noise3(x / 28 + 71.3, y / 18 - 13.1, z / 28 + 37.7);
-    if (a * a + b * b < 0.014) return true;
+    if (a * a < 0.014) {
+      const b = this.caves.noise3(x / 28 + 71.3, y / 18 - 13.1, z / 28 + 37.7);
+      if (a * a + b * b < 0.014) return true;
+    }
     // Occasional larger caverns deep down.
     if (y < 18) {
       const c = this.n3.noise3(x / 50, y / 22, z / 50);
