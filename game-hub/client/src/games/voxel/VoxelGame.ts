@@ -5,7 +5,6 @@
  */
 import * as THREE from 'three';
 import {
-  Block,
   blockDef,
   createWorldGenerator,
   DAY_LENGTH_SECONDS,
@@ -35,6 +34,7 @@ import { LocalEntities } from './entities/LocalEntities';
 import type { HotbarSource, InteractionHooks, MoveMods, VoxelModule } from './modules';
 import type { VoxelNet } from './net/VoxelNet';
 import { SurvivalController } from './survival/SurvivalController';
+import { HeldItemView } from './render/HeldItemView';
 import { createItemIcons } from './ui/itemIcons';
 import { WorldFeatures } from './world/WorldFeatures';
 import { BlockFx } from './fx/BlockFx';
@@ -42,9 +42,8 @@ import { ParkourRun } from './parkour/ParkourRun';
 import { BlockInteraction } from './player/BlockInteraction';
 import { LocalPlayer } from './player/LocalPlayer';
 import { Sky, SKY_RADIUS } from './sky/Sky';
-import { formatTime, VoxelHud } from './ui/VoxelHud';
+import { formatTime, type IconFor, VoxelHud } from './ui/VoxelHud';
 import { createAtlasCanvas, createAtlasTexture } from './world/atlas';
-import { createBlockGeometry } from './world/blockGeometry';
 import { createCrackMaterial, createLiquidMaterial, createOpaqueMaterial, createVoxelUniforms } from './world/materials';
 import { defaultWorkerCount, WorkerPool } from './world/WorkerPool';
 import { World } from './world/World';
@@ -132,13 +131,15 @@ export class VoxelGame {
   private readonly pause: PauseMenu;
   private readonly handScene = new THREE.Scene();
   private readonly handCamera = new THREE.PerspectiveCamera(60, 1, 0.01, 10);
-  private held: THREE.Mesh;
-  private heldBlock: number = Block.Grass;
-  /** Sky and block light on the held block (0..15), easing toward the light at the eye. */
-  private heldSky = 15;
-  private heldLamp = 0;
-  /** Light bytes last written into the held block's geometry (-1: rewrite). */
-  private heldLightKey = -1;
+  /** First-person held item (WP-B): blocks, weapons, tools, shields, bows, food. */
+  readonly heldView: HeldItemView;
+  private heldBlock = -1;
+  /** Terrain material and uniforms (survival drops, ghosts and held items share them). */
+  readonly voxelMaterials: { opaque: THREE.ShaderMaterial; uniforms: ReturnType<typeof createVoxelUniforms> };
+  /** Item icon drawer (hotbar, bag, picker). */
+  readonly itemIcons: IconFor;
+  /** The game's DOM container (modal overlays mount here). */
+  readonly hudContainer: HTMLElement;
   private readonly clickToPlay: HTMLElement | null;
   private raf = 0;
   private running = false;
@@ -164,6 +165,10 @@ export class VoxelGame {
     this.uniforms = createVoxelUniforms(atlas);
     const opaque = createOpaqueMaterial(this.uniforms);
     const liquid = createLiquidMaterial(this.uniforms);
+    this.voxelMaterials = { opaque, uniforms: this.uniforms };
+    this.hudContainer = container;
+    this.itemIcons = createItemIcons(atlasCanvas).iconFor;
+    this.heldView = new HeldItemView(opaque, this.uniforms);
     this.pool = new WorkerPool(defaultWorkerCount());
     this.world = new World(this.pool, seed, mode, opaque, liquid);
     this.applyRenderDistance();
@@ -201,6 +206,8 @@ export class VoxelGame {
     this.modules = [this.entities, this.survival, this.worldFeatures].filter((m): m is NonNullable<typeof m> => m !== null);
 
     const hook = <K extends keyof InteractionHooks>(k: K): InteractionHooks[K] | undefined => this.modules.find((m) => m.interaction?.[k])?.interaction?.[k];
+    // Creatures and players can both be under the crosshair, and creatures, chests and items can all use secondary: ask every module.
+    const hooks = <K extends keyof InteractionHooks>(k: K) => this.modules.map((m) => m.interaction?.[k]).filter((f): f is NonNullable<InteractionHooks[K]> => !!f);
     this.interaction = new BlockInteraction(
       {
         getBlock: this.world.getBlock,
@@ -208,9 +215,11 @@ export class VoxelGame {
         edit: (x, y, z, id) => this.requestEdit(x, y, z, id),
         isOccupied: (x, y, z) => (this.net?.isOccupied(x, y, z) ?? false) || (this.entities?.overlapsCell(x, y, z) ?? false),
         breakSeconds: (b) => hook('breakSeconds')?.(b) ?? blockDef(b).hardness,
-        onDigStart: (x, y, z) => hook('onDigStart')?.(x, y, z),
-        entityDistance: () => hook('entityDistance')?.() ?? Infinity,
-        onSecondary: (t, pressed) => hook('onSecondary')?.(t, pressed) ?? false,
+        onDigStart: (x, y, z) => {
+          for (const f of hooks('onDigStart')) f(x, y, z);
+        },
+        entityDistance: () => Math.min(Infinity, ...hooks('entityDistance').map((f) => f())),
+        onSecondary: (t, pressed) => hooks('onSecondary').some((f) => f(t, pressed)),
       },
       this.fx,
     );
@@ -218,10 +227,9 @@ export class VoxelGame {
       for (const m of this.modules) m.onStep?.(b);
     };
 
-    // Held block in a separate overlay pass so it never clips into walls.
+    // Held item in a separate overlay pass so it never clips into walls.
     this.handScene.add(new THREE.AmbientLight(0xffffff, 1));
-    this.held = new THREE.Mesh(createBlockGeometry(this.heldBlock, 0.24), opaque);
-    this.handScene.add(this.held);
+    this.handScene.add(this.heldView.group);
 
     // Input
     this.kbm = new KeyboardMouse(this.input, this.renderer.canvas);
@@ -246,7 +254,7 @@ export class VoxelGame {
       this.touch?.setButton('place', { hidden: true });
     }
 
-    this.hud = new VoxelHud(container, createItemIcons(atlasCanvas).iconFor, (i) => this.input.selectSlot(i), !!this.parkour);
+    this.hud = new VoxelHud(container, this.itemIcons, (i) => this.input.selectSlot(i), !!this.parkour);
     this.hud.onLongPress = mode === 'sandbox' ? (i) => this.worldFeatures.openPicker(i) : null;
     this.syncHotbar(true);
     this.stats = new StatsOverlay(container, this.renderer, () => this.net?.ping() ?? null);
@@ -266,6 +274,7 @@ export class VoxelGame {
             h('h2', null, 'Click to play'),
             h('p', null, 'WASD move · Space jump · Shift sprint · Ctrl crouch'),
             h('p', null, 'Left click break · Right click place · Wheel / 1-0 pick block · Esc menu'),
+            mode === 'parkour' ? null : h('p', null, `${mode === 'survival' ? 'E bag · Q drop · F swap hands · ' : ''}Z guard · Right click use / draw / eat`),
           ),
         );
     if (this.clickToPlay) container.appendChild(this.clickToPlay);
@@ -370,7 +379,7 @@ export class VoxelGame {
     this.pool.dispose();
     this.sky.dispose();
     this.fx.dispose();
-    this.held.geometry.dispose();
+    this.heldView.dispose();
     this.renderer.dispose();
   }
 
@@ -444,7 +453,7 @@ export class VoxelGame {
     this.entities?.render(dt, this.camera, this.sky.daylight);
     for (const m of this.modules) m.update?.(dt, input, paused);
     this.syncHotbar(false);
-    this.net?.sendState(b.x, b.y, b.z, this.player.yaw, this.player.pitch, (this.player.crouching ? 1 : 0) | (b.inWater ? 2 : 0));
+    this.net?.sendState(b.x, b.y, b.z, this.player.yaw, this.player.pitch, (this.player.crouching ? 1 : 0) | (b.inWater ? 2 : 0) | (this.player.sprinting ? 4 : 0));
     this.net?.update(dt, this.camera);
     this.updateHeldItem(dt);
     this.hud.setUnderwater(b.headInWater);
@@ -505,47 +514,33 @@ export class VoxelGame {
     this.setHeldBlock(src.heldItem(this.hud.selected));
   }
 
-  /** WP-B replaces the held block with HeldItemView (items >= 256 are hidden until then). */
+  /** The held item model (blocks, weapons, tools, shields, bows, food). */
   private setHeldBlock(item: number): void {
     if (item === this.heldBlock) return;
     this.heldBlock = item;
-    if (item <= 0 || item >= 256) return;
-    this.held.geometry.dispose();
-    this.held.geometry = createBlockGeometry(item, 0.24);
-    this.heldLightKey = -1;
+    this.heldView.setItem(item);
   }
 
   private updateHeldItem(dt: number): void {
-    this.held.visible = !this.parkour && this.heldBlock > 0 && this.heldBlock < 256;
+    this.heldView.visible = !this.parkour;
     const b = this.player.body;
     const speed = Math.hypot(b.vx, b.vz);
     const t = performance.now() / 1000;
     const bob = b.onGround ? Math.sin(t * 9) * 0.012 * Math.min(1, speed / 4) : 0;
-    const swing = this.interaction.swing;
-    this.held.position.set(0.34, -0.25 + bob - swing * 0.06, -0.6 + swing * 0.08);
-    this.held.rotation.set(0.25 - swing * 0.6, -0.6 + swing * 0.2, 0.08);
-    this.updateHeldLight(dt);
+    const e = this.tmpEye;
+    this.heldView.update(dt, bob, this.interaction.swing, this.world.lightAt(Math.floor(e.x), Math.floor(e.y), Math.floor(e.z)));
+    // Hurt kick: a short camera roll toward the hit side.
+    if (settings.get().cameraMotion) this.camera.rotation.z = this.heldView.hurtRoll;
   }
 
-  /** Lights the held block like the cell the eye is in (dark in caves, warm near lamps). */
-  private updateHeldLight(dt: number): void {
-    const e = this.tmpEye;
-    const light = this.world.lightAt(Math.floor(e.x), Math.floor(e.y), Math.floor(e.z));
-    const ease = Math.min(1, dt * 6);
-    this.heldSky += ((light >> 4) - this.heldSky) * ease;
-    this.heldLamp += ((light & 15) - this.heldLamp) * ease;
-    const sky = Math.round(this.heldSky * 17);
-    const lamp = Math.round(this.heldLamp * 17);
-    const key = (sky << 8) | lamp;
-    if (key === this.heldLightKey) return;
-    this.heldLightKey = key;
-    const attr = this.held.geometry.getAttribute('light') as THREE.BufferAttribute;
-    const bytes = attr.array as Uint8Array;
-    for (let i = 0; i < attr.count; i++) {
-      bytes[i * 4 + 1] = sky;
-      bytes[i * 4 + 2] = lamp;
-    }
-    attr.needsUpdate = true;
+  /** Frees the mouse for an overlay (bag, death screen) without opening the pause menu. */
+  releasePointer(): void {
+    this.kbm.unlock();
+  }
+
+  /** Takes the mouse back after an overlay closes (desktop). */
+  capturePointer(): void {
+    if (!this.touch && !this.pause.isOpen) this.kbm.lock();
   }
 
   private requestEdit(x: number, y: number, z: number, id: number): void {
@@ -632,6 +627,7 @@ export class VoxelGame {
         },
       });
     }
+    extras.push(...(this.survival?.pauseEntries() ?? []));
     if (this.opts.onResetWorld) {
       extras.push({
         label: 'New world',

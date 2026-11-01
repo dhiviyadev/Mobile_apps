@@ -295,3 +295,25 @@ export function buildThirdPersonModel(id: number): THREE.BufferGeometry {
   cache.set(key, g);
   return g;
 }
+
+/** Flying arrow / bolt (ghosts): shaft along -Z from the origin, head at -Z. Sizes from design-voxel-survival §17.5. */
+export function buildProjectileModel(kind: 'arrow' | 'bolt' | 'ember'): THREE.BufferGeometry {
+  const key = `proj:${kind}`;
+  let g = cache.get(key);
+  if (g) return g;
+  const b = new Builder();
+  if (kind === 'bolt') {
+    b.box({ s: [0.035, 0.035, 0.42], p: [0, 0, -0.21], c: 0x6a4a2a });
+    b.box({ s: [0.055, 0.055, 0.07], p: [0, 0, -0.44], c: 0xc8743a });
+    b.box({ s: [0.004, 0.05, 0.08], p: [0, 0, -0.04], c: 0x3a3a40 });
+    b.box({ s: [0.05, 0.004, 0.08], p: [0, 0, -0.04], c: 0x3a3a40 });
+  } else {
+    b.box({ s: [0.025, 0.025, 0.6], p: [0, 0, -0.3], c: 0x9a7a4a });
+    b.box({ s: [0.05, 0.05, 0.08], p: [0, 0, -0.62], c: kind === 'ember' ? 0xff6a2a : 0x5a5a64, e: kind === 'ember' });
+    b.box({ s: [0.004, 0.06, 0.12], p: [0, 0, -0.06], c: 0xf0f0f0 });
+    b.box({ s: [0.06, 0.004, 0.12], p: [0, 0, -0.06], c: 0xd23a3a });
+  }
+  g = b.geometry();
+  cache.set(key, g);
+  return g;
+}
