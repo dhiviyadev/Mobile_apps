@@ -28,6 +28,8 @@ export const SECTION_TAGS = {
   inventory: 'INVT',
   /** World library details (name, dates, play time, host code; worldFile.ts WorldMeta). */
   meta: 'META',
+  /** Saved teleport places per player (voxel/teleport.ts). */
+  waypoints: 'WAYP',
 } as const;
 const MAX_SECTIONS = 32;
 

@@ -78,6 +78,12 @@ export const VoxelMsg = {
   HostPrivacy: 'hp',
   /** S→C everyone: the host left for good and the room closes (JSON {text}) */
   HostClosed: 'hx',
+
+  // ---- teleport menu (Package W; voxel/teleport.ts) ----
+  /** C→S JSON TeleportOp: save/rename/delete places, go to one, ask / answer a player */
+  TeleportOp: 'tp',
+  /** S→C JSON TeleportEvent */
+  TeleportEvent: 'te',
 } as const;
 
 /** VoxelMsg.HostReady: ok with the room code the world runs under, or why the upload was refused. */

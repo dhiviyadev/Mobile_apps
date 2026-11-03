@@ -25,6 +25,7 @@ export * from './voxel/survival/index';
 export * from './util/binary';
 export * from './voxel/protocol';
 export * from './voxel/worldFile';
+export * from './voxel/teleport';
 export * from './arena/constants';
 export * from './arena/weapons';
 export * from './arena/geometry';

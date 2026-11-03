@@ -86,6 +86,7 @@ import { VoxelFluids } from '../voxel/VoxelFluids';
 import { ServerEntities } from '../voxel/ServerEntities';
 import type { VoxelRoomApi, VoxelSubsystem } from '../voxel/subsystem';
 import { SurvivalRoomHost } from '../voxel/SurvivalRoomHost';
+import { TeleportHost } from '../voxel/TeleportHost';
 import { getWorldStore, publicSlotIds, type SavedWorld } from '../voxel/WorldStore';
 import { type HostedInfo, UPLOAD_ERRORS, WorldUpload } from '../voxel/HostedWorld';
 import { assertProtocol, HubRoom, ROOM_CODE_SET } from './HubRoom';
@@ -200,6 +201,8 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
   private subsystems: VoxelSubsystem[] = [];
   entities: ServerEntities | null = null;
   survival: SurvivalRoomHost | null = null;
+  /** Saved places and teleport requests (Package W). */
+  teleports: TeleportHost | null = null;
   /** Something besides block edits changed since the last save (subsystems call markDirty). */
   private progressDirty = false;
   /** Hosted world (options.host): it comes from the host's device and its saves go back there. Null otherwise. */
@@ -474,11 +477,13 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     this.subsystems = [];
     this.entities = null;
     this.survival = null;
+    this.teleports = null;
     if (this.mode === 'parkour') return;
     const api = this.roomApi();
     this.entities = new ServerEntities(api, sections);
     this.survival = new SurvivalRoomHost(api, this.entities, playerKeyHash, sections);
-    this.subsystems = [this.entities, this.survival];
+    this.teleports = new TeleportHost(api, this.entities, playerKeyHash);
+    this.subsystems = [this.entities, this.survival, this.teleports];
   }
 
   /** The room as subsystems see it. */
