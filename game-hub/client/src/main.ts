@@ -14,6 +14,7 @@ import './styles/voxel-hud.css';
 import './styles/voxel-world.css';
 import './styles/voxel-survival.css';
 import './styles/voxel-mobs.css';
+import './styles/voxel-worlds.css';
 import './styles/pwa.css';
 // First: catches Chromium's install prompt even if it fires before the hub is up.
 import './platform/install';

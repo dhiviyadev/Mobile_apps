@@ -14,6 +14,7 @@ import {
   StreamedFluids,
   type WorldGenerator,
   type VoxelMode,
+  type Waypoint,
   WORLD_LIMIT,
 } from '@hub/shared';
 import { audio } from '../../core/audio/audio';
@@ -34,6 +35,8 @@ import { LocalEntities } from './entities/LocalEntities';
 import type { HotbarSource, InteractionHooks, MoveMods, VoxelModule } from './modules';
 import type { VoxelNet } from './net/VoxelNet';
 import { SurvivalController } from './survival/SurvivalController';
+import { LocalTeleport, NetTeleport } from './teleport/backends';
+import { TeleportController } from './teleport/TeleportController';
 import { HeldItemView } from './render/HeldItemView';
 import { createItemIcons } from './ui/itemIcons';
 import { WorldFeatures } from './world/WorldFeatures';
@@ -90,6 +93,13 @@ export interface VoxelGameOptions {
   /** Offline save payloads owned by packages (index.ts OfflineSave.mobs / .survival). */
   initialMobs?: unknown;
   initialSurvival?: unknown;
+  /** Offline: saved teleport places and the auto-decline setting (from the world file's WAYP section). */
+  initialPlaces?: Waypoint[];
+  initialAutoDecline?: boolean;
+  /** Extra pause menu entries (hosting: who can join, save now). */
+  pauseExtras?: { label: string; onClick: () => void; danger?: boolean }[];
+  /** Runs before leaving (hosting: wait for the server's last save); the exit waits for it. */
+  beforeExit?: () => Promise<void>;
 }
 
 const OFFLINE_SAVE_INTERVAL = 30;
@@ -117,6 +127,8 @@ export class VoxelGame {
   readonly entities: EntityView | null;
   /** Offline creature sim; null online and in parkour. */
   readonly localEntities: LocalEntities | null;
+  /** Teleport menu (saved places, requests); null in parkour. */
+  readonly teleport: TeleportController | null;
   private readonly modules: VoxelModule[];
   /** Touch controls (packages relabel buttons with setButton). */
   readonly touchControls: TouchControls | null;
@@ -203,7 +215,11 @@ export class VoxelGame {
     this.entities = combat ? new EntityView(this) : null;
     this.localEntities = combat && !opts.online ? new LocalEntities(this, { mode, saved: opts.initialMobs }) : null;
     this.survival?.setEntities(this.localEntities?.api ?? null);
-    this.modules = [this.entities, this.survival, this.worldFeatures].filter((m): m is NonNullable<typeof m> => m !== null);
+    this.teleport = combat ? new TeleportController(this) : null;
+    if (this.teleport && !opts.online) {
+      this.teleport.attach(new LocalTeleport(this, mode === 'survival', opts.initialPlaces ?? [], !!opts.initialAutoDecline, this.teleport.onEvent));
+    }
+    this.modules = [this.entities, this.survival, this.worldFeatures, this.teleport].filter((m): m is NonNullable<typeof m> => m !== null);
 
     const hook = <K extends keyof InteractionHooks>(k: K): InteractionHooks[K] | undefined => this.modules.find((m) => m.interaction?.[k])?.interaction?.[k];
     // Creatures and players can both be under the crosshair, and creatures, chests and items can all use secondary: ask every module.
@@ -246,6 +262,7 @@ export class VoxelGame {
             onChat: opts.chat ? () => this.net?.openChat?.() : null,
             onBlocks: mode === 'sandbox' ? () => this.worldFeatures.openPicker() : null,
             onInventory: mode === 'survival' ? () => this.survival?.openInventory() : null,
+            onTeleport: combat ? () => this.teleport?.toggle() : null,
             combat,
           }),
           container,
@@ -279,7 +296,7 @@ export class VoxelGame {
             h('p', null, 'WASD move · Space jump · Shift sprint · Ctrl crouch'),
             h('p', null, 'Left click break · Right click place · Wheel / 1-0 pick block · Esc menu'),
             mode === 'sandbox' ? h('p', null, 'B blocks · Middle click pick block') : null,
-            mode === 'parkour' ? null : h('p', null, `${mode === 'survival' ? 'E bag · Q drop · F swap hands · ' : ''}Z guard · Right click use / draw / eat`),
+            mode === 'parkour' ? null : h('p', null, `${mode === 'survival' ? 'E bag · Q drop · F swap hands · ' : ''}Z guard · Right click use / draw / eat · P teleport`),
           ),
         );
     if (this.clickToPlay) container.appendChild(this.clickToPlay);
@@ -325,6 +342,7 @@ export class VoxelGame {
       this.entities?.attachNet(net as VoxelNet);
     }
     this.pause.setRoomCode(net.roomCode);
+    if (this.teleport && 'session' in net) this.teleport.attach(new NetTeleport((net as VoxelNet).session, this.teleport.onEvent));
     this.fluids.clear();
   }
 
@@ -358,9 +376,22 @@ export class VoxelGame {
     return this.fluids.saveEdits(this.world.allEdits());
   }
 
+  private exiting = false;
+
   exit(message?: string): void {
+    if (this.exiting) return;
+    this.exiting = true;
     this.opts.onSave?.(this);
-    this.opts.onExit(message);
+    const before = this.opts.beforeExit;
+    if (!before) {
+      this.opts.onExit(message);
+      return;
+    }
+    const note = h('div', { class: 'tp-warm', 'data-testid': 'saving-note' }, 'Saving your world…');
+    this.hudContainer.appendChild(note);
+    void before()
+      .catch(() => undefined)
+      .then(() => this.opts.onExit(message));
   }
 
   dispose(): void {
@@ -638,7 +669,9 @@ export class VoxelGame {
         },
       });
     }
+    if (this.teleport) extras.push({ label: 'Teleport…', onClick: () => this.teleport!.open() });
     extras.push(...(this.survival?.pauseEntries() ?? []));
+    extras.push(...(this.opts.pauseExtras ?? []));
     if (this.opts.onResetWorld) {
       extras.push({
         label: 'New world',
@@ -658,6 +691,7 @@ export class VoxelGame {
 
   private openPause(): void {
     if (this.pause.isOpen || this.disposed) return;
+    this.opts.onSave?.(this);
     this.kbm.unlock();
     this.pause.open();
     this.input.setEnabled(false);

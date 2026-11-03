@@ -94,6 +94,7 @@ export function entryOf(id: string, world: SavedWorld, bytes: number): WorldEntr
     genVersion: world.genVersion ?? 1,
     day: world.mode === 'survival' ? worldDay(world) : 0,
     ...(meta.hostCode ? { hostCode: meta.hostCode } : {}),
+    ...(meta.hostPublic !== undefined ? { hostPublic: meta.hostPublic } : {}),
     bytes,
   };
 }

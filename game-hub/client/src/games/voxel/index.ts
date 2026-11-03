@@ -1,66 +1,36 @@
 /**
- * Voxelvale entry point (lazy-loaded chunk). Offline worlds are saved to
- * localStorage (one world per saved mode); online play attaches the network layer.
+ * Voxelvale entry point (lazy-loaded chunk). Offline worlds come from the
+ * device's world library (library/WorldLibrary.ts) and are saved back to it
+ * while playing; parkour is a fixed course; online play attaches the network
+ * layer (and, when hosting, uploads the world first: net/online.ts).
  */
-import { type GenVersion, isGenVersion, isVoxelMode, LATEST_GEN_VERSION, packPos, unpackPos, type VoxelMode } from '@hub/shared';
+import { isVoxelMode, type SavedWorld, type VoxelMode, type WorldMeta } from '@hub/shared';
+import { toast } from '../../core/ui/overlays';
 import { setPauseNote } from '../common/PauseMenu';
 import type { GameInstance, GameLaunchContext } from '../types';
+import { voxelLaunchData } from './launchData';
+import { captureWorld, type CapturedWorld, openWorld } from './library/codec';
+import { getLibrary } from './library/WorldLibrary';
 import { VoxelGame } from './VoxelGame';
 import { LEGACY_NOTE } from './world/WorldFeatures';
 
-/** Sandbox keeps the original key (old saves load unchanged); survival has its own world. */
-const SAVE_KEYS: Partial<Record<VoxelMode, string>> = {
-  sandbox: 'cobalt-hub.voxel.offline.v1',
-  survival: 'cobalt-hub.voxel.offline.survival.v1',
-};
-const MAX_SAVED_EDITS = 60000;
-
-interface OfflineSave {
-  seed: number;
-  edits: [number, number][];
-  player: { x: number; y: number; z: number; yaw: number; pitch: number };
-  time: number;
-  /** Terrain generator version; missing = 1 (saves made before the world upgrade). */
-  gen?: GenVersion;
-  /** Tamed creatures (WP-C: { v: 1, list }). */
-  mobs?: unknown;
-  /** Survival state (WP-B: { v: 1, day, rules, vitals, spawn, inv, chests, satchels }). Survival key only. */
-  survival?: unknown;
-}
-
-function loadSave(key: string): OfflineSave | null {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as OfflineSave) : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeSave(key: string, game: VoxelGame): void {
-  const edits: [number, number][] = [];
-  // Player edits only: water the simulation spread is rebuilt from its sources.
-  for (const [x, y, z, id] of game.savedEdits()) {
-    if (edits.length >= MAX_SAVED_EDITS) break;
-    edits.push([packPos(x, y, z), id]);
-  }
+/** The running game's world in the library's terms. */
+export function captureGame(game: VoxelGame, mode: VoxelMode): CapturedWorld {
   const b = game.player.body;
-  const save: OfflineSave = {
+  const tp = game.teleport?.saveData();
+  return {
     seed: game.world.seed,
-    edits,
+    mode,
+    genVersion: game.generator.genVersion,
+    // Player edits only: water the simulation spread is rebuilt from its sources.
+    edits: game.savedEdits(),
     player: { x: b.x, y: b.y, z: b.z, yaw: game.player.yaw, pitch: game.player.pitch },
     time: game.sky.time,
-    gen: game.generator.genVersion,
+    survival: game.survival?.saveData(),
+    mobs: game.localEntities ? (game.localEntities.saveData() ?? undefined) : null,
+    places: tp?.places,
+    autoDecline: tp?.autoDecline,
   };
-  const mobs = game.localEntities?.saveData();
-  if (mobs !== undefined) save.mobs = mobs;
-  const survival = game.survival?.saveData();
-  if (survival !== undefined) save.survival = survival;
-  try {
-    localStorage.setItem(key, JSON.stringify(save));
-  } catch {
-    /* storage full: keep playing */
-  }
 }
 
 export async function launch(ctx: GameLaunchContext): Promise<GameInstance> {
@@ -72,45 +42,60 @@ export async function launch(ctx: GameLaunchContext): Promise<GameInstance> {
     return launchOnline(ctx, mode);
   }
 
-  // Offline: sandbox and survival keep one persistent world each; parkour uses a fixed course seed.
-  const key = SAVE_KEYS[mode];
-  const save = key ? loadSave(key) : null;
-  const seed = mode === 'parkour' ? 20251 : (save?.seed ?? ((Math.random() * 0xffffffff) >>> 0));
-  let game: VoxelGame | null = null;
-  const create = (fresh: boolean) =>
-    new VoxelGame({
-      container: ctx.container,
-      seed: fresh ? (Math.random() * 0xffffffff) >>> 0 : seed,
-      mode,
-      loading: ctx.loading,
-      onExit: (m) => ctx.exit(m),
-      initialEdits: fresh ? [] : save?.edits.map(([k, id]) => [...unpackPos(k), id] as [number, number, number, number]),
-      initialPlayer: fresh ? null : (save?.player ?? null),
-      initialTime: fresh ? undefined : save?.time,
-      // A save without `gen` predates the world upgrade: keep its terrain.
-      genVersion: !fresh && save ? (isGenVersion(save.gen) ? save.gen : 1) : LATEST_GEN_VERSION,
-      initialMobs: fresh ? undefined : save?.mobs,
-      initialSurvival: fresh ? undefined : save?.survival,
-      onSave: key ? (g) => writeSave(key, g) : undefined,
-      onResetWorld: key
-        ? () => {
-            try {
-              localStorage.removeItem(key);
-            } catch {
-              /* nothing saved */
-            }
-            ctx.exit('Started a fresh world. Open Voxelvale again to play it.');
-          }
-        : undefined,
+  if (mode === 'parkour') {
+    // A fixed course; nothing is saved.
+    const game = new VoxelGame({ container: ctx.container, seed: 20251, mode, loading: ctx.loading, onExit: (m) => ctx.exit(m) });
+    await game.start();
+    return { dispose: () => game.dispose() };
+  }
+
+  const { worldId } = voxelLaunchData(ctx);
+  const lib = await getLibrary();
+  const got = worldId ? await lib.load(worldId) : null;
+  if (!worldId || !got) throw new Error('That world could not be found. It may have been deleted.');
+  const opened = openWorld(got.world, lib.myKey);
+  const w = opened.world;
+  let current: SavedWorld = got.world;
+  let meta: WorldMeta = { ...opened.meta, lastPlayed: Date.now() };
+  let since = performance.now();
+  let warned = false;
+
+  const save = (game: VoxelGame) => {
+    const now = performance.now();
+    meta = { ...meta, lastPlayed: Date.now(), playtimeMs: meta.playtimeMs + Math.max(0, now - since) };
+    since = now;
+    current = captureWorld(current, captureGame(game, w.mode), lib.myKey, meta);
+    lib.save(worldId, current).catch((err) => {
+      console.error('[worlds] save failed', err);
+      if (!warned) toast('Could not save this world: the device storage may be full. Export it to keep a copy.', 'error', 6000);
+      warned = true;
     });
-  game = create(false);
+  };
+
+  const game = new VoxelGame({
+    container: ctx.container,
+    seed: w.seed,
+    mode: w.mode,
+    loading: ctx.loading,
+    onExit: (m) => ctx.exit(m),
+    initialEdits: w.edits,
+    initialPlayer: w.player,
+    initialTime: w.time,
+    genVersion: w.genVersion,
+    initialMobs: w.mobs,
+    initialSurvival: w.survival,
+    initialPlaces: w.places,
+    initialAutoDecline: w.autoDecline,
+    onSave: save,
+  });
   // Worlds saved before the biomes update keep their terrain; say so in the pause menu.
-  if (game.generator.genVersion === 1 && mode !== 'parkour') setPauseNote(ctx.container, () => LEGACY_NOTE);
+  setPauseNote(ctx.container, () => [`Saved on this device as "${meta.name}".`, game.generator.genVersion === 1 ? LEGACY_NOTE : null].filter(Boolean).join(' '));
   await game.start();
+  save(game); // moves it to the top of the list right away
   return {
     dispose: () => {
       setPauseNote(ctx.container, null);
-      game?.dispose();
+      game.dispose();
     },
   };
 }

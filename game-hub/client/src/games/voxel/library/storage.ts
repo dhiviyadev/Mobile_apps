@@ -18,8 +18,9 @@ export interface WorldEntry {
   genVersion: number;
   /** Survival day counter. */
   day: number;
-  /** Code the world was last hosted under. */
+  /** Code the world was last hosted under, and whether it was Public. */
   hostCode?: string;
+  hostPublic?: boolean;
   /** Size of the world file in bytes. */
   bytes: number;
 }

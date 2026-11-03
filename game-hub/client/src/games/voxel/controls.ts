@@ -10,6 +10,8 @@ export interface VoxelTouchOptions {
   onBlocks: (() => void) | null;
   /** Survival: open the bag. */
   onInventory: (() => void) | null;
+  /** Sandbox and survival: open the teleport menu. */
+  onTeleport?: (() => void) | null;
   /** Sandbox and survival: the Guard button exists (shown only while a shield is held, see setButton). */
   combat: boolean;
 }
@@ -29,5 +31,18 @@ export function voxelTouchLayout(o: VoxelTouchOptions): TouchLayout {
   // Same default spot: only one of them exists per mode.
   if (o.onBlocks) buttons.push({ id: 'blocks', icon: GAME_ICONS.blocks, label: 'Blocks', x: 0.965, y: 0.2, size: 52, mode: 'tap', onPress: o.onBlocks, variant: 'small' });
   if (o.onInventory) buttons.push({ id: 'inventory', icon: GAME_ICONS.bag, label: 'Bag', x: 0.965, y: 0.2, size: 52, mode: 'tap', onPress: o.onInventory, variant: 'small' });
+  if (o.onTeleport) {
+    buttons.push({
+      id: 'teleport',
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-5.5-5-5.5-9a5.5 5.5 0 0 1 11 0c0 4-5.5 9-5.5 9z"/><circle cx="12" cy="11" r="2"/></svg>',
+      label: 'Teleport',
+      x: 0.885,
+      y: 0.2,
+      size: 52,
+      mode: 'tap',
+      onPress: o.onTeleport,
+      variant: 'small',
+    });
+  }
   return { id: 'voxel', buttons, stickZone: 0.42 };
 }

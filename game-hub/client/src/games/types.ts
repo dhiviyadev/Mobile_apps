@@ -14,6 +14,8 @@ export interface GameLaunchContext {
   /** Game-specific mode (sandbox / parkour / 1v1 / 2v2 / ffa). */
   mode: string;
   loading: LoadingScreen;
+  /** Game-specific launch details from the hub (Voxelvale: which library world, hosting). */
+  launchData?: unknown;
   /** Called by the game when the player quits (or the connection is gone for good). */
   exit: (message?: string) => void;
 }

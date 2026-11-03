@@ -21,8 +21,8 @@ import { gameSupport, type UnsupportedReason } from '../platform/detect';
 import { showChunkLoadError, showUnsupported } from './PlatformNotices';
 
 export type LaunchRequest =
-  | { online: true; join: JoinRequest; game?: GameId; mode: string }
-  | { online: false; game: GameId; mode: string };
+  | { online: true; join: JoinRequest; game?: GameId; mode: string; launchData?: unknown }
+  | { online: false; game: GameId; mode: string; launchData?: unknown };
 
 const ACCENTS: Record<GameId, string> = { voxel: 'var(--voxel)', arena: 'var(--arena)' };
 
@@ -162,6 +162,7 @@ export async function launchGame(req: LaunchRequest, hooks: LaunchHooks): Promis
       session,
       mode,
       loading,
+      launchData: req.launchData,
       exit: (message) => {
         const s = session;
         session = null;
