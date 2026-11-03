@@ -32,7 +32,6 @@ import {
   Block,
   type BlockEdit,
   blockDef,
-  blockInWorld,
   type ChatMessage,
   CLOSE_KICKED,
   DAY_LENGTH_SECONDS,
@@ -46,6 +45,7 @@ import {
   IS_SOLID,
   isPlaceable,
   isPlayerKey,
+  type GenVersion,
   LATEST_GEN_VERSION,
   type MoveUpdate,
   isValidRoomCode,
@@ -62,7 +62,6 @@ import {
   VoxelMsg,
   type VoxelMode,
   placementError,
-  WORLD_LIMIT,
   asBytes,
 } from '@hub/shared';
 import { config } from '../config';
@@ -217,7 +216,7 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     this.state.seed = saved ? saved.seed : this.mode === 'parkour' ? 20251 + Math.floor(Math.random() * 1000) : seed;
     // Old saves keep the generator they were built with (format-1 files are version 1).
     this.state.genVersion = saved ? (saved.genVersion ?? 1) : LATEST_GEN_VERSION;
-    this.world = new ServerVoxelWorld(this.state.seed, this.mode as VoxelMode, undefined, this.state.genVersion as 1 | 2);
+    this.world = new ServerVoxelWorld(this.state.seed, this.mode as VoxelMode, undefined, this.state.genVersion as GenVersion);
     this.startFluids();
     this.createSubsystems(saved?.sections ?? null);
     if (saved) {
@@ -298,7 +297,7 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
 
   /** Gameplay edit (boss altar, support cascade): applied, broadcast with this tick's batch, seen by fluids and subsystems. */
   applyServerEdit(x: number, y: number, z: number, id: number): boolean {
-    if (!blockInWorld(x, y, z)) return false;
+    if (!this.world.blockInWorld(x, y, z)) return false;
     const before = this.world.getBlock(x, y, z);
     if (before === id) return true;
     if (!this.world.setBlock(x, y, z, id)) return false;
@@ -452,9 +451,9 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
   }
 
   /**
-   * Claims a free public slot of this room's mode: saves on the current
-   * generator first (most recently saved first), then empty slots (lowest
-   * first). With only old-generator saves free, the least recently saved one
+   * Claims a free public slot of this room's mode: saves on a biome
+   * generator (2 or later) first (most recently saved first), then empty
+   * slots (lowest first). With only generator-1 saves free, the least recently saved one
    * is retired (kept on disk as .legacy until it expires) and a fresh world
    * with the new biomes starts in its slot. Null when all are busy.
    */
@@ -465,9 +464,10 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     const free = publicSlotIds(this.mode as VoxelMode).filter((id) => !busy.has(id));
     const infos = await Promise.all(free.map((id) => store.info(id).catch(() => null)));
     const slots = free.map((id, i) => ({ id, i, info: infos[i] }));
-    const current = slots.filter((s) => s.info && s.info.genVersion === LATEST_GEN_VERSION).sort((a, b) => b.info!.savedAt - a.info!.savedAt);
+    // Generator-2 worlds keep their slot (and their builds) after generator 3 arrived; only generator-1 ones retire.
+    const current = slots.filter((s) => s.info && s.info.genVersion >= 2).sort((a, b) => b.info!.savedAt - a.info!.savedAt);
     const empty = slots.filter((s) => !s.info);
-    const old = slots.filter((s) => s.info && s.info.genVersion !== LATEST_GEN_VERSION).sort((a, b) => a.info!.savedAt - b.info!.savedAt);
+    const old = slots.filter((s) => s.info && s.info.genVersion < 2).sort((a, b) => a.info!.savedAt - b.info!.savedAt);
     for (const { id } of [...current, ...empty]) {
       if (await this.claimInSet(set, id)) return id;
     }
@@ -553,7 +553,7 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
         timeOfDay: this.state.timeOfDay,
         savedAt: Date.now(),
         edits: this.world.encodedEdits(),
-        genVersion: this.state.genVersion as 1 | 2,
+        genVersion: this.state.genVersion as GenVersion,
         sections,
       };
       this.world.markClean();
@@ -607,7 +607,7 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     }
     const reason = this.validateEdit(client.sessionId, player, rt, edit);
     if (reason) {
-      const current = blockInWorld(edit.x, edit.y, edit.z) ? this.world.getBlock(edit.x, edit.y, edit.z) : Block.Air;
+      const current = this.world.blockInWorld(edit.x, edit.y, edit.z) ? this.world.getBlock(edit.x, edit.y, edit.z) : Block.Air;
       client.sendBytes(VoxelMsg.Reject, encodeEdit({ ...edit, id: current }));
       this.log.debug(`rejected edit from ${player.name}: ${reason}`);
       return;
@@ -649,7 +649,7 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
   validateEdit(sessionId: string, player: VoxelPlayer, rt: PlayerRuntime, e: BlockEdit): string | null {
     if (this.mode === 'parkour') return 'editing disabled in this mode';
     if (!rt.editBucket.take()) return 'rate limited';
-    if (!blockInWorld(e.x, e.y, e.z) || e.y < 1) return 'out of world';
+    if (!this.world.blockInWorld(e.x, e.y, e.z) || e.y < 1) return 'out of world';
     const current = this.world.getBlock(e.x, e.y, e.z);
     if (e.id === Block.Air) {
       if (!blockDef(current).breakable) return 'unbreakable';
@@ -699,7 +699,8 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     const dt = Math.max(0.05, (now - rt.lastMoveAt) / 1000);
     rt.lastMoveAt = now;
 
-    const inBounds = Math.abs(m.x) <= WORLD_LIMIT && Math.abs(m.z) <= WORLD_LIMIT && m.y > -64 && m.y < 128;
+    const limit = this.world.generator.limit;
+    const inBounds = Math.abs(m.x) <= limit && Math.abs(m.z) <= limit && m.y > -64 && m.y < 128;
     const horizontal = Math.hypot(m.x - player.x, m.z - player.z);
     const vertical = Math.abs(m.y - player.y);
     let allowance = 0;

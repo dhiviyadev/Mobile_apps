@@ -10,7 +10,6 @@ import {
   Block,
   type BlockEdit,
   CHUNK_HEIGHT,
-  chunkInWorld,
   FluidSimulator,
   isWater,
   packPos,
@@ -76,7 +75,7 @@ export class VoxelFluids {
     this.sim = new FluidSimulator(
       {
         get: (x, y, z) => this.blockAt(x, y, z),
-        set: (x, y, z, id) => inWorld(x, z) && this.write(x, y, z, id),
+        set: (x, y, z, id) => this.inWorld(x, z) && this.write(x, y, z, id),
       },
       { maxQueue: opts.maxQueue, height: CHUNK_HEIGHT },
     );
@@ -158,7 +157,7 @@ export class VoxelFluids {
 
   /** The world's block; outside the world reads as bedrock, so water stops at the world edge. */
   private blockAt(x: number, y: number, z: number): number {
-    return inWorld(x, z) ? this.world.getBlock(x, y, z) : Block.Bedrock;
+    return this.inWorld(x, z) ? this.world.getBlock(x, y, z) : Block.Bedrock;
   }
 
   private limitReached(): void {
@@ -173,6 +172,10 @@ export class VoxelFluids {
    * once the whole budget is spent. Past water's share, a change that added an
    * edit is undone: putting back the generated block drops that edit again.
    */
+  private inWorld(x: number, z: number): boolean {
+    return this.world.chunkInWorld(toChunkCoord(x), toChunkCoord(z));
+  }
+
   private write(x: number, y: number, z: number, id: number): boolean {
     const world = this.world;
     const count = world.editCount;
@@ -190,6 +193,3 @@ export class VoxelFluids {
   }
 }
 
-function inWorld(x: number, z: number): boolean {
-  return chunkInWorld(toChunkCoord(x), toChunkCoord(z));
-}

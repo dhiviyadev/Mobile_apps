@@ -33,7 +33,7 @@ function sampler(gen: TerrainGeneratorV2) {
 function examples(): Map<StructureType, { seed: number; s: StructureInfo }> {
   const found = new Map<StructureType, { seed: number; s: StructureInfo }>();
   for (let seed = 1; seed <= 40 && found.size < 4; seed++) {
-    for (const s of createWorldGenerator(seed, 'survival').structures()) if (!found.has(s.type)) found.set(s.type, { seed, s });
+    for (const s of createWorldGenerator(seed, 'survival', 2).structures()) if (!found.has(s.type)) found.set(s.type, { seed, s });
   }
   return found;
 }
@@ -42,7 +42,7 @@ describe('structure placement', () => {
   it('places 6..16 per world, inside it, apart, away from spawn, every type somewhere', () => {
     const types = new Set<StructureType>();
     for (let seed = 1; seed <= 20; seed++) {
-      const g = createWorldGenerator(seed, 'survival');
+      const g = createWorldGenerator(seed, 'survival', 2);
       const list = g.structures();
       expect(list.length, `seed ${seed}`).toBeGreaterThanOrEqual(6);
       expect(list.length).toBeLessThanOrEqual(16);
@@ -68,7 +68,7 @@ describe('structure placement', () => {
 
   it('is the same from a fresh generator', () => {
     const a = computeStructures(new TerrainGeneratorV2(9), 9).map((p) => p.info);
-    expect(createWorldGenerator(9, 'sandbox').structures()).toEqual(a);
+    expect(createWorldGenerator(9, 'sandbox', 2).structures()).toEqual(a);
   });
 });
 

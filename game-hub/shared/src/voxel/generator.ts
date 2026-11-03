@@ -1,27 +1,37 @@
 /** Picks the right world generator for a voxel room mode and generator version. */
 import type { VoxelMode } from '../constants';
-import { SEA_LEVEL } from './constants';
+import { CHUNK_SIZE, ENDLESS_RADIUS_CHUNKS, SEA_LEVEL, WORLD_RADIUS_CHUNKS } from './constants';
 import { generateParkourChunk, generateParkourCourse, type ParkourCourse } from './parkour';
 import type { StructureInfo } from './structures/types';
-import { Biome, TerrainGeneratorV1, TerrainGeneratorV2 } from './worldgen';
+import { Biome, TerrainGeneratorV1, TerrainGeneratorV2, TerrainGeneratorV3 } from './worldgen';
 
 /**
  * Terrain generator version, stored with every saved world (CVW2 header, offline
  * save `gen`). 1 = the original generator, frozen byte-for-byte; 2 = biomes,
- * ores and structures (world area). Worlds without a version are 1.
+ * ores and structures (world area), frozen too; 3 = endless, 3x larger biomes,
+ * cave systems. Worlds without a version are 1.
  */
-export type GenVersion = 1 | 2;
+export type GenVersion = 1 | 2 | 3;
 /** Version new worlds get. */
-export const LATEST_GEN_VERSION: GenVersion = 2;
+export const LATEST_GEN_VERSION: GenVersion = 3;
 
 export function isGenVersion(v: unknown): v is GenVersion {
-  return v === 1 || v === 2;
+  return v === 1 || v === 2 || v === 3;
+}
+
+/** World size in chunks for a mode and generator version (see chunkInWorld). */
+export function worldRadiusChunks(mode: VoxelMode, genVersion: GenVersion): number {
+  return mode !== 'parkour' && genVersion >= 3 ? ENDLESS_RADIUS_CHUNKS : WORLD_RADIUS_CHUNKS;
 }
 
 export interface WorldGenerator {
   readonly mode: VoxelMode;
   /** Terrain version (parkour: LATEST, unused). */
   readonly genVersion: GenVersion;
+  /** World size: chunks from -radiusChunks to radiusChunks - 1 on X and Z (pass to chunkInWorld / blockInWorld). */
+  readonly radiusChunks: number;
+  /** The same in blocks: playable x, z in [-limit, limit). */
+  readonly limit: number;
   generateChunk(cx: number, cz: number, out?: Uint8Array): Uint8Array;
   /** Memoized. */
   findSpawn(): { x: number; y: number; z: number };
@@ -31,7 +41,10 @@ export interface WorldGenerator {
   biomeAt(x: number, z: number): Biome;
   /** Generated top solid y of a column (parkour: SEA_LEVEL - 8). */
   surfaceHeight(x: number, z: number): number;
-  /** Every boss structure of the world (v1 and parkour: none). */
+  /**
+   * Every boss structure of a bounded world (v1 and parkour: none). Endless
+   * worlds (v3): only those around the origin; use structuresNear elsewhere.
+   */
   structures(): readonly StructureInfo[];
   /** Structures whose bounds come within `radius` (horizontal) of (x, z). */
   structuresNear(x: number, z: number, radius: number): StructureInfo[];
@@ -40,6 +53,7 @@ export interface WorldGenerator {
 }
 
 const NO_STRUCTURES: readonly StructureInfo[] = [];
+const bounds = (radiusChunks: number) => ({ radiusChunks, limit: radiusChunks * CHUNK_SIZE });
 
 export function createWorldGenerator(seed: number, mode: VoxelMode, genVersion: GenVersion = LATEST_GEN_VERSION): WorldGenerator {
   if (mode === 'parkour') {
@@ -47,6 +61,7 @@ export function createWorldGenerator(seed: number, mode: VoxelMode, genVersion: 
     return {
       mode,
       genVersion: LATEST_GEN_VERSION,
+      ...bounds(WORLD_RADIUS_CHUNKS),
       course,
       generateChunk: (cx, cz, out) => generateParkourChunk(course, cx, cz, out),
       findSpawn: () => ({ ...course.start }),
@@ -57,6 +72,22 @@ export function createWorldGenerator(seed: number, mode: VoxelMode, genVersion: 
       structureAt: () => null,
     };
   }
+  if (genVersion === 3) {
+    const v3 = new TerrainGeneratorV3(seed);
+    return {
+      mode,
+      genVersion,
+      ...bounds(ENDLESS_RADIUS_CHUNKS),
+      course: null,
+      generateChunk: (cx, cz, out) => v3.generateChunk(cx, cz, out),
+      findSpawn: () => v3.findSpawn(),
+      biomeAt: (x, z) => v3.column(Math.floor(x), Math.floor(z)).biome,
+      surfaceHeight: (x, z) => v3.column(Math.floor(x), Math.floor(z)).height,
+      structures: () => v3.structures(),
+      structuresNear: (x, z, radius) => v3.structuresNear(x, z, radius),
+      structureAt: (x, y, z) => v3.structureAt(x, y, z),
+    };
+  }
   if (genVersion === 2) {
     const v2 = new TerrainGeneratorV2(seed);
     let list: readonly StructureInfo[] | null = null;
@@ -64,6 +95,7 @@ export function createWorldGenerator(seed: number, mode: VoxelMode, genVersion: 
     return {
       mode,
       genVersion,
+      ...bounds(WORLD_RADIUS_CHUNKS),
       course: null,
       generateChunk: (cx, cz, out) => v2.generateChunk(cx, cz, out),
       findSpawn: () => v2.findSpawn(),
@@ -89,6 +121,7 @@ export function createWorldGenerator(seed: number, mode: VoxelMode, genVersion: 
   return {
     mode,
     genVersion,
+    ...bounds(WORLD_RADIUS_CHUNKS),
     course: null,
     generateChunk: (cx, cz, out) => terrain.generateChunk(cx, cz, out),
     findSpawn: () => ({ ...(spawn ??= terrain.findSpawn()) }),

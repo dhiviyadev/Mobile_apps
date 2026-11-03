@@ -381,11 +381,16 @@ export interface EntityCaps {
   simDist: number;
 }
 
+/**
+ * Hostile caps were halved (12 -> 6 online, 10 -> 5 offline) so nights are
+ * calmer; with the surface spawn attempt on every other pass only (Spawner),
+ * night pressure is about half what it was.
+ */
 export const SERVER_CAPS: EntityCaps = {
   maxNatural: 40,
   friendlyPerPlayer: 10,
-  hostilePerPlayer: 12,
-  flyersPerPlayer: 3,
+  hostilePerPlayer: 6,
+  flyersPerPlayer: 2,
   fishPerPlayer: 4,
   maxExtra: 16,
   maxProjectiles: 96,
@@ -401,8 +406,8 @@ export const SERVER_CAPS: EntityCaps = {
 export const OFFLINE_CAPS: EntityCaps = {
   maxNatural: 28,
   friendlyPerPlayer: 8,
-  hostilePerPlayer: 10,
-  flyersPerPlayer: 2,
+  hostilePerPlayer: 5,
+  flyersPerPlayer: 1,
   fishPerPlayer: 3,
   maxExtra: 12,
   maxProjectiles: 48,
@@ -419,8 +424,8 @@ export const OFFLINE_LOW_CAPS: EntityCaps = {
   ...OFFLINE_CAPS,
   maxNatural: 20,
   friendlyPerPlayer: 6,
-  hostilePerPlayer: 8,
-  flyersPerPlayer: 2,
+  hostilePerPlayer: 4,
+  flyersPerPlayer: 1,
   fishPerPlayer: 2,
   maxHazards: 16,
   pathBudget: 200,

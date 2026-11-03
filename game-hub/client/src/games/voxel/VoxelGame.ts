@@ -14,7 +14,6 @@ import {
   StreamedFluids,
   type WorldGenerator,
   type VoxelMode,
-  WORLD_LIMIT,
 } from '@hub/shared';
 import { audio } from '../../core/audio/audio';
 import { isTouchDevice } from '../../core/device';
@@ -606,7 +605,7 @@ export class VoxelGame {
 
   private clampToWorld(): void {
     const b = this.player.body;
-    const lim = WORLD_LIMIT - 0.5;
+    const lim = this.generator.limit - 0.5;
     b.x = Math.max(-lim, Math.min(lim, b.x));
     b.z = Math.max(-lim, Math.min(lim, b.z));
   }

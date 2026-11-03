@@ -5,7 +5,8 @@
 import type { Mob } from './types';
 
 const CELL = 4;
-const key = (cx: number, cz: number) => (cx + 256) * 512 + (cz + 256);
+/** Cells are 4 blocks: +-8192 cells covers the endless world's +-32000 blocks. */
+const key = (cx: number, cz: number) => (cx + 8192) * 16384 + (cz + 8192);
 
 export class SpatialHash {
   private readonly cells = new Map<number, Mob[]>();

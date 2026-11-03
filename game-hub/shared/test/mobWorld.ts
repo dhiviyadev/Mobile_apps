@@ -67,6 +67,8 @@ export interface TestSetup {
 const flatGenerator = (biome: Biome): WorldGenerator => ({
   mode: 'survival',
   genVersion: 1,
+  radiusChunks: 32,
+  limit: 512,
   course: null,
   generateChunk: () => new Uint8Array(0),
   findSpawn: () => ({ x: 0, y: FLOOR, z: 0 }),

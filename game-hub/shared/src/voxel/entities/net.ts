@@ -205,6 +205,16 @@ class Writer {
     this.view.setInt16(this.pos, Math.max(-32768, Math.min(32767, Math.round(v))), true);
     this.pos += 2;
   }
+  /**
+   * A horizontal position (x or z times POS) as i16 that wraps instead of
+   * clamping: the same bytes as i16() within +-1024 blocks, and readers
+   * unwrap it near their own position (unwrapNear), so endless worlds work.
+   */
+  p16(v: number): void {
+    this.ensure(2);
+    this.view.setInt16(this.pos, ((Math.round(v) % 65536) + 65536 + 32768) % 65536 - 32768, true);
+    this.pos += 2;
+  }
   bytes(): Uint8Array {
     return this.buf.slice(0, this.pos);
   }
@@ -214,6 +224,24 @@ const angleU8 = (a: number) => Math.round((wrap(a) / TAU) * 256) & 255;
 const u8Angle = (v: number) => ((v > 127 ? v - 256 : v) / 256) * TAU;
 const POS = 32;
 const VEL = 100;
+/** Horizontal positions wrap every this many blocks on the wire (65536 / POS). */
+const WRAP = 65536 / POS;
+
+/**
+ * Unwraps a decoded horizontal coordinate to the copy nearest `ref` (the
+ * viewer's own position); without one, values are taken as they are (worlds
+ * within +-1024 blocks need none).
+ */
+function unwrapNear(ref: number | undefined): (v: number) => number {
+  if (ref === undefined || !Number.isFinite(ref)) return (v) => v;
+  return (v) => ref + ((((v - ref + WRAP / 2) % WRAP) + WRAP) % WRAP) - WRAP / 2;
+}
+
+/** Where the decoding client is (horizontal), to unwrap positions far from the origin. */
+export interface NearPoint {
+  x: number;
+  z: number;
+}
 
 export function encodeEntitySnapshot(s: EntitySnapshot): Uint8Array {
   const w = new Writer();
@@ -224,9 +252,9 @@ export function encodeEntitySnapshot(s: EntitySnapshot): Uint8Array {
     w.u16(m.id);
     w.u8(m.kind);
     w.u8(m.flags);
-    w.i16(m.x * POS);
+    w.p16(m.x * POS);
     w.i16(m.y * POS);
-    w.i16(m.z * POS);
+    w.p16(m.z * POS);
     w.u8(angleU8(m.yaw));
     w.u8(angleU8(m.headYaw - m.yaw));
     w.i8(m.headPitch * 100);
@@ -239,9 +267,9 @@ export function encodeEntitySnapshot(s: EntitySnapshot): Uint8Array {
     w.u16(p.id);
     w.u8(p.kind);
     w.u8(p.flags);
-    w.i16(p.x * POS);
+    w.p16(p.x * POS);
     w.i16(p.y * POS);
-    w.i16(p.z * POS);
+    w.p16(p.z * POS);
     w.i16(p.vx * VEL);
     w.i16(p.vy * VEL);
     w.i16(p.vz * VEL);
@@ -251,9 +279,9 @@ export function encodeEntitySnapshot(s: EntitySnapshot): Uint8Array {
     w.u16(h.id);
     w.u8(h.kind);
     w.u8(Math.min(255, h.radius * 8));
-    w.i16(h.x * POS);
+    w.p16(h.x * POS);
     w.i16(h.y * POS);
-    w.i16(h.z * POS);
+    w.p16(h.z * POS);
     w.u8(Math.min(255, h.secondsLeft * 10));
     w.u8(Math.min(255, h.param * 32));
   }
@@ -272,7 +300,9 @@ export function encodeEntitySnapshot(s: EntitySnapshot): Uint8Array {
   return w.bytes();
 }
 
-export function decodeEntitySnapshot(bytes: Uint8Array): EntitySnapshot {
+export function decodeEntitySnapshot(bytes: Uint8Array, near?: NearPoint): EntitySnapshot {
+  const ux = unwrapNear(near?.x);
+  const uz = unwrapNear(near?.z);
   const r = new BinaryReader(bytes);
   const tick = r.u16();
   r.u8();
@@ -281,9 +311,9 @@ export function decodeEntitySnapshot(bytes: Uint8Array): EntitySnapshot {
     const id = r.u16();
     const kind = r.u8() as MobKind;
     const flags = r.u8();
-    const x = r.i16() / POS;
+    const x = ux(r.i16() / POS);
     const y = r.i16() / POS;
-    const z = r.i16() / POS;
+    const z = uz(r.i16() / POS);
     const yaw = u8Angle(r.u8());
     const headYaw = yaw + u8Angle(r.u8());
     const headPitch = r.i8() / 100;
@@ -294,11 +324,11 @@ export function decodeEntitySnapshot(bytes: Uint8Array): EntitySnapshot {
   }
   const projectiles: ProjSnap[] = [];
   for (let n = r.u8(), i = 0; i < n; i++) {
-    projectiles.push({ id: r.u16(), kind: r.u8(), flags: r.u8(), x: r.i16() / POS, y: r.i16() / POS, z: r.i16() / POS, vx: r.i16() / VEL, vy: r.i16() / VEL, vz: r.i16() / VEL });
+    projectiles.push({ id: r.u16(), kind: r.u8(), flags: r.u8(), x: ux(r.i16() / POS), y: r.i16() / POS, z: uz(r.i16() / POS), vx: r.i16() / VEL, vy: r.i16() / VEL, vz: r.i16() / VEL });
   }
   const hazards: HazardSnap[] = [];
   for (let n = r.u8(), i = 0; i < n; i++) {
-    hazards.push({ id: r.u16(), kind: r.u8(), radius: r.u8() / 8, x: r.i16() / POS, y: r.i16() / POS, z: r.i16() / POS, secondsLeft: r.u8() / 10, param: r.u8() / 32 });
+    hazards.push({ id: r.u16(), kind: r.u8(), radius: r.u8() / 8, x: ux(r.i16() / POS), y: r.i16() / POS, z: uz(r.i16() / POS), secondsLeft: r.u8() / 10, param: r.u8() / 32 });
   }
   for (let n = r.u8(), i = 0; i < n; i++) for (let k = 0; k < ITEM_RECORD_BYTES; k++) r.u8();
   const bosses: BossSnap[] = [];
@@ -353,9 +383,9 @@ function writeEvent(w: Writer, e: EntityEvent, viewerId: string | null): void {
       w.u16(e.bossId);
       w.u8(e.shape);
       w.u8(Math.min(255, e.seconds * 10));
-      w.i16(e.x * POS);
+      w.p16(e.x * POS);
       w.i16(e.y * POS);
-      w.i16(e.z * POS);
+      w.p16(e.z * POS);
       w.u8(Math.min(255, e.radius * 8));
       w.u8(Math.min(255, e.width * 8));
       w.u8(angleU8(e.yaw));
@@ -363,17 +393,17 @@ function writeEvent(w: Writer, e: EntityEvent, viewerId: string | null): void {
       break;
     case EntityEventType.Burst:
       w.u8(e.kind);
-      w.i16(e.x * POS);
+      w.p16(e.x * POS);
       w.i16(e.y * POS);
-      w.i16(e.z * POS);
+      w.p16(e.z * POS);
       w.u8(Math.min(255, e.radius * 8));
       break;
     case EntityEventType.ProjHit:
       w.u16(e.projId);
       w.u8(e.projKind);
-      w.i16(e.x * POS);
+      w.p16(e.x * POS);
       w.i16(e.y * POS);
-      w.i16(e.z * POS);
+      w.p16(e.z * POS);
       w.u8(e.what);
       break;
     case EntityEventType.BossPhase:
@@ -417,7 +447,9 @@ export function encodeEvents(tick: number, events: readonly EntityEvent[], viewe
   return out;
 }
 
-export function decodeEvents(bytes: Uint8Array): { tick: number; events: EntityEvent[] } {
+export function decodeEvents(bytes: Uint8Array, near?: NearPoint): { tick: number; events: EntityEvent[] } {
+  const ux = unwrapNear(near?.x);
+  const uz = unwrapNear(near?.z);
   const r = new BinaryReader(bytes);
   const tick = r.u16();
   const n = r.u8();
@@ -443,9 +475,9 @@ export function decodeEvents(bytes: Uint8Array): { tick: number; events: EntityE
         const bossId = r.u16();
         const shape = r.u8() as TelegraphShape;
         const seconds = r.u8() / 10;
-        const x = r.i16() / POS;
+        const x = ux(r.i16() / POS);
         const y = r.i16() / POS;
-        const z = r.i16() / POS;
+        const z = uz(r.i16() / POS);
         const radius = r.u8() / 8;
         const width = r.u8() / 8;
         const yaw = u8Angle(r.u8());
@@ -455,15 +487,15 @@ export function decodeEvents(bytes: Uint8Array): { tick: number; events: EntityE
       }
       case EntityEventType.Burst: {
         const kind = r.u8() as BurstKind;
-        events.push({ type, kind, x: r.i16() / POS, y: r.i16() / POS, z: r.i16() / POS, radius: r.u8() / 8 });
+        events.push({ type, kind, x: ux(r.i16() / POS), y: r.i16() / POS, z: uz(r.i16() / POS), radius: r.u8() / 8 });
         break;
       }
       case EntityEventType.ProjHit: {
         const projId = r.u16();
         const projKind = r.u8();
-        const x = r.i16() / POS;
+        const x = ux(r.i16() / POS);
         const y = r.i16() / POS;
-        const z = r.i16() / POS;
+        const z = uz(r.i16() / POS);
         events.push({ type, projId, projKind, x, y, z, what: r.u8() as 0 | 1 | 2 });
         break;
       }

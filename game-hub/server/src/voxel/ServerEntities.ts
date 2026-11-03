@@ -72,7 +72,7 @@ export function governedCaps(level: number): EntityCaps {
     ...SERVER_CAPS,
     maxNatural: Math.max(20, Math.round(SERVER_CAPS.maxNatural * k)),
     friendlyPerPlayer: Math.max(4, Math.round(SERVER_CAPS.friendlyPerPlayer * k)),
-    hostilePerPlayer: Math.max(6, Math.round(SERVER_CAPS.hostilePerPlayer * k)),
+    hostilePerPlayer: Math.max(3, Math.round(SERVER_CAPS.hostilePerPlayer * k)),
     pathBudget: Math.max(200, Math.round(SERVER_CAPS.pathBudget * p)),
     losBudget: Math.max(24, Math.round(SERVER_CAPS.losBudget * k)),
   };

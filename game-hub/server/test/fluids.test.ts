@@ -148,7 +148,7 @@ describe('server fluids', () => {
   });
 
   it('keeps water inside the world', () => {
-    const world = new ServerVoxelWorld(SEED, 'sandbox');
+    const world = new ServerVoxelWorld(SEED, 'sandbox', undefined, 2);
     const edge = WORLD_LIMIT - 1;
     const y = buildFloor(world, edge, 0);
     const fluids = new VoxelFluids(world, () => {});

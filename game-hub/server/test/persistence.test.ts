@@ -325,7 +325,7 @@ describe('ServerVoxelWorld persistence hooks', () => {
     expect(world.dirty).toBe(true);
     expect(world.editCount).toBe(0);
 
-    const restored = new ServerVoxelWorld(99, 'sandbox', 3);
+    const restored = new ServerVoxelWorld(99, 'sandbox', 3, 2);
     const edits = [
       { x: 1, y: 5, z: 1, id: Block.Stone },
       { x: 9999, y: 5, z: 1, id: Block.Stone }, // outside the world: skipped

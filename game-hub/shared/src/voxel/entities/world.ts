@@ -394,10 +394,20 @@ export class EntityWorld implements EntityWorldApi {
     return lineOfSight(this.host.getBlock, ax, ay, az, bx, by, bz, mode);
   }
 
-  /** Every structure creatures care about (generator + synthetic). */
-  structures(): readonly StructureInfo[] {
-    const gen = this.host.generator.structures();
-    return this.extraStructures.length ? [...gen, ...this.extraStructures] : gen;
+  /**
+   * Structures (generator + synthetic) whose bounds come within `radius`
+   * (horizontal) of (x, z). Endless worlds are queried around a point, never
+   * as a whole.
+   */
+  structuresNear(x: number, z: number, radius: number): StructureInfo[] {
+    const out = this.host.generator.structuresNear(x, z, radius);
+    for (const s of this.extraStructures) {
+      const b = s.bounds;
+      const dx = Math.max(b.x0 - x, 0, x - b.x1);
+      const dz = Math.max(b.z0 - z, 0, z - b.z1);
+      if (dx * dx + dz * dz <= radius * radius) out.push(s);
+    }
+    return out;
   }
 
   /** Visits damageable targets (mobs, players) within a horizontal radius that a `team` effect may hurt. */

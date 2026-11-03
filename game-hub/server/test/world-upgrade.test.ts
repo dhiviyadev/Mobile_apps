@@ -13,6 +13,7 @@ import {
   decodeEdits,
   encodeEdit,
   encodeEdits,
+  LATEST_GEN_VERSION,
   TerrainGeneratorV1,
   VoxelMsg,
 } from '@hub/shared';
@@ -79,14 +80,14 @@ async function track(room: Room) {
 }
 
 describe('upgraded Voxelvale rooms', () => {
-  it('opens new worlds on generator 2, with placement rules and the support cascade', async () => {
+  it('opens new worlds on the latest generator, with placement rules and the support cascade', async () => {
     const ts = await startTestServer();
     try {
       const SEED = 4242;
       const gen = createWorldGenerator(SEED, 'sandbox');
       const spawn = gen.findSpawn();
       const a = await track(await ts.client().create('voxel', { nickname: 'Gardener', mode: 'sandbox', private: true, seed: SEED }));
-      expect(a.room.state.genVersion).toBe(2);
+      expect(a.room.state.genVersion).toBe(LATEST_GEN_VERSION);
       const room = matchMaker.getLocalRoomById(a.room.roomId) as unknown as VoxelRoom;
       const get = (x: number, y: number, z: number) => room.world.getBlock(x, y, z);
       // A dry surface cell next to spawn with air (or a plant) above it.
@@ -138,10 +139,10 @@ describe('upgraded Voxelvale rooms', () => {
       await store.save(world('public-2', { savedAt: 20, seed: 222, genVersion: 2 }));
       const p = await track(await ts.client().create('voxel', { nickname: 'Visitor', mode: 'sandbox' }));
       expect(p.room.state.seed).toBe(222);
-      // With only old saves free, the oldest is retired and a fresh v2 world starts there.
+      // With only old saves free, the oldest is retired and a fresh world on the latest generator starts there.
       for (let i = 3; i <= 8; i++) await store.save(world(`public-${i}`, { savedAt: 100 + i, seed: 1000 + i }));
       const q = await track(await ts.client().create('voxel', { nickname: 'Newcomer', mode: 'sandbox' }));
-      expect(q.room.state.genVersion).toBe(2);
+      expect(q.room.state.genVersion).toBe(LATEST_GEN_VERSION);
       expect(q.room.state.seed).not.toBe(111);
       await until(() => true);
       expect((await fs.readdir(store.worldsDir)).includes('public-1.cvw.legacy')).toBe(true);

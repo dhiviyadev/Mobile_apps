@@ -217,6 +217,8 @@ export interface StreamedWorld {
   setBlock(x: number, y: number, z: number, id: number): void;
   /** True when the chunk holding column (x, z) has its blocks. */
   isLoaded(x: number, z: number): boolean;
+  /** World size in chunks (default WORLD_RADIUS_CHUNKS; generator 3: ENDLESS_RADIUS_CHUNKS). */
+  readonly radiusChunks?: number;
 }
 
 /** An edit as [x, y, z, id]. */
@@ -347,7 +349,7 @@ export class StreamedFluids {
    * with d = CHUNK_SIZE from a chunk's corner, that holds for the whole chunk.
    */
   private ready(x: number, z: number, d: number): boolean {
-    const loaded = (bx: number, bz: number) => this.world.isLoaded(bx, bz) || !chunkInWorld(toChunkCoord(bx), toChunkCoord(bz));
+    const loaded = (bx: number, bz: number) => this.world.isLoaded(bx, bz) || !chunkInWorld(toChunkCoord(bx), toChunkCoord(bz), this.world.radiusChunks);
     return loaded(x, z) && loaded(x - d, z) && loaded(x + d, z) && loaded(x, z - d) && loaded(x, z + d);
   }
 }

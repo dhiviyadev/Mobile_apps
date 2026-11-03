@@ -57,13 +57,39 @@ describe('generator 1 is frozen', () => {
 });
 
 describe('generator 2', () => {
+  // Hashes taken before generator 3 existed: saved generator-2 worlds must never change.
+  const GOLDEN: [number, number, number, string][] = [
+    [1234, 3, -2, '7773a19b'],
+    [42, 0, 0, 'e119d1dc'],
+    [7, -5, 9, '624f5f2b'],
+    [99, -1, 1, 'b0fc31d0'],
+    [20251, 10, -31, '50f2bfee'],
+    [5, 12, 7, '07954f5a'],
+    [31337, -20, -20, '2ffb8007'],
+    [8, 30, -1, 'f77d9b12'],
+    // Chunks holding a structure.
+    [3, -28, -24, '51da7028'],
+    [11, -24, -29, '5bb64e5e'],
+  ];
+  it('is frozen: the same bytes, spawns and structures as before generator 3', () => {
+    for (const [seed, cx, cz, hash] of GOLDEN) {
+      expect(fnv(createWorldGenerator(seed, 'sandbox', 2).generateChunk(cx, cz)), `seed ${seed} chunk ${cx},${cz}`).toBe(hash);
+    }
+    expect(createWorldGenerator(3, 'survival', 2).findSpawn()).toEqual({ x: 2.5, y: 27, z: -3.5 });
+    expect(createWorldGenerator(11, 'survival', 2).findSpawn()).toEqual({ x: -3.5, y: 30, z: -1.5 });
+    const structures = ['e921108b', 'ca35b279', '2a4df3a5', '8de640a6', 'dd54e9aa'];
+    for (let seed = 1; seed <= 5; seed++) {
+      expect(fnv(new TextEncoder().encode(JSON.stringify(createWorldGenerator(seed, 'survival', 2).structures())))).toBe(structures[seed - 1]);
+    }
+  });
+
   it('is deterministic, differs across seeds and reuses its output buffer', () => {
     const a = new TerrainGeneratorV2(1234).generateChunk(3, -2);
     expect(new TerrainGeneratorV2(1234).generateChunk(3, -2)).toEqual(a);
     expect(new TerrainGeneratorV2(99).generateChunk(3, -2)).not.toEqual(a);
     const out = new Uint8Array(a.length);
     expect(new TerrainGeneratorV2(1234).generateChunk(3, -2, out)).toBe(out);
-    expect(createWorldGenerator(1, 'survival').genVersion).toBe(2);
+    expect(createWorldGenerator(1, 'survival', 2).genVersion).toBe(2);
   });
 
   it('covers all 18 biomes', () => {
@@ -142,7 +168,7 @@ describe('generator 2', () => {
 
   it('spawns dry, on open ground, at the column height', () => {
     for (const seed of [5, 1234, 77]) {
-      const g = createWorldGenerator(seed, 'sandbox');
+      const g = createWorldGenerator(seed, 'sandbox', 2);
       const s = g.findSpawn();
       const v2 = new TerrainGeneratorV2(seed);
       const col = v2.column(Math.floor(s.x), Math.floor(s.z));

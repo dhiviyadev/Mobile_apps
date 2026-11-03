@@ -4,8 +4,9 @@
  * save (see WorldStore).
  *
  * Chunks are kept as "views": the generated chunk with this world's edits
- * applied, in a numeric slot per chunk and a small LRU (design-voxel-mobs
- * §9.6). getBlock generates missing views on demand; the creature sim reads
+ * applied, in a map keyed by a numeric slot per chunk with an LRU
+ * (design-voxel-mobs §9.6), so memory follows the chunks in use, not the
+ * world's size (generator 3 worlds are endless). getBlock generates missing views on demand; the creature sim reads
  * through reader(), which never generates (unavailable chunks read as
  * Bedrock) and asks for them with warm(), generated within a time budget by
  * pumpWarm() every tick.
@@ -18,6 +19,7 @@ import {
   CHUNK_HEIGHT,
   chunkInWorld,
   chunkKey,
+  ENDLESS_LIMIT,
   createWorldGenerator,
   type GenVersion,
   LATEST_GEN_VERSION,
@@ -27,15 +29,25 @@ import {
   unpackPos,
   type VoxelMode,
   type WorldGenerator,
-  WORLD_RADIUS_CHUNKS,
 } from '@hub/shared';
 
 /** Chunk cache floor (v2 generation costs about 2x v1, so more is kept). setCacheBudget may raise it. */
 const MAX_CACHED_CHUNKS = 384;
-const SIDE = WORLD_RADIUS_CHUNKS * 2;
 const BEDROCK = 14;
+/** Most chunks waiting for pumpWarm. */
+const MAX_WARM_QUEUE = 256;
+/** Chunk coordinates up to +-SLOT_HALF get distinct slots (the wire's i16 range, with room). */
+const SLOT_HALF = 4096;
 
-const slotOf = (cx: number, cz: number) => (cx + WORLD_RADIUS_CHUNKS) * SIDE + (cz + WORLD_RADIUS_CHUNKS);
+const slotOf = (cx: number, cz: number) => (cx + SLOT_HALF) * (SLOT_HALF * 2) + (cz + SLOT_HALF);
+const slotX = (s: number) => Math.floor(s / (SLOT_HALF * 2)) - SLOT_HALF;
+const slotZ = (s: number) => (s % (SLOT_HALF * 2)) - SLOT_HALF;
+
+/** A cached chunk view and the tick its LRU position was last refreshed. */
+interface View {
+  data: Uint8Array;
+  touched: number;
+}
 
 export class ServerVoxelWorld {
   readonly generator: WorldGenerator;
@@ -45,11 +57,12 @@ export class ServerVoxelWorld {
   private readonly editsByChunk = new Map<number, Set<number>>();
   /** packPos -> generated block under an edit (filled lazily for restored edits). */
   private readonly generatedAt = new Map<number, number>();
-  /** Generated chunks with edits applied, by slot. */
-  private readonly views: (Uint8Array | undefined)[] = new Array(SIDE * SIDE);
-  /** LRU order of cached slots (insertion-ordered). */
-  private readonly lru = new Map<number, true>();
-  private readonly touchedTick = new Int32Array(SIDE * SIDE).fill(-1);
+  /** Generated chunks with edits applied, by slot; insertion order is the LRU order. */
+  private readonly views = new Map<number, View>();
+  /** Bumped whenever a view is dropped, so readers drop their last-chunk cache. */
+  private viewEpoch = 0;
+  /** World size in chunks (generator 1-2: 32, generator 3: 2000). */
+  readonly radiusChunks: number;
   /** Chunks outside the world (rare reads): generated, small separate cache. */
   private readonly outside = new Map<string, Uint8Array>();
   private readonly warmQueue = new Set<number>();
@@ -70,6 +83,17 @@ export class ServerVoxelWorld {
     readonly genVersion: GenVersion = LATEST_GEN_VERSION,
   ) {
     this.generator = createWorldGenerator(seed, mode, genVersion);
+    this.radiusChunks = this.generator.radiusChunks;
+  }
+
+  /** Chunk inside this world. */
+  chunkInWorld(cx: number, cz: number): boolean {
+    return chunkInWorld(cx, cz, this.radiusChunks);
+  }
+
+  /** Cell inside this world (y 0..63, x/z within its radius). */
+  blockInWorld(x: number, y: number, z: number): boolean {
+    return blockInWorld(x, y, z, this.radiusChunks);
   }
 
   // ---- fast access for the creature sim -----------------------------------------------
@@ -77,14 +101,24 @@ export class ServerVoxelWorld {
   /** Hot-loop block reader: cached views only (never generates); Bedrock where no view. */
   reader(): BlockQuery {
     const views = this.views;
+    const r = this.radiusChunks;
+    // The last chunk read is remembered until a view is dropped (viewEpoch).
+    let lastSlot = NaN;
+    let last: Uint8Array | undefined;
+    let epoch = this.viewEpoch;
     return (x, y, z) => {
       if (y < 0) return BEDROCK;
       if (y >= CHUNK_HEIGHT) return 0;
       const cx = x >> 4;
       const cz = z >> 4;
-      if (cx < -WORLD_RADIUS_CHUNKS || cx >= WORLD_RADIUS_CHUNKS || cz < -WORLD_RADIUS_CHUNKS || cz >= WORLD_RADIUS_CHUNKS) return BEDROCK;
-      const v = views[(cx + WORLD_RADIUS_CHUNKS) * SIDE + (cz + WORLD_RADIUS_CHUNKS)];
-      return v ? v[((y << 4) + (z & 15)) * 16 + (x & 15)] : BEDROCK;
+      if (cx < -r || cx >= r || cz < -r || cz >= r) return BEDROCK;
+      const s = (cx + SLOT_HALF) * (SLOT_HALF * 2) + (cz + SLOT_HALF);
+      if (s !== lastSlot || epoch !== this.viewEpoch || !last) {
+        lastSlot = s;
+        epoch = this.viewEpoch;
+        last = views.get(s)?.data;
+      }
+      return last ? last[((y << 4) + (z & 15)) * 16 + (x & 15)] : BEDROCK;
     };
   }
 
@@ -92,15 +126,18 @@ export class ServerVoxelWorld {
   hasChunkView(x: number, z: number): boolean {
     const cx = Math.floor(x) >> 4;
     const cz = Math.floor(z) >> 4;
-    if (!chunkInWorld(cx, cz)) return false;
-    return this.views[slotOf(cx, cz)] !== undefined;
+    if (!this.chunkInWorld(cx, cz)) return false;
+    return this.views.has(slotOf(cx, cz));
   }
 
   /** Queue generation of a chunk (time-budgeted by pumpWarm). */
   warm(cx: number, cz: number): void {
-    if (!chunkInWorld(cx, cz)) return;
+    if (!this.chunkInWorld(cx, cz)) return;
     const s = slotOf(cx, cz);
-    if (!this.views[s]) this.warmQueue.add(s);
+    if (this.views.has(s) || this.warmQueue.has(s)) return;
+    // Oldest requests first out: a player walking far away leaves stale ones behind.
+    if (this.warmQueue.size >= MAX_WARM_QUEUE) this.warmQueue.delete(this.warmQueue.values().next().value as number);
+    this.warmQueue.add(s);
   }
 
   /** Generate queued chunks for up to maxMs (called every tick by VoxelRoom). */
@@ -111,10 +148,8 @@ export class ServerVoxelWorld {
     const t0 = performance.now();
     for (const s of this.warmQueue) {
       this.warmQueue.delete(s);
-      if (!this.views[s]) {
-        const cx = Math.floor(s / SIDE) - WORLD_RADIUS_CHUNKS;
-        const cz = (s % SIDE) - WORLD_RADIUS_CHUNKS;
-        this.view(cx, cz);
+      if (!this.views.has(s)) {
+        this.view(slotX(s), slotZ(s));
         this.warmStats.chunks++;
       }
       if (performance.now() - t0 >= budget) break;
@@ -128,7 +163,12 @@ export class ServerVoxelWorld {
   }
 
   get cachedChunks(): number {
-    return this.lru.size;
+    return this.views.size;
+  }
+
+  /** Chunks waiting in the warm queue (bounded: see warm()). */
+  get warmQueued(): number {
+    return this.warmQueue.size;
   }
 
   get editCount(): number {
@@ -155,18 +195,19 @@ export class ServerVoxelWorld {
     const cx = toChunkCoord(x);
     const cz = toChunkCoord(z);
     const idx = blockIndex(toLocal(x), y, toLocal(z));
-    if (!chunkInWorld(cx, cz)) return this.edits.get(packPos(x, y, z)) ?? this.outsideChunk(cx, cz)[idx];
+    if (!this.chunkInWorld(cx, cz)) return this.edits.get(packPos(x, y, z)) ?? this.outsideChunk(cx, cz)[idx];
     return this.view(cx, cz)[idx];
   }
 
-  /** Records an edit. Returns false if the edit budget for this room is exhausted. */
+  /** Records an edit. Returns false if the edit budget for this room is exhausted or the cell is past the wire's range. */
   setBlock(x: number, y: number, z: number, id: number): boolean {
+    if (!inWireRange(x, z)) return false;
     const key = packPos(x, y, z);
     if (!this.edits.has(key) && this.edits.size >= this.maxEdits) return false;
     if (y < 0 || y >= CHUNK_HEIGHT) return true;
     const cx = toChunkCoord(x);
     const cz = toChunkCoord(z);
-    const inWorld = chunkInWorld(cx, cz);
+    const inWorld = this.chunkInWorld(cx, cz);
     // An edit that restores the generated block can be forgotten entirely.
     const generated = this.generatedValue(x, y, z, key);
     if (generated === id) {
@@ -184,8 +225,8 @@ export class ServerVoxelWorld {
       this.changed();
     }
     if (inWorld) {
-      const v = this.views[slotOf(cx, cz)];
-      if (v) v[blockIndex(toLocal(x), y, toLocal(z))] = id;
+      const v = this.views.get(slotOf(cx, cz));
+      if (v) v.data[blockIndex(toLocal(x), y, toLocal(z))] = id;
     }
     return true;
   }
@@ -198,7 +239,7 @@ export class ServerVoxelWorld {
   loadEdits(edits: Iterable<BlockEdit>): number {
     let applied = 0;
     for (const e of edits) {
-      if (!blockInWorld(e.x, e.y, e.z)) continue;
+      if (!this.blockInWorld(e.x, e.y, e.z) || !inWireRange(e.x, e.z)) continue;
       const key = packPos(e.x, e.y, e.z);
       if (!this.edits.has(key) && this.edits.size >= this.maxEdits) break;
       this.edits.set(key, e.id);
@@ -207,8 +248,8 @@ export class ServerVoxelWorld {
     }
     this.encoded = null;
     // Cached views predate these edits: rebuild them on demand.
-    for (const s of this.lru.keys()) this.views[s] = undefined;
-    this.lru.clear();
+    this.views.clear();
+    this.viewEpoch++;
     return applied;
   }
 
@@ -260,7 +301,7 @@ export class ServerVoxelWorld {
     const cx = toChunkCoord(x);
     const cz = toChunkCoord(z);
     const idx = blockIndex(toLocal(x), y, toLocal(z));
-    if (!chunkInWorld(cx, cz)) return this.outsideChunk(cx, cz)[idx];
+    if (!this.chunkInWorld(cx, cz)) return this.outsideChunk(cx, cz)[idx];
     if (!this.edits.has(key)) return this.view(cx, cz)[idx];
     const known = this.generatedAt.get(key);
     if (known !== undefined) return known;
@@ -277,17 +318,17 @@ export class ServerVoxelWorld {
   /** The chunk view (generated + edits), generated now when missing. */
   private view(cx: number, cz: number): Uint8Array {
     const s = slotOf(cx, cz);
-    let v = this.views[s];
-    if (v) {
+    const cached = this.views.get(s);
+    if (cached) {
       // Refresh the LRU position at most once per tick.
-      if (this.touchedTick[s] !== this.tickNo) {
-        this.touchedTick[s] = this.tickNo;
-        this.lru.delete(s);
-        this.lru.set(s, true);
+      if (cached.touched !== this.tickNo) {
+        cached.touched = this.tickNo;
+        this.views.delete(s);
+        this.views.set(s, cached);
       }
-      return v;
+      return cached.data;
     }
-    v = this.generator.generateChunk(cx, cz);
+    const v = this.generator.generateChunk(cx, cz);
     const edits = this.editsByChunk.get(s);
     if (edits) {
       for (const k of edits) {
@@ -297,13 +338,10 @@ export class ServerVoxelWorld {
         v[i] = this.edits.get(k)!;
       }
     }
-    this.views[s] = v;
-    this.lru.set(s, true);
-    this.touchedTick[s] = this.tickNo;
-    while (this.lru.size > this.cacheBudget) {
-      const oldest = this.lru.keys().next().value as number;
-      this.lru.delete(oldest);
-      this.views[oldest] = undefined;
+    this.views.set(s, { data: v, touched: this.tickNo });
+    while (this.views.size > this.cacheBudget) {
+      this.views.delete(this.views.keys().next().value as number);
+      this.viewEpoch++;
     }
     return v;
   }
@@ -318,4 +356,9 @@ export class ServerVoxelWorld {
     }
     return c;
   }
+}
+
+/** Edits travel as i16 x/z: cells past +-ENDLESS_LIMIT are never stored. */
+function inWireRange(x: number, z: number): boolean {
+  return x >= -ENDLESS_LIMIT && x < ENDLESS_LIMIT && z >= -ENDLESS_LIMIT && z < ENDLESS_LIMIT;
 }

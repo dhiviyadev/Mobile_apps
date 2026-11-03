@@ -11,7 +11,9 @@ const SAMPLE_INTERVAL = 0.25;
 const BIOME_HOLD = 1.5;
 /** ...and banners are at least this far apart. */
 const BANNER_GAP = 8;
+/** "Ruins ahead" shows this close to a structure (generator 3's landmarks show from much further, so it shows earlier). */
 const RUIN_DISTANCE = 40;
+const RUIN_DISTANCE_LANDMARKS = 96;
 
 export interface SurroundingsHost {
   generator: WorldGenerator;
@@ -61,7 +63,7 @@ export class Surroundings {
     this.targetWeight = tint ? 1 : 0;
 
     // Ruins take priority over biome names.
-    for (const s of this.host.generator.structuresNear(x, z, RUIN_DISTANCE)) {
+    for (const s of this.host.generator.structuresNear(x, z, this.host.generator.genVersion >= 3 ? RUIN_DISTANCE_LANDMARKS : RUIN_DISTANCE)) {
       if (this.seenRuins.has(s.id)) continue;
       this.seenRuins.add(s.id);
       this.announceRuin(s);

@@ -18,6 +18,7 @@ import {
   toLocal,
   type GenVersion,
   type VoxelMode,
+  worldRadiusChunks,
 } from '@hub/shared';
 import {
   buildRegion,
@@ -105,6 +106,8 @@ export class World {
   readonly seed: number;
   readonly mode: VoxelMode;
   readonly genVersion: GenVersion;
+  /** World size in chunks (generator 3: endless, 2000). Far chunks are unloaded as the player moves (update). */
+  readonly radiusChunks: number;
   private decorOn = true;
 
   constructor(
@@ -116,6 +119,7 @@ export class World {
     this.seed = spec.seed;
     this.mode = spec.mode;
     this.genVersion = spec.genVersion;
+    this.radiusChunks = worldRadiusChunks(spec.mode, spec.genVersion);
     this.group.name = 'voxel-world';
   }
 
@@ -250,7 +254,7 @@ export class World {
         for (let dx = -r - 1; dx <= r + 1; dx++) {
           const cx = this.centerCx + dx;
           const cz = this.centerCz + dz;
-          if (!chunkInWorld(cx, cz) || regionDistance(dx, dz) > meshRange) continue;
+          if (!chunkInWorld(cx, cz, this.radiusChunks) || regionDistance(dx, dz) > meshRange) continue;
           this.wanted.push({ cx, cz, d: dx * dx + dz * dz });
         }
       }
@@ -319,7 +323,7 @@ export class World {
     let ready = 0;
     for (let dz = -radius; dz <= radius; dz++) {
       for (let dx = -radius; dx <= radius; dx++) {
-        if (!chunkInWorld(ccx + dx, ccz + dz)) continue;
+        if (!chunkInWorld(ccx + dx, ccz + dz, this.radiusChunks)) continue;
         total++;
         const c = this.chunks.get(chunkKey(ccx + dx, ccz + dz));
         if (c?.blocks && !c.dirty) ready++;
@@ -403,7 +407,7 @@ export class World {
   private neighboursReady(c: Chunk): boolean {
     for (const [dx, dz] of NEIGHBOURS) {
       const n = this.chunks.get(chunkKey(c.cx + dx, c.cz + dz));
-      if (!chunkInWorld(c.cx + dx, c.cz + dz)) continue; // world edge: treated as air
+      if (!chunkInWorld(c.cx + dx, c.cz + dz, this.radiusChunks)) continue; // world edge: treated as air
       if (!n?.blocks) return false;
     }
     return true;

@@ -75,23 +75,25 @@ interface Surface {
 
 export class TerrainGeneratorV2 {
   readonly seed: number;
-  private readonly nCont: SimplexNoise;
-  private readonly nMount: SimplexNoise;
-  private readonly nRidge: SimplexNoise;
-  private readonly nHills: SimplexNoise;
-  private readonly nTemp: SimplexNoise;
-  private readonly nHum: SimplexNoise;
-  private readonly nVar: SimplexNoise;
-  private readonly nJit: SimplexNoise;
-  private readonly nDetail: SimplexNoise;
-  private readonly nSurf: SimplexNoise;
-  private readonly caves: SimplexNoise;
-  private readonly nCavern: SimplexNoise;
+  protected readonly nCont: SimplexNoise;
+  protected readonly nMount: SimplexNoise;
+  protected readonly nRidge: SimplexNoise;
+  protected readonly nHills: SimplexNoise;
+  protected readonly nTemp: SimplexNoise;
+  protected readonly nHum: SimplexNoise;
+  protected readonly nVar: SimplexNoise;
+  protected readonly nJit: SimplexNoise;
+  protected readonly nDetail: SimplexNoise;
+  protected readonly nSurf: SimplexNoise;
+  protected readonly caves: SimplexNoise;
+  protected readonly nCavern: SimplexNoise;
+  /** Spacing of the biome-blend grid in blocks (generator 3 widens it). */
+  protected readonly grid: number = GRID;
   /** Land biome per 4-block grid point. */
   private readonly rawLand = new Map<number, Biome>();
   /** 5x5-blurred shape parameters per grid point. */
   private readonly blurred = new Map<number, Float32Array>();
-  private spawn: { x: number; y: number; z: number } | null = null;
+  protected spawn: { x: number; y: number; z: number } | null = null;
   private placed: PlacedStructure[] | null = null;
   /** Built structure volumes, least recently used first (at most 4). */
   private readonly volumes = new Map<number, StructureVolume[]>();
@@ -116,7 +118,7 @@ export class TerrainGeneratorV2 {
   // ---- climate and terrain -----------------------------------------------------------------
 
   /** Continent, mountain and ridge values at a point (shared by the climate lapse and the height). */
-  private relief(x: number, z: number): { c: number; mask: number; ridge: number } {
+  protected relief(x: number, z: number): { c: number; mask: number; ridge: number } {
     const c = this.nCont.fbm2(x / 240, z / 240, 3);
     const mask = smoothstep(0.15, 0.45, this.nMount.fbm2(x / 260, z / 260, 3));
     const r = 1 - Math.abs(this.nRidge.noise2(x / 120, z / 120));
@@ -124,7 +126,7 @@ export class TerrainGeneratorV2 {
   }
 
   /** Land biome and temperature class from the climate at a point. */
-  private climate(x: number, z: number, c: number, mask: number, ridge: number): { land: Biome; tc: number } {
+  protected climate(x: number, z: number, c: number, mask: number, ridge: number): { land: Biome; tc: number } {
     const jT = this.nJit.noise2(x / 24, z / 24) * 0.05;
     const jH = this.nJit.noise2(x / 24 + 100, z / 24 - 50) * 0.05;
     const T = this.nTemp.fbm2(x / 200, z / 200, 2) + jT;
@@ -137,12 +139,12 @@ export class TerrainGeneratorV2 {
     return { land: CLIMATE_TABLE[tc][hc][alt ? 1 : 0], tc };
   }
 
-  private rawAt(gx: number, gz: number): Biome {
+  protected rawAt(gx: number, gz: number): Biome {
     const key = gridKey(gx, gz);
     let b = this.rawLand.get(key);
     if (b === undefined) {
-      const x = gx * GRID;
-      const z = gz * GRID;
+      const x = gx * this.grid;
+      const z = gz * this.grid;
       const r = this.relief(x, z);
       b = this.climate(x, z, r.c, r.mask, r.ridge).land;
       if (this.rawLand.size >= CACHE_LIMIT) this.rawLand.clear();
@@ -151,7 +153,7 @@ export class TerrainGeneratorV2 {
     return b;
   }
 
-  private blurredAt(gx: number, gz: number): Float32Array {
+  protected blurredAt(gx: number, gz: number): Float32Array {
     const key = gridKey(gx, gz);
     let p = this.blurred.get(key);
     if (!p) {
@@ -170,11 +172,12 @@ export class TerrainGeneratorV2 {
 
   private readonly params = new Float32Array(SHAPE_PARAM_COUNT);
   /** Shape parameters at a column: bilinear between blurred grid points. */
-  private shapeAt(x: number, z: number): Float32Array {
-    const gx = Math.floor(x / GRID);
-    const gz = Math.floor(z / GRID);
-    const fx = (x - gx * GRID) / GRID;
-    const fz = (z - gz * GRID) / GRID;
+  protected shapeAt(x: number, z: number): Float32Array {
+    const grid = this.grid;
+    const gx = Math.floor(x / grid);
+    const gz = Math.floor(z / grid);
+    const fx = (x - gx * grid) / grid;
+    const fz = (z - gz * grid) / grid;
     const a = this.blurredAt(gx, gz), b = this.blurredAt(gx + 1, gz), c = this.blurredAt(gx, gz + 1), d = this.blurredAt(gx + 1, gz + 1);
     for (let i = 0; i < SHAPE_PARAM_COUNT; i++) this.params[i] = lerp(lerp(a[i], b[i], fx), lerp(c[i], d[i], fx), fz);
     return this.params;
@@ -204,7 +207,7 @@ export class TerrainGeneratorV2 {
     return { height, biome, land, tClass: tc, mask };
   }
 
-  private surface(x: number, z: number, col: ColumnV2): Surface {
+  protected surface(x: number, z: number, col: ColumnV2): Surface {
     const s: Surface = { top: Block.Grass, filler: Block.Dirt, fillerDepth: 3, filler2: Block.Stone, filler2Depth: 0, bands: false };
     const surf = () => this.nSurf.noise2(x / 12, z / 12);
     if (col.height < SEA) {
@@ -275,7 +278,7 @@ export class TerrainGeneratorV2 {
     return this.surface(x, z, col).top;
   }
 
-  private isCave(x: number, y: number, z: number): boolean {
+  protected isCave(x: number, y: number, z: number): boolean {
     // The v1 tunnels, exactly; the second sheet only matters where the first is near zero.
     const a = this.caves.noise3(x / 28, y / 18, z / 28);
     if (a * a < 0.014) {
@@ -287,6 +290,15 @@ export class TerrainGeneratorV2 {
       if (c > 0.6) return true;
     }
     return false;
+  }
+
+  /** Carves caves (and lava below LAVA_LEVEL) into one generated column. */
+  protected carveColumn(out: Uint8Array, lx: number, lz: number, wx: number, wz: number, col: ColumnV2): void {
+    const h = col.height;
+    const carveTop = h < SEA || h <= SEA + 2 ? h - 4 : h - 1;
+    for (let y = 2; y <= carveTop; y++) {
+      if (this.isCave(wx, y, wz)) out[blockIndex(lx, y, lz)] = y <= LAVA_LEVEL ? Block.Lava : Block.Air;
+    }
   }
 
   // ---- plants and trees -----------------------------------------------------------------------
@@ -334,7 +346,7 @@ export class TerrainGeneratorV2 {
     return { x: tx, y: h + 1, z: tz, species, hsh };
   }
 
-  private nearTree(x: number, z: number, r: number): boolean {
+  protected nearTree(x: number, z: number, r: number): boolean {
     for (let cz = Math.floor((z - r) / TREE_CELL); cz <= Math.floor((z + r) / TREE_CELL); cz++) {
       for (let cx = Math.floor((x - r) / TREE_CELL); cx <= Math.floor((x + r) / TREE_CELL); cx++) {
         const t = this.treeInCell(cx, cz, false);
@@ -346,18 +358,21 @@ export class TerrainGeneratorV2 {
 
   // ---- spawn and structures --------------------------------------------------------------------
 
+  /** A spawn candidate: dry, open ground (in a pleasant biome when `preferred`). */
+  protected spawnOk(x: number, z: number, preferred: boolean): boolean {
+    const c = this.column(x, z);
+    if (c.height <= SEA + 1 || c.height >= SEA + 18) return false;
+    if (preferred ? !SPAWN_BIOMES.has(c.biome) : NO_SPAWN.has(c.biome)) return false;
+    if (this.plantAt(x, z, c, this.topBlock(x, z, c)) !== Block.Air) return false;
+    // No snow layer at the feet either.
+    const snow = c.biome === Biome.Snow ? 0.6 : c.biome === Biome.Frostpine ? 0.75 : 0;
+    return !(snow && hashFloat(x, z, this.seed, 21) < snow);
+  }
+
   /** A dry, open spawn near the origin, in a pleasant biome when there is one. Memoized. */
   findSpawn(): { x: number; y: number; z: number } {
     if (this.spawn) return { ...this.spawn };
-    const ok = (x: number, z: number, preferred: boolean) => {
-      const c = this.column(x, z);
-      if (c.height <= SEA + 1 || c.height >= SEA + 18) return false;
-      if (preferred ? !SPAWN_BIOMES.has(c.biome) : NO_SPAWN.has(c.biome)) return false;
-      if (this.plantAt(x, z, c, this.topBlock(x, z, c)) !== Block.Air) return false;
-      // No snow layer at the feet either.
-      const snow = c.biome === Biome.Snow ? 0.6 : c.biome === Biome.Frostpine ? 0.75 : 0;
-      return !(snow && hashFloat(x, z, this.seed, 21) < snow);
-    };
+    const ok = (x: number, z: number, preferred: boolean) => this.spawnOk(x, z, preferred);
     for (const preferred of [true, false]) {
       for (let r = 0; r < 200; r += 2) {
         const n = Math.max(1, r * 4);
@@ -376,13 +391,18 @@ export class TerrainGeneratorV2 {
     return { ...this.spawn };
   }
 
-  private placedStructures(): PlacedStructure[] {
+  protected placedStructures(): PlacedStructure[] {
     return (this.placed ??= computeStructures(this, this.seed));
   }
 
   /** Every boss structure of the world (6..16, deterministic). */
   structures(): StructureInfo[] {
     return this.placedStructures().map((p) => p.info);
+  }
+
+  /** Structures that may reach into the chunk whose corner is (x0, z0): all of them in this bounded world. */
+  protected chunkStructures(_x0: number, _z0: number): PlacedStructure[] {
+    return this.placedStructures();
   }
 
   /** True when (x, z) is within `margin` of a structure's footprint. */
@@ -394,7 +414,7 @@ export class TerrainGeneratorV2 {
     return false;
   }
 
-  private volumesFor(p: PlacedStructure): StructureVolume[] {
+  protected volumesFor(p: PlacedStructure): StructureVolume[] {
     let v = this.volumes.get(p.info.id);
     if (v) {
       this.volumes.delete(p.info.id);
@@ -415,7 +435,7 @@ export class TerrainGeneratorV2 {
     const z0 = cz * CHUNK_SIZE;
     const cols: ColumnV2[] = [];
     const tops: Block[] = [];
-    const structures = this.placedStructures();
+    const structures = this.chunkStructures(x0, z0);
     const nearAny = structures.some((p) => {
       const b = p.info.bounds;
       return b.x0 - 3 < x0 + CHUNK_SIZE && b.x1 + 3 > x0 && b.z0 - 3 < z0 + CHUNK_SIZE && b.z1 + 3 > z0;
@@ -445,13 +465,10 @@ export class TerrainGeneratorV2 {
           out[blockIndex(lx, y, lz)] = b;
         }
         for (let y = h + 1; y <= SEA; y++) out[blockIndex(lx, y, lz)] = y === SEA && col.biome === Biome.IcySea ? Block.Ice : Block.Water;
-        const carveTop = h < SEA || h <= SEA + 2 ? h - 4 : h - 1;
-        for (let y = 2; y <= carveTop; y++) {
-          if (this.isCave(wx, y, wz)) out[blockIndex(lx, y, lz)] = y <= LAVA_LEVEL ? Block.Lava : Block.Air;
-        }
-        // A cave that opened under the surface leaves dirt, not grass, on top.
+        this.carveColumn(out, lx, lz, wx, wz, col);
+        // A cave that opened under the surface leaves dirt, not grass, on top (a carved-away top stays open).
         const ti = blockIndex(lx, h, lz);
-        if (h > 1 && out[blockIndex(lx, h - 1, lz)] === Block.Air && (s.top === Block.Grass || s.top === Block.ParchedGrass || s.top === Block.ForestFloor || s.top === Block.SnowyGrass)) {
+        if (h > 1 && out[ti] !== Block.Air && out[blockIndex(lx, h - 1, lz)] === Block.Air && (s.top === Block.Grass || s.top === Block.ParchedGrass || s.top === Block.ForestFloor || s.top === Block.SnowyGrass)) {
           out[ti] = Block.Dirt;
         }
       }

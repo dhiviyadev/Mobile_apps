@@ -10,12 +10,16 @@ export const toChunkCoord = (v: number): number => Math.floor(v / CHUNK_SIZE);
 /** Local coordinate (0..15) inside a chunk for a world coordinate. */
 export const toLocal = (v: number): number => ((v % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
 
-export function chunkInWorld(cx: number, cz: number): boolean {
-  return cx >= -WORLD_RADIUS_CHUNKS && cx < WORLD_RADIUS_CHUNKS && cz >= -WORLD_RADIUS_CHUNKS && cz < WORLD_RADIUS_CHUNKS;
+/**
+ * Chunk inside the world. `radius` is the world's size in chunks (WorldGenerator.radiusChunks:
+ * WORLD_RADIUS_CHUNKS for generators 1-2 and parkour, ENDLESS_RADIUS_CHUNKS for generator 3).
+ */
+export function chunkInWorld(cx: number, cz: number, radius = WORLD_RADIUS_CHUNKS): boolean {
+  return cx >= -radius && cx < radius && cz >= -radius && cz < radius;
 }
 
-export function blockInWorld(x: number, y: number, z: number): boolean {
-  return y >= 0 && y < CHUNK_HEIGHT && chunkInWorld(toChunkCoord(x), toChunkCoord(z));
+export function blockInWorld(x: number, y: number, z: number, radius = WORLD_RADIUS_CHUNKS): boolean {
+  return y >= 0 && y < CHUNK_HEIGHT && chunkInWorld(toChunkCoord(x), toChunkCoord(z), radius);
 }
 
 /**

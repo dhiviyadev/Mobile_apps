@@ -6,7 +6,7 @@
  */
 import { Block, IS_LIQUID, IS_REPLACEABLE, IS_SOLID } from '../blocks';
 import { Team } from '../combat';
-import { SEA_LEVEL, WORLD_LIMIT } from '../constants';
+import { SEA_LEVEL } from '../constants';
 import { isBossDefeated, StructureType, type StructureInfo } from '../structures/types';
 import type { PlayerTarget } from './api';
 import { insideBox, standY } from './ai/common';
@@ -89,7 +89,10 @@ export class Spawner {
     const c = this.counts(p.x, p.z);
     if (w.rules.friendly && c.natural < caps.maxNatural && c.friendly < caps.friendlyPerPlayer && w.daylight > 0.3) this.friendlyAttempt(p, caps.maxNatural - c.natural, caps.friendlyPerPlayer - c.friendly);
     if (w.rules.friendly && this.passes % 4 === 0 && c.fish < caps.fishPerPlayer) this.fishAttempt(p, caps.fishPerPlayer - c.fish);
-    if (w.rules.hostile && c.natural < caps.maxNatural && c.hostile < caps.hostilePerPlayer) this.hostileAttempt(p, Math.min(caps.maxNatural - c.natural, caps.hostilePerPlayer - c.hostile), caps.flyersPerPlayer - c.flyers);
+    if (w.rules.hostile && c.natural < caps.maxNatural && c.hostile < caps.hostilePerPlayer) {
+      // The surface is tried on every other pass only (calmer nights); caves on every pass.
+      this.hostileAttempt(p, Math.min(caps.maxNatural - c.natural, caps.hostilePerPlayer - c.hostile), caps.flyersPerPlayer - c.flyers, Math.floor(w.tick / 20) % 2 === 0);
+    }
   }
 
   /** A column in the spawn ring, or null (unavailable, outside the world, near a structure). */
@@ -99,12 +102,13 @@ export class Spawner {
     const d = w.caps.spawnMin + w.rng() * (w.caps.spawnMax - w.caps.spawnMin);
     const x = Math.floor(p.x + Math.cos(a) * d);
     const z = Math.floor(p.z + Math.sin(a) * d);
-    if (Math.abs(x) >= WORLD_LIMIT - 2 || Math.abs(z) >= WORLD_LIMIT - 2) return null;
+    const limit = w.host.generator.limit;
+    if (x < -limit + 2 || x >= limit - 2 || z < -limit + 2 || z >= limit - 2) return null;
     if (!w.host.isAvailable(x, z)) {
       w.host.warm?.(Math.floor(x / 16), Math.floor(z / 16));
       return null;
     }
-    for (const s of w.structures()) if (insideBox(s.bounds, x, s.bounds.y0 + 1, z, 4)) return null;
+    for (const s of w.structuresNear(x, z, 5)) if (insideBox(s.bounds, x, s.bounds.y0 + 1, z, 4)) return null;
     for (const q of w.players) if (Math.hypot(q.x - x, q.z - z) < w.caps.spawnMin) return null;
     return { x, z };
   }
@@ -173,14 +177,14 @@ export class Spawner {
     }
   }
 
-  private hostileAttempt(p: PlayerTarget, left: number, flyersLeft: number): void {
+  private hostileAttempt(p: PlayerTarget, left: number, flyersLeft: number, surface: boolean): void {
     const w = this.w;
     const col = this.column(p);
     if (!col) return;
     const get = w.host.getBlock;
     const top = this.topSolid(col.x, col.z, 63);
     const cands: { y: number; cave: boolean }[] = [];
-    if (top > 0) cands.push({ y: top + 1, cave: false });
+    if (top > 0 && surface) cands.push({ y: top + 1, cave: false });
     for (let i = 0; i < 3; i++) {
       const y = Math.floor(p.y - 16 + w.rng() * 32);
       if (y < 2 || y > 62 || (top > 0 && y > top - 4)) continue;
@@ -288,9 +292,15 @@ export class Spawner {
 
   // ---- structures ----
 
+  /** Structures within `radius` of any live player (each once). */
   private structuresNearPlayers(radius: number): StructureInfo[] {
     const w = this.w;
-    return w.structures().filter((s) => w.players.some((p) => p.alive && Math.hypot(p.x - (s.bounds.x0 + s.bounds.x1) / 2, p.z - (s.bounds.z0 + s.bounds.z1) / 2) < radius + Math.max(s.bounds.x1 - s.bounds.x0, s.bounds.z1 - s.bounds.z0) / 2));
+    const out: StructureInfo[] = [];
+    for (const p of w.players) {
+      if (!p.alive) continue;
+      for (const s of w.structuresNear(p.x, p.z, radius)) if (!out.some((o) => o.id === s.id && o.anchor.x === s.anchor.x && o.anchor.z === s.anchor.z)) out.push(s);
+    }
+    return out;
   }
 
   /** Bosses awaken when a survival player steps into an active altar's arena. */

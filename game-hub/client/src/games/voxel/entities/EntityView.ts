@@ -224,7 +224,7 @@ export class EntityView implements VoxelModule {
       s.onMessage(VoxelMsg.Entities, (bytes: Uint8Array) => {
         let snap: EntitySnapshot;
         try {
-          snap = decodeEntitySnapshot(bytes);
+          snap = decodeEntitySnapshot(bytes, this.game.player.body);
         } catch {
           return;
         }
@@ -237,7 +237,7 @@ export class EntityView implements VoxelModule {
       }),
       s.onMessage(VoxelMsg.EntityEvents, (bytes: Uint8Array) => {
         try {
-          for (const e of decodeEvents(bytes).events) this.applyEvent(e);
+          for (const e of decodeEvents(bytes, this.game.player.body).events) this.applyEvent(e);
         } catch {
           /* malformed batch: skip */
         }
