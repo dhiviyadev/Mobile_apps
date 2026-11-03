@@ -10,3 +10,4 @@ export * from './drops';
 export * from './chests';
 export * from './sim';
 export * from './protocol';
+export * from './sections';

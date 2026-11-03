@@ -42,7 +42,8 @@ export const ARENA_MODE_INFO: Record<ArenaMode, ArenaModeInfo> = {
   ffa: { label: 'Free-for-all', maxPlayers: 8, teams: 0, minHumansToStart: 3 },
 };
 
-export const VOXEL_MAX_PLAYERS = 16;
+/** Players in one Voxelvale world (every mode). */
+export const VOXEL_MAX_PLAYERS = 100;
 
 /** Private / shareable room codes. Ambiguous glyphs (0/O, 1/I) are excluded. */
 export const ROOM_CODE_LENGTH = 6;

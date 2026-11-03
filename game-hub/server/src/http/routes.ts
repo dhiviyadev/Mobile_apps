@@ -110,6 +110,7 @@ export async function buildRoomList(): Promise<RoomListResponse> {
       maxClients: r.maxClients,
       locked: !!r.locked,
       status: meta.status,
+      ...(meta.hosted ? { hosted: true, worldName: meta.worldName ?? '', hostName: meta.hostName ?? '' } : {}),
     });
   }
   rooms.sort((a, b) => b.clients - a.clients);

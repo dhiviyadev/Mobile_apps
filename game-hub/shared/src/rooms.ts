@@ -37,6 +37,16 @@ export interface JoinOptions {
    * only stores a SHA-256 prefix of it. Optional; ignored when malformed.
    */
   playerKey?: string;
+  /**
+   * Voxelvale: this client hosts a world from its own device (create only). The
+   * room waits, locked, until the host uploads the world file (VoxelMsg.HostUpload);
+   * saves go back to the host instead of the server's store.
+   */
+  host?: boolean;
+  /** Hosted world: the name shown in the room list. */
+  worldName?: string;
+  /** Hosted world: the room code it had last time; reused when no other room or saved world has it. */
+  hostCode?: string;
 }
 
 /** Shape check for JoinOptions.playerKey (the server ignores anything else). */
@@ -84,6 +94,11 @@ export interface RoomMeta {
   private: boolean;
   /** Short human description, e.g. "Round 3 · 2-1" or "Waiting for players". */
   status?: string;
+  /** Voxelvale world hosted from a player's device. */
+  hosted?: boolean;
+  /** Hosted world: its name and the host's nickname. */
+  worldName?: string;
+  hostName?: string;
 }
 
 /** Shape returned by the server's GET /api/rooms endpoint. */
@@ -95,6 +110,10 @@ export interface RoomListing {
   maxClients: number;
   locked: boolean;
   status?: string;
+  /** Voxelvale world hosted from a player's device (missing: a server world). */
+  hosted?: boolean;
+  worldName?: string;
+  hostName?: string;
 }
 
 export interface RoomListResponse {
