@@ -119,3 +119,34 @@ describe('mob persistence', () => {
     void Team;
   });
 });
+
+describe('entity net in endless worlds', () => {
+  it('keeps the bytes for positions within 1024 blocks and unwraps far ones near the viewer', () => {
+    const s = sample();
+    // Same bytes as before for the usual range: the wrap only differs past +-1024.
+    expect([...encodeEntitySnapshot(s)].slice(8, 14)).toEqual([0x8b, 0x01, 0x90, 0x02, 0x47, 0xda]); // 12.34, 20.5, -301.77 in 1/32 blocks
+    const far = sample();
+    far.mobs[0] = { ...far.mobs[0], x: 30000.5, z: -29999.25 };
+    far.projectiles[0] = { ...far.projectiles[0], x: 30003, z: -30001 };
+    far.hazards[0] = { ...far.hazards[0], x: 29990, z: -30010 };
+    const d = decodeEntitySnapshot(encodeEntitySnapshot(far), { x: 29980.2, z: -30020.7 });
+    expect(d.mobs[0].x).toBeCloseTo(30000.5, 6);
+    expect(d.mobs[0].z).toBeCloseTo(-29999.25, 6);
+    expect(d.mobs[0].y).toBeCloseTo(20.5, 6);
+    expect(d.projectiles[0].x).toBeCloseTo(30003, 6);
+    expect(d.hazards[0].z).toBeCloseTo(-30010, 6);
+    // Without a viewer position, positions near the origin decode as before.
+    expect(decodeEntitySnapshot(encodeEntitySnapshot(sample())).mobs[0].z).toBeCloseTo(-301.77, 1);
+
+    const [bytes] = encodeEvents(5, [{ type: EntityEventType.Burst, kind: BurstKind.Slam, x: -25000.5, y: 10, z: 12000, radius: 4.5 }], null);
+    const e = decodeEvents(bytes, { x: -25010, z: 11990 }).events[0];
+    expect(e.x).toBeCloseTo(-25000.5, 6);
+    expect(e.z).toBeCloseTo(12000, 6);
+  });
+
+  it('saves tamed creatures anywhere in the endless world', () => {
+    const list: SavedMob[] = mobsFromJson({ v: 1, list: [{ k: MobKind.Woolback, x: 25000.5, y: 30, z: -18000.5 }] });
+    expect(list.length).toBe(1);
+    expect(decodeMobsSection(encodeMobsSection(list))![0]).toMatchObject({ x: 25000.5, z: -18000.5 });
+  });
+});

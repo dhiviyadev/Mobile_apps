@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { Biome, Block, buildTestArena, FRIENDLY_SPAWNS, isHostileKind, MobFlag, MobKind, StructureType, Team } from '../src/index';
+import { describe, expect, it, vi } from 'vitest';
+import { Biome, Block, blockIndex, buildTestArena, createWorldGenerator, EntityWorld, FRIENDLY_SPAWNS, isHostileKind, MobFlag, MobKind, OFFLINE_CAPS, OFFLINE_LOW_CAPS, rulesForMode, SERVER_CAPS, StructureType, Team } from '../src/index';
 import { FLOOR, run, setupWorld, testPlayer } from './mobWorld';
 
 const live = (s: ReturnType<typeof setupWorld>) => [...s.world.mobs.values()].filter((m) => m.alive);
@@ -72,5 +72,89 @@ describe('spawning', () => {
     expect(live(s).filter((m) => m.has(MobFlag.Guard)).length).toBe(guards.length - 1);
     run(s.world, 300);
     expect(live(s).filter((m) => m.has(MobFlag.Guard)).length).toBe(guards.length);
+  });
+});
+
+describe('calmer nights', () => {
+  it('halves the hostile caps', () => {
+    expect(SERVER_CAPS.hostilePerPlayer).toBe(6);
+    expect(SERVER_CAPS.flyersPerPlayer).toBe(2);
+    expect(OFFLINE_CAPS.hostilePerPlayer).toBe(5);
+    expect(OFFLINE_CAPS.flyersPerPlayer).toBe(1);
+    expect(OFFLINE_LOW_CAPS.hostilePerPlayer).toBe(4);
+  });
+
+  it('tries the surface on every other pass only, and never passes the cap through a whole night', () => {
+    // Uncapped, every pass attempts: half of them may use the surface.
+    const open = setupWorld({ time: 0, caps: { ...SERVER_CAPS, maxNatural: 1000, hostilePerPlayer: 1000 } });
+    open.players.push(testPlayer('ana', 0.5, FLOOR, 0.5));
+    const proto = Object.getPrototypeOf(open.world.spawner) as { hostileAttempt: (...a: unknown[]) => void };
+    const spy = vi.spyOn(proto, 'hostileAttempt');
+    run(open.world, 60);
+    const surface = spy.mock.calls.filter((c) => c[3] === true).length;
+    const caves = spy.mock.calls.filter((c) => c[3] === false).length;
+    spy.mockRestore();
+    expect(surface + caves).toBeGreaterThanOrEqual(58);
+    expect(Math.abs(surface - caves)).toBeLessThanOrEqual(1);
+
+    const s = setupWorld({ time: 0, caps: SERVER_CAPS });
+    s.players.push(testPlayer('ana', 0.5, FLOOR, 0.5));
+    let max = 0;
+    run(s.world, 300, () => (max = Math.max(max, live(s).filter((m) => m.team === Team.Hostile && !m.has(MobFlag.Minion) && Math.hypot(m.x, m.z) <= 48).length)));
+    expect(max).toBeGreaterThan(0);
+    // Counted at each pass within 48 blocks; one wandering in from the edge can briefly make it 7 (was 13 with the old cap).
+    expect(max).toBeLessThanOrEqual(7);
+  });
+
+  it('keeps cave spawns moderate in a generator-3 cave system', () => {
+    const gen = createWorldGenerator(42, 'survival', 3);
+    const chunks = new Map<string, Uint8Array>();
+    const get = (x: number, y: number, z: number) => {
+      if (y < 0) return Block.Bedrock;
+      if (y > 63) return Block.Air;
+      const cx = Math.floor(x / 16), cz = Math.floor(z / 16);
+      const k = `${cx},${cz}`;
+      let c = chunks.get(k);
+      if (!c) chunks.set(k, (c = gen.generateChunk(cx, cz)));
+      return c[blockIndex(x - cx * 16, y, z - cz * 16)];
+    };
+    // A roomy cave cell near spawn.
+    const sp = gen.findSpawn();
+    let at: { x: number; y: number; z: number } | null = null;
+    for (let r = 0; r < 120 && !at; r += 4) {
+      for (let a = 0; a < 16 && !at; a++) {
+        const x = Math.floor(sp.x + Math.cos(a) * r), z = Math.floor(sp.z + Math.sin(a) * r);
+        for (let y = 10; y < 24; y++) if (get(x, y - 1, z) !== Block.Air && get(x, y, z) === Block.Air && get(x, y + 1, z) === Block.Air && gen.surfaceHeight(x, z) > y + 6) at = { x, y, z };
+      }
+    }
+    expect(at).not.toBeNull();
+    const time = { value: 0 };
+    const world = new EntityWorld(
+      { getBlock: get, isAvailable: () => true, generator: gen, timeOfDay: () => time.value, setBlock: () => {}, announce: () => {} },
+      { seed: 3, rules: rulesForMode('survival'), caps: OFFLINE_CAPS },
+    );
+    const players = [testPlayer('ana', at!.x + 0.5, at!.y, at!.z + 0.5)];
+    world.setPlayerHooks({
+      playerTargets: () => players,
+      damagePlayer: () => ({ applied: 0, blocked: false, killed: false }) as never,
+      dropItems: () => {},
+      consumeHeld: () => false,
+      heldItem: () => null,
+      playerName: (id) => id,
+    });
+    let max = 0;
+    let sum = 0;
+    let n = 0;
+    run(world, 240, () => {
+      const p = players[0];
+      const h = [...world.mobs.values()].filter((m) => m.alive && m.team === Team.Hostile && Math.hypot(m.x - p.x, m.z - p.z) <= 48).length;
+      max = Math.max(max, h);
+      sum += h;
+      n++;
+    });
+    console.log(`[spawner] v3 caves at night: ${(sum / n).toFixed(1)} hostiles on average, ${max} at most (cap ${OFFLINE_CAPS.hostilePerPlayer})`);
+    // Creatures wander in and out of the 48-block count radius, so one over the cap can show for a moment.
+    expect(max).toBeLessThanOrEqual(OFFLINE_CAPS.hostilePerPlayer + 1);
+    expect(sum / n).toBeLessThanOrEqual(OFFLINE_CAPS.hostilePerPlayer);
   });
 });

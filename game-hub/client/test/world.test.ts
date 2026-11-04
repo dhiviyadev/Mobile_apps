@@ -160,3 +160,42 @@ describe('client world', () => {
     await pool.flush();
   });
 });
+
+describe('client world in an endless (generator 3) world', () => {
+  it('streams past the old edge and keeps the loaded chunks bounded over a 3000-block walk', { timeout: 30_000 }, async () => {
+    const pool = new FakePool();
+    pool.slots = 8;
+    const world = new World(pool as unknown as WorkerPool, { seed: 1, mode: 'survival', genVersion: 3 }, new THREE.MeshBasicMaterial(), new THREE.MeshBasicMaterial());
+    world.renderDistance = 2;
+    expect(world.radiusChunks).toBe(2000);
+    let maxChunks = 0;
+    let maxMeshes = 0;
+    for (let x = 0; x <= 3000; x += 40) {
+      for (let i = 0; i < 6; i++) {
+        world.update(x, 8);
+        await pool.flush();
+      }
+      maxChunks = Math.max(maxChunks, world.stats().chunks);
+      maxMeshes = Math.max(maxMeshes, world.group.children.length);
+    }
+    expect(world.isLoaded(3000, 8)).toBe(true);
+    expect(world.isLoaded(0, 8)).toBe(false);
+    // The wanted square (2r + 3)^2 plus the unload slack, never the whole walk.
+    expect(maxChunks).toBeLessThanOrEqual(81);
+    expect(maxMeshes).toBeLessThanOrEqual(2 * 81);
+    world.dispose();
+  });
+
+  it('keeps generator-2 worlds inside their 1024 x 1024 bound', async () => {
+    const pool = new FakePool();
+    const world = new World(pool as unknown as WorkerPool, { seed: 1, mode: 'sandbox', genVersion: 2 }, new THREE.MeshBasicMaterial(), new THREE.MeshBasicMaterial());
+    world.renderDistance = 1;
+    for (let i = 0; i < 30; i++) {
+      world.update(520, 8);
+      await pool.flush();
+    }
+    expect(world.isLoaded(520, 8)).toBe(false);
+    expect(world.isLoaded(500, 8)).toBe(true);
+    world.dispose();
+  });
+});

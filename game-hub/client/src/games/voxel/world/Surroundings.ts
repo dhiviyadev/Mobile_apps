@@ -46,7 +46,7 @@ export class Surroundings {
     this.sampleTimer -= dt;
     if (this.sampleTimer <= 0) {
       this.sampleTimer = SAMPLE_INTERVAL;
-      this.sample(x, z);
+      this.sample(x, z, yaw);
     }
     // Ease the fog toward the biome's tint.
     const k = Math.min(1, dt * 0.5);
@@ -55,7 +55,7 @@ export class Surroundings {
     this.updateLava(dt, x, y, z, yaw);
   }
 
-  private sample(x: number, z: number): void {
+  private sample(x: number, z: number, yaw: number): void {
     const b = this.host.generator.biomeAt(Math.floor(x), Math.floor(z));
     this.current = b;
     const tint = BIOME_INFO[b]?.fogTint ?? 0;
@@ -66,7 +66,7 @@ export class Surroundings {
     for (const s of this.host.generator.structuresNear(x, z, this.host.generator.genVersion >= 3 ? RUIN_DISTANCE_LANDMARKS : RUIN_DISTANCE)) {
       if (this.seenRuins.has(s.id)) continue;
       this.seenRuins.add(s.id);
-      this.announceRuin(s);
+      this.announceRuin(s, x, z, yaw);
       return;
     }
     if (b !== this.candidate) {
@@ -83,9 +83,11 @@ export class Surroundings {
     }
   }
 
-  private announceRuin(s: StructureInfo): void {
+  private announceRuin(s: StructureInfo, x: number, z: number, yaw: number): void {
     const dormant = isBossDefeated(this.host.getBlock, s);
-    this.host.showPlace(dormant ? 'Dormant ruins' : 'Ruins ahead', s.name);
+    // Endless worlds announce ruins from further away: say which way they are.
+    const far = this.host.generator.genVersion >= 3 && !insideBounds(s, x, z);
+    this.host.showPlace(dormant ? 'Dormant ruins' : 'Ruins ahead', far ? `${s.name} · ${whichWay(s, x, z, yaw)}` : s.name);
     this.bannerCooldown = BANNER_GAP;
   }
 
@@ -121,4 +123,16 @@ export class Surroundings {
     this.bubbleTimer = 1.5 + Math.random() * 1.5;
     audio.playAt('lavaBubble', this.lava.x - x, this.lava.z - z, yaw, 16, 0.8);
   }
+}
+
+const insideBounds = (s: StructureInfo, x: number, z: number) => x >= s.bounds.x0 && x < s.bounds.x1 && z >= s.bounds.z0 && z < s.bounds.z1;
+
+/** Where a structure is relative to the player's view (forward is (-sin yaw, -cos yaw)). */
+function whichWay(s: StructureInfo, x: number, z: number, yaw: number): string {
+  const dx = (s.bounds.x0 + s.bounds.x1) / 2 - x;
+  const dz = (s.bounds.z0 + s.bounds.z1) / 2 - z;
+  const fwd = -Math.sin(yaw) * dx - Math.cos(yaw) * dz;
+  const right = Math.cos(yaw) * dx - Math.sin(yaw) * dz;
+  if (Math.abs(fwd) >= Math.abs(right)) return fwd >= 0 ? 'straight ahead' : 'behind you';
+  return right > 0 ? 'to your right' : 'to your left';
 }
