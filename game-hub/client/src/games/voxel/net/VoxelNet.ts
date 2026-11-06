@@ -31,6 +31,8 @@ import { buildThirdPersonModel } from '../render/itemModels';
 import type { VoxelGame, VoxelNetHooks } from '../VoxelGame';
 
 const SEND_INTERVAL = 1 / 15;
+/** Most other players drawn at once (the nearest); a world holds up to VOXEL_MAX_PLAYERS. */
+const MAX_DRAWN_AVATARS = 48;
 const INTERP_DELAY_MS = 120;
 const BUFFER_MS = 1000;
 
@@ -73,7 +75,7 @@ export class VoxelNet implements VoxelNetHooks {
   readonly roomCode: string;
   readonly chat: ChatBox;
   /** Held items use the survival item models (WP-B). */
-  private readonly avatars = new AvatarRenderer(16, { heldModel: buildThirdPersonModel });
+  private readonly avatars = new AvatarRenderer(MAX_DRAWN_AVATARS, { heldModel: buildThirdPersonModel });
   private readonly lights: THREE.Object3D[];
   private readonly remotes = new Map<string, Remote>();
   private readonly offs: (() => void)[] = [];
@@ -261,6 +263,12 @@ export class VoxelNet implements VoxelNetHooks {
       };
       this.poseDecorator?.(id, pose);
       poses.push(pose);
+    }
+    if (poses.length > MAX_DRAWN_AVATARS) {
+      // Crowded world: draw the nearest ones.
+      const b = this.game.player.body;
+      const d = (p: AvatarPose) => (p.x - b.x) ** 2 + (p.z - b.z) ** 2;
+      poses.sort((p, q) => d(p) - d(q));
     }
     this.avatars.setBrightness(0.35 + this.game.sky.daylight * 0.65);
     this.avatars.update(poses, dt, camera);

@@ -1,5 +1,5 @@
 import { type Browser, expect, type Page, test } from '@playwright/test';
-import { waitForGame } from './helpers';
+import { hostNewWorld, waitForGame } from './helpers';
 
 type V = {
   player: { body: { x: number; y: number; z: number; onGround: boolean }; yaw: number; pitch: number };
@@ -25,9 +25,7 @@ const v = (page: Page) => {
 test('two players share a Voxelvale world: edits, chat and avatars replicate', async ({ browser }, info) => {
   test.skip(info.project.name !== 'desktop', 'desktop project only');
   const a = await openPlayer(browser, 'Alpha');
-  await a.getByTestId('card-voxel').click();
-  await a.getByRole('tab', { name: 'Sandbox' }).click();
-  await a.getByTestId('create-private').click();
+  await hostNewWorld(a, 'sandbox');
   await waitForGame(a);
   const code = await a.evaluate(() => (window as unknown as { __voxel: V }).__voxel.net!.roomCode);
   expect(code).toMatch(/^[A-Z2-9]{6}$/);
@@ -91,9 +89,7 @@ test('survival PvP: the host turns PvP on and a punch hurts the other player', a
   test.setTimeout(150_000);
   type P = V & { input: { tap(a: string): void }; survival: unknown };
   const a = await openPlayer(browser, 'Alpha');
-  await a.getByTestId('card-voxel').click();
-  await a.getByRole('tab', { name: 'Survival' }).click();
-  await a.getByTestId('create-private').click();
+  await hostNewWorld(a, 'survival');
   await waitForGame(a);
   const code = await a.evaluate(() => (window as unknown as { __voxel: V }).__voxel.net!.roomCode);
   const b = await openPlayer(browser, 'Bravo');

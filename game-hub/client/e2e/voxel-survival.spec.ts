@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { primeSettings, waitForGame } from './helpers';
+import { playVoxelOffline, primeSettings, waitForGame } from './helpers';
 
 type S = {
   debugGive(key: string, n?: number): void;
@@ -19,10 +19,7 @@ type V = {
 const v = (page: Page) => page.evaluate.bind(page);
 
 async function startSurvival(page: Page): Promise<void> {
-  await page.getByTestId('card-voxel').click();
-  await expect(page.getByRole('tab', { name: 'Survival' })).toBeVisible();
-  await page.getByRole('tab', { name: 'Survival' }).click();
-  await page.getByRole('button', { name: 'Play offline' }).click();
+  await playVoxelOffline(page, 'survival');
   await waitForGame(page);
 }
 
@@ -102,7 +99,8 @@ test.describe('Voxelvale survival (offline)', () => {
     await page.evaluate(() => (window as unknown as { __voxel: V }).__voxel.survival.debugDamage(5));
     await expect.poll(() => page.locator('.gem.full').count()).toBeLessThan(10);
     await page.evaluate(() => (window as unknown as { __voxel: { exit(): void } }).__voxel.exit());
-    await expect(page.getByTestId('card-voxel')).toBeVisible();
+    await expect(page.getByTestId('world-menu')).toBeVisible();
+    await page.reload();
     await startSurvival(page);
     await expect.poll(() => count(page, 312)).toBe(1);
     await expect.poll(() => page.locator('.gem.full').count()).toBeLessThan(10);
@@ -135,9 +133,7 @@ test.describe('Voxelvale survival (offline)', () => {
   test('sandbox: weapons can be held and swung', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(String(e)));
-    await page.getByTestId('card-voxel').click();
-    await page.getByRole('tab', { name: 'Sandbox' }).click();
-    await page.getByRole('button', { name: 'Play offline' }).click();
+    await playVoxelOffline(page, 'sandbox');
     await waitForGame(page);
     await page.evaluate(() => {
       const g = (window as unknown as { __voxel: V }).__voxel;

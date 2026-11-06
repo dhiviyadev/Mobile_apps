@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { expect, type Page, test, type TestInfo } from '@playwright/test';
-import { primeSettings, waitForGame } from './helpers';
+import { playVoxelOffline, primeSettings, waitForGame } from './helpers';
 import { serveStatic, type StaticServer } from './staticServer';
 
 /**
@@ -114,9 +114,7 @@ test('the service worker precaches everything and both games open offline', asyn
   await page.getByTestId('leave-game').click();
   await expect(page.getByTestId('card-voxel')).toBeVisible();
 
-  await page.getByTestId('card-voxel').click();
-  await page.getByRole('tab', { name: 'Sandbox' }).click();
-  await page.getByRole('button', { name: 'Play offline' }).click();
+  await playVoxelOffline(page, 'sandbox');
   await waitForGame(page);
   await expect(page.getByTestId('hotbar')).toBeVisible();
   await context.setOffline(false);
