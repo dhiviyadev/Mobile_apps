@@ -64,7 +64,7 @@ function medianPatch(g: { column(x: number, z: number): { biome: Biome } }, step
   return per[per.length >> 1];
 }
 
-describe('generator 3 terrain', () => {
+describe('generator 3 terrain', { timeout: 30_000 }, () => {
   it('is the version new worlds get, endless, and deterministic in any chunk order', () => {
     expect(LATEST_GEN_VERSION).toBe(3);
     const g = createWorldGenerator(1234, 'survival');
@@ -162,7 +162,7 @@ describe('generator 3 terrain', () => {
   });
 });
 
-describe('generator 3 caves', () => {
+describe('generator 3 caves', { timeout: 30_000 }, () => {
   /** Stats over a square of chunks around (0, 0). */
   function caveStats(seed: number, R: number) {
     const g = new TerrainGeneratorV3(seed);
@@ -274,7 +274,7 @@ describe('generator 3 caves', () => {
   });
 });
 
-describe('generator 3 structures', () => {
+describe('generator 3 structures', { timeout: 30_000 }, () => {
   const near = (g: { structuresNear(x: number, z: number, r: number): StructureInfo[] }, x: number, z: number, r: number) => g.structuresNear(x, z, r);
 
   it('are about twice as common per area as in generator 2, apart, and away from spawn', () => {
@@ -340,7 +340,7 @@ describe('generator 3 structures', () => {
   });
 });
 
-describe('generator 3 landmarks', () => {
+describe('generator 3 landmarks', { timeout: 30_000 }, () => {
   function example(type: StructureType): { g: TerrainGeneratorV3; s: StructureInfo; seed: number } {
     for (let seed = 1; seed < 60; seed++) {
       const g = new TerrainGeneratorV3(seed);

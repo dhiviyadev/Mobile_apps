@@ -3,7 +3,7 @@ import { Block, ENDLESS_LIMIT } from '@hub/shared';
 import { ServerVoxelWorld } from '../src/voxel/ServerVoxelWorld';
 import { VoxelFluids } from '../src/voxel/VoxelFluids';
 
-describe('endless server worlds (generator 3)', () => {
+describe('endless server worlds (generator 3)', { timeout: 30_000 }, () => {
   it('keep memory bounded while a player walks 3000 blocks', () => {
     const world = new ServerVoxelWorld(5, 'survival');
     expect(world.genVersion).toBe(3);

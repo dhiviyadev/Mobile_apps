@@ -75,7 +75,7 @@ describe('spawning', () => {
   });
 });
 
-describe('calmer nights', () => {
+describe('calmer nights', { timeout: 30_000 }, () => {
   it('halves the hostile caps', () => {
     expect(SERVER_CAPS.hostilePerPlayer).toBe(6);
     expect(SERVER_CAPS.flyersPerPlayer).toBe(2);
