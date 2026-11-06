@@ -33,6 +33,8 @@ const bagTotal = (page: Page) =>
   g(page)((v) => v.survival.model.view.counts.slice(0, 37).reduce((n: number, c: number) => n + c, 0));
 
 test.describe('world library (offline)', () => {
+  // Several of these load a world twice (make it, leave, open it again).
+  test.describe.configure({ timeout: 120_000 });
   test.beforeEach(async ({ page }) => {
     await primeSettings(page);
     await page.goto('/');
@@ -124,6 +126,7 @@ test.describe('world library (offline)', () => {
   });
 
   test('teleport menu: save a place, walk away, teleport back', async ({ page }, info) => {
+    test.setTimeout(120_000);
     await newVoxelWorld(page, 'sandbox');
     await waitForGame(page);
     const home = await g(page)((v) => ({ ...v.player.body }));

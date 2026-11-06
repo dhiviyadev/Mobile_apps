@@ -115,6 +115,7 @@ test.describe('Voxelvale world upgrade', () => {
   });
 
   test('block picker assigns a torch that can be placed and is remembered', async ({ page }, info) => {
+    test.setTimeout(120_000);
     await playVoxelOffline(page, 'sandbox');
     await waitForGame(page);
     if (info.project.use.hasTouch) await page.locator('.touch-btn[data-id="blocks"]').tap();

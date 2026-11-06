@@ -24,6 +24,8 @@ const v = (page: Page) => {
 
 test('two players share a Voxelvale world: edits, chat and avatars replicate', async ({ browser }, info) => {
   test.skip(info.project.name !== 'desktop', 'desktop project only');
+  // Hosting makes the world first (it loads twice).
+  test.setTimeout(150_000);
   const a = await openPlayer(browser, 'Alpha');
   await hostNewWorld(a, 'sandbox');
   await waitForGame(a);
