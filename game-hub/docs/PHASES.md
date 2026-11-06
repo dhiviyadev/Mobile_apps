@@ -590,3 +590,26 @@ npm test && npm run e2e
 - Bosses and arrow hits were played in test arenas and unit-tested across packages. A full playthrough on a real tablet, including finding a ruin and beating its boss, is still to do.
 - The free Render server has 0.1 CPU. The creature governor lowers creature caps when a tick takes too long, so busy rooms may see fewer creatures.
 - Doors, stairs and flowing lava need per-block state, which would be a major architecture change, so they are not included.
+
+---
+
+## Upgrade: Your worlds, hosting and teleports ✅
+
+### What was built
+- **World file in shared** (`shared/src/voxel/worldFile.ts`): the CVW format moved out of the server's WorldStore (byte-identical), plus a META section (name, dates, play time, host code, owner key) and upload chunks. Survival save sections moved to `shared/src/voxel/survival/sections.ts`.
+- **World library** (`client/src/games/voxel/library`): IndexedDB (localStorage or memory fallback with a warning), create / rename / duplicate / delete / export / import, migration of the two old offline saves, autosave every 30 s, on pause, when the tab hides and on exit. Offline survival, tamed creatures and teleport places are stored in the same PLYR/CHST/SATC/SURV/MOBS/WAYP sections a server save uses; the owner's records follow the device (an exported world keeps its bag in another app).
+- **World menu** (`client/src/games/voxel/menu`): full-screen, original layout; works on phones in landscape, tablets and desktop; procedural island thumbnails.
+- **Hosting** (`VoxelRoom` hosted path, `server/src/voxel/HostedWorld.ts`, `client/src/games/voxel/net/online.ts`): locked hidden room until the upload (48 KB chunks, 4 MB max) is loaded like a revived save; Public/Private; code reuse; saves back to the host; the room closes with a message when the host leaves; rate limits; never stored on the server.
+- **100 players per world**; the client draws the 48 nearest avatars.
+- **Teleport menu** (`shared/src/voxel/teleport.ts`, `server/src/voxel/TeleportHost.ts`, `client/src/games/voxel/teleport`).
+
+### How to test
+```bash
+npm test && npm run e2e
+```
+`server/test/hosted.test.ts`, `server/test/teleport.test.ts`, `server/test/voxel-load.test.ts`, `shared/test/teleport.test.ts`, `client/test/worldLibrary.test.ts`, `client/e2e/voxel-worlds.spec.ts`.
+
+### Known issues / notes
+- Room rules (PvP, keep items) of a hosted survival world can be changed in game only while it is Private (the rules check needs a private room); new worlds take them from the New world dialog.
+- A Public hosted world can also receive Quick Match players of its mode, like any public room.
+- The e2e game server runs with `NODE_ENV=test` so online tests can give items.
