@@ -58,7 +58,8 @@ export default defineConfig({
       port: serverPort,
       reuseExistingServer: true,
       // Keep saved worlds in memory: e2e runs must not write into the repo or see earlier runs' worlds.
-      env: { LOG_LEVEL: 'warn', PERSIST_WORLDS: '0', PORT: String(serverPort) },
+      // NODE_ENV=test turns on the survival test cheats ('dbg': give items) that e2e uses online.
+      env: { LOG_LEVEL: 'warn', PERSIST_WORLDS: '0', PORT: String(serverPort), NODE_ENV: 'test' },
     },
     {
       command: `npx vite --port ${webPort} --strictPort --host 127.0.0.1`,

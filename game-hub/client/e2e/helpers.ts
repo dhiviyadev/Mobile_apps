@@ -115,8 +115,13 @@ export async function newVoxelWorld(page: Page, mode: 'sandbox' | 'survival', na
 
 /** Leaves the running game from the pause menu. */
 export async function leaveGame(page: Page): Promise<void> {
-  if (await page.locator('.touch-btn[data-id="menu"]').count()) await page.locator('.touch-btn[data-id="menu"]').tap();
-  else await page.keyboard.press('Escape');
+  const pause = page.getByTestId('pause-menu');
+  // Desktop: a lost pointer lock may already have opened the menu (Escape would close it).
+  await page.waitForTimeout(150);
+  if (!(await pause.isVisible())) {
+    if (await page.locator('.touch-btn[data-id="menu"]').count()) await page.locator('.touch-btn[data-id="menu"]').tap();
+    else await page.keyboard.press('Escape');
+  }
   await page.getByTestId('leave-game').click();
 }
 

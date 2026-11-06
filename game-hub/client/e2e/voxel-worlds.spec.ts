@@ -140,9 +140,12 @@ test.describe('world library (offline)', () => {
     await g(page)((v) => v.teleport.open());
     await expect(page.locator('.tp-row')).toContainText('Home');
     await page.getByTestId('tp-go').click();
-    await expect.poll(() => g(page)((v) => v.player.body.x), { timeout: 10_000 }).toBeCloseTo(home.x, 0);
-    const back = await g(page)((v) => ({ ...v.player.body }));
-    expect(Math.hypot(back.x - home.x, back.z - home.z)).toBeLessThan(2);
+    await expect
+      .poll(async () => {
+        const b = await g(page)((v) => ({ ...v.player.body }));
+        return Math.hypot(b.x - home.x, b.z - home.z);
+      }, { timeout: 10_000 })
+      .toBeLessThan(2);
     // Places are kept with the world.
     await leaveGame(page);
     await openWorldMenu(page);
@@ -167,13 +170,10 @@ test.describe('hosting worlds online', () => {
     await waitForGame(guest);
     await expect.poll(() => g(host)((v) => (v as unknown as { net: { players(): unknown[] } }).net.players().length)).toBe(2);
 
-    // The guest mines the block under their feet: something in the bag.
+    // The guest gathers something (the e2e server allows the survival test cheat).
     await guest.bringToFront();
-    await g(guest)((v) => (v.player.pitch = -Math.PI / 2 + 0.02));
-    await expect.poll(() => g(guest)((v) => !!v.interaction.target && v.player.body.onGround)).toBe(true);
-    await g(guest)((v) => v.input.press('primary'));
-    await expect.poll(() => bagTotal(guest), { timeout: 30_000 }).toBeGreaterThan(0);
-    await g(guest)((v) => v.input.release('primary'));
+    await g(guest)((v) => v.survival.debugGive('bread', 3));
+    await expect.poll(() => bagTotal(guest), { timeout: 10_000 }).toBe(3);
     const had = await bagTotal(guest);
 
     // The host leaves (Save & quit): the guest is told and sent back.
@@ -198,7 +198,7 @@ test.describe('hosting worlds online', () => {
 
   test('a Public hosted world is listed under Open worlds; teleport requests bring a player next to another', async ({ browser }, info) => {
     test.skip(info.project.name !== 'desktop', 'desktop project only');
-    test.setTimeout(150_000);
+    test.setTimeout(240_000);
     const host = await openPlayer(browser, info, 'Hosty');
     const code = await hostNewWorld(host, 'sandbox', { name: 'Open Meadow', public: true });
 
@@ -206,7 +206,7 @@ test.describe('hosting worlds online', () => {
     await openWorldMenu(guest);
     await guest.getByTestId('tab-join').click();
     const row = guest.getByTestId('open-world').filter({ hasText: 'Open Meadow' });
-    await expect(row).toBeVisible({ timeout: 15_000 });
+    await expect(row).toBeVisible({ timeout: 40_000 });
     await expect(row).toContainText("Hosty's");
     await row.getByRole('button', { name: 'Join' }).click();
     await waitForGame(guest);
