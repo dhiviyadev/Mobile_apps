@@ -18,3 +18,4 @@ apps/desktop/src-tauri/binaries/
 !.env.example
 *.pem
 .DS_Store
+*.tsbuildinfo
