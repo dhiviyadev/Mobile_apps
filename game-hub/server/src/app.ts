@@ -5,6 +5,7 @@
 import http from 'node:http';
 import { matchMaker, Server } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
+import { HOST_CHUNK_BYTES } from '@hub/shared';
 import { corsHeaders, createRoutes, guardRequests } from './http/routes';
 import { ArenaRoom } from './rooms/ArenaRoom';
 import { VoxelRoom } from './rooms/VoxelRoom';
@@ -28,7 +29,8 @@ export function createGameServer(options: GameServerOptions = {}): GameServer {
   // Colyseus' router answers every HTTP request: matchmaking plus our routes.
   const httpServer = http.createServer();
   const gameServer = new Server({
-    transport: new WebSocketTransport({ server: httpServer, pingInterval: 4000, pingMaxRetries: 3 }),
+    // maxPayload: hosted worlds arrive in 48 KB chunks (HOST_CHUNK_BYTES); the transport's default is 4 KB.
+    transport: new WebSocketTransport({ server: httpServer, pingInterval: 4000, pingMaxRetries: 3, maxPayload: HOST_CHUNK_BYTES + 1024 }),
     greet: false,
     gracefullyShutdown: options.gracefulShutdown ?? true,
   });

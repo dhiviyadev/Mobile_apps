@@ -94,7 +94,8 @@ export class NetSession {
           room = await client.joinOrCreate(req.game, withProtocol(req.options));
           break;
         case 'create':
-          room = await client.create(req.game, { ...withProtocol(req.options), private: true });
+          // Rooms made here are private, except a hosted world its host chose to make Public.
+          room = await client.create(req.game, { ...withProtocol(req.options), private: req.options.host === true ? req.options.private !== false : true });
           break;
         case 'code':
           room = await joinByCode(client, { ...req, options: withProtocol(req.options) });

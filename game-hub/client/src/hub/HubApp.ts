@@ -26,6 +26,9 @@ import { GameSheet, type SheetAction } from './GameSheet';
 import { isGameRunning, lastLaunchFullscreenFailed, launchGame, type LaunchHooks, profileOptions } from './launcher';
 import { appPromoCard, installButton, maybeShowFullscreenTip, platformBanner, updateBar } from './PlatformNotices';
 import { RoomPoller } from './roomPoller';
+import type { WorldEntry, WorldMenuHost } from '../games/voxel/menu/open';
+import { isChunkLoadError } from '../platform/chunkErrors';
+import { showChunkLoadError } from './PlatformNotices';
 
 const TAGLINES: Record<GameId, string> = {
   voxel: 'Build, explore and race in a shared block world',
@@ -36,6 +39,11 @@ export class HubApp {
   private readonly root: HTMLElement;
   private readonly poller = new RoomPoller();
   private sheet: GameSheet | null = null;
+  /** The Voxelvale world menu (replaces the game sheet for Voxelvale). */
+  private worldMenu: { close(): void } | null = null;
+  private openingWorldMenu = false;
+  /** A game started from the world menu: show the menu again when it ends. */
+  private backToWorlds = false;
   private nickInput!: HTMLInputElement;
   private onlineBadges = new Map<GameId, HTMLElement>();
   private serverPill!: HTMLElement;
@@ -182,7 +190,7 @@ export class HubApp {
         h('details', { class: 'about', 'data-testid': 'about' },
           h('summary', null, 'About Cobalt Game Hub'),
           h('p', null, 'Cobalt Game Hub is a free collection of two original 3D games that run in your browser and install as an app on Android, iPad, iPhone, Chromebook, Windows and Mac.'),
-          h('p', null, h('strong', null, 'Voxelvale'), ' is a block-building sandbox with survival, creatures, boss ruins, 18 biomes and parkour in generated worlds, alone or with up to 16 players. ',
+          h('p', null, h('strong', null, 'Voxelvale'), ' is a block-building sandbox with survival, creatures, boss ruins, 18 biomes and parkour in generated worlds, alone or with friends (up to 100 players in a world). ',
             h('strong', null, 'Arcfire Arena'), ' is a fast round-based arena shooter: duels, team fights and free-for-all, online or against bots.'),
           h('p', null, 'All art, music and sound are made in code. Once installed, both games also work offline.'),
         ),
@@ -215,9 +223,53 @@ export class HubApp {
   private openSheet(game: GameId): void {
     audio.unlock();
     audio.play('click');
+    if (game === 'voxel') {
+      void this.openWorldMenu();
+      return;
+    }
     this.sheet?.close();
     this.sheet = new GameSheet(game, this.poller, (a) => this.onSheetAction(game, a), () => (this.sheet = null));
     this.poller.refresh();
+  }
+
+  /** Voxelvale's own screen: the worlds on this device, hosting, joining (games/voxel/menu). */
+  private async openWorldMenu(): Promise<void> {
+    if (this.worldMenu || this.openingWorldMenu) return;
+    this.sheet?.close();
+    this.openingWorldMenu = true;
+    const launch = (req: Parameters<typeof launchGame>[0]) => {
+      this.worldMenu?.close();
+      this.backToWorlds = true;
+      void this.start(req);
+    };
+    const host: WorldMenuHost = {
+      poller: this.poller,
+      requireNickname: () => this.requireNickname(),
+      play: (w: WorldEntry) => launch({ online: false, game: 'voxel', mode: w.mode, launchData: { worldId: w.id } }),
+      host: (w: WorldEntry, isPublic: boolean) =>
+        launch({
+          online: true,
+          game: 'voxel',
+          mode: w.mode,
+          launchData: { worldId: w.id, host: { public: isPublic } },
+          join: { kind: 'create', game: 'voxel', options: { ...profileOptions(w.mode), host: true, private: !isPublic, worldName: w.name, hostCode: w.hostCode } },
+        }),
+      joinCode: (code: string) => launch({ online: true, mode: '', join: { kind: 'code', code, options: profileOptions(), game: 'voxel' } }),
+      quickMatch: (mode) => launch({ online: true, game: 'voxel', mode, join: { kind: 'quick', game: 'voxel', options: profileOptions(mode) } }),
+      parkour: () => launch({ online: false, game: 'voxel', mode: 'parkour' }),
+      onClose: () => (this.worldMenu = null),
+    };
+    try {
+      const { openWorldMenu } = await import('../games/voxel/menu/open');
+      this.worldMenu = await openWorldMenu(host);
+      this.poller.refresh();
+    } catch (err) {
+      console.error(err);
+      if (isChunkLoadError(err)) void showChunkLoadError();
+      else toast('Could not open your worlds.', 'error');
+    } finally {
+      this.openingWorldMenu = false;
+    }
   }
 
   private onSheetAction(game: GameId, action: SheetAction): void {
@@ -269,6 +321,10 @@ export class HubApp {
       if (message) toast(message, 'info', 4000);
       pwa.onGameEnded();
       maybeShowFullscreenTip(lastLaunchFullscreenFailed());
+      if (this.backToWorlds) {
+        this.backToWorlds = false;
+        void this.openWorldMenu();
+      }
     },
   };
 

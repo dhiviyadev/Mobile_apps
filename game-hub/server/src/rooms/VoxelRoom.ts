@@ -1,5 +1,5 @@
 /**
- * Voxelvale room: a shared, seeded voxel world for up to 16 players.
+ * Voxelvale room: a shared, seeded voxel world for up to VOXEL_MAX_PLAYERS (100) players.
  *
  * Authority model:
  *  - Terrain is generated from the seed (identical on every client), so only
@@ -25,6 +25,16 @@
  *    is released. A world nobody built in is never written.
  *  - Reopening by code is rate limited (per address and overall), so saved
  *    private worlds cannot be found by guessing codes at speed.
+ *
+ * Hosted worlds (create('voxel', { host: true }), see HostedWorld.ts):
+ *  - The world lives on the host's device. The room starts locked and hidden;
+ *    the host uploads the world file (HostUpload chunks), the room loads it
+ *    like a revived save, then opens as Public or Private (the host can switch).
+ *  - The room asks for its last code again (hostCode) when that is free, so
+ *    friends rejoin with the same code.
+ *  - Saves go to the host (HostSave) every 30 s when something changed, when a
+ *    player leaves and when the host asks; never into the server's store.
+ *  - When the host leaves for good the others are told and the room closes.
  */
 import { createHash } from 'node:crypto';
 import { type AuthContext, type Client, matchMaker } from '@colyseus/core';
@@ -63,6 +73,10 @@ import {
   type VoxelMode,
   placementError,
   asBytes,
+  cleanWorldName,
+  encodeWorld,
+  type GenVersion,
+  type HostReadyMsg,
 } from '@hub/shared';
 import { config } from '../config';
 import { AddressBuckets, clientAddress } from '../http/clientAddress';
@@ -71,7 +85,9 @@ import { VoxelFluids } from '../voxel/VoxelFluids';
 import { ServerEntities } from '../voxel/ServerEntities';
 import type { VoxelRoomApi, VoxelSubsystem } from '../voxel/subsystem';
 import { SurvivalRoomHost } from '../voxel/SurvivalRoomHost';
+import { TeleportHost } from '../voxel/TeleportHost';
 import { getWorldStore, publicSlotIds, type SavedWorld } from '../voxel/WorldStore';
+import { type HostedInfo, UPLOAD_ERRORS, WorldUpload } from '../voxel/HostedWorld';
 import { assertProtocol, HubRoom, ROOM_CODE_SET } from './HubRoom';
 import { VoxelPlayer, VoxelState } from './schema/VoxelState';
 
@@ -107,6 +123,24 @@ const MAX_REVIVE_ADDRESSES = 10_000;
 
 const reviveBuckets = new AddressBuckets(MAX_REVIVE_ADDRESSES, () => new TokenBucket(REVIVE_BURST_PER_IP, REVIVE_REFILL_PER_IP));
 const reviveTotal = new TokenBucket(REVIVE_BURST_TOTAL, REVIVE_REFILL_TOTAL);
+/** Hosted worlds one address may open (burst, then per second): uploads cost the server real work. */
+const HOST_BURST_PER_IP = 6;
+const HOST_REFILL_PER_IP = 1 / 20;
+let hostBuckets = new AddressBuckets(MAX_REVIVE_ADDRESSES, () => new TokenBucket(HOST_BURST_PER_IP, HOST_REFILL_PER_IP));
+/** Tests: forget every address's hosting allowance. */
+export function resetHostLimits(): void {
+  hostBuckets = new AddressBuckets(MAX_REVIVE_ADDRESSES, () => new TokenBucket(HOST_BURST_PER_IP, HOST_REFILL_PER_IP));
+}
+/** Upload chunks per second a host may send (a 4 MB world is about 86 chunks). */
+const UPLOAD_BURST = 120;
+const UPLOAD_REFILL = 60;
+/** A hosted room whose world has not arrived by then closes. */
+const UPLOAD_TIMEOUT_MS = 60_000;
+/** Save requests and privacy switches a host may send (burst, then per second). */
+const HOST_ASK_BURST = 4;
+const HOST_ASK_REFILL = 0.25;
+/** Told to everyone left in a hosted world when its host does not come back. */
+export const HOST_LEFT_TEXT = 'The host left. The world was saved on their device.';
 
 /** Takes one reopen attempt from the client address's bucket and from the overall one. */
 function allowRevive(context: AuthContext | undefined): boolean {
@@ -166,8 +200,14 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
   private subsystems: VoxelSubsystem[] = [];
   entities: ServerEntities | null = null;
   survival: SurvivalRoomHost | null = null;
+  /** Saved places and teleport requests (Package W). */
+  teleports: TeleportHost | null = null;
   /** Something besides block edits changed since the last save (subsystems call markDirty). */
   private progressDirty = false;
+  /** Hosted world (options.host): it comes from the host's device and its saves go back there. Null otherwise. */
+  hosted: HostedInfo | null = null;
+  private readonly uploadBucket = new TokenBucket(UPLOAD_BURST, UPLOAD_REFILL);
+  private readonly hostAskBucket = new TokenBucket(HOST_ASK_BURST, HOST_ASK_REFILL);
 
   /**
    * Gate for every matchmaking request (Colyseus calls it before a room is
@@ -178,7 +218,9 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
    */
   static override async onAuth(_token: string, options: Partial<JoinOptions> | undefined, context: AuthContext): Promise<unknown> {
     assertProtocol(options);
-    if (options?.reviveCode !== undefined && !allowRevive(context)) {
+    if (options?.host === true) {
+      if (!hostBuckets.take(clientAddress(context))) throw new Error(`${REVIVE_ERRORS.tooManyAttempts}: too many worlds hosted from here just now`);
+    } else if (options?.reviveCode !== undefined && !allowRevive(context)) {
       throw new Error(`${REVIVE_ERRORS.tooManyAttempts}: too many attempts to reopen saved worlds`);
     }
     return true;
@@ -188,8 +230,17 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     return isVoxelMode(requested) ? requested : 'sandbox';
   }
 
-  /** Reopening a saved world claims its code; everything else gets a fresh code. */
+  /**
+   * Reopening a saved world claims its code; a hosted world asks for its last
+   * code (taken when no open room and no saved world has it); everything else
+   * gets a fresh code.
+   */
   protected override async chooseRoomCode(options: JoinOptions): Promise<string> {
+    if (options.host === true) {
+      const code = typeof options.hostCode === 'string' ? options.hostCode.trim().toUpperCase() : '';
+      if (isValidRoomCode(code) && (await this.claimRoomCode(code, () => this.isCodeAvailable(code)))) return code;
+      return super.chooseRoomCode({ ...options, reviveCode: undefined });
+    }
     if (options.reviveCode === undefined) return super.chooseRoomCode(options);
     const code = typeof options.reviveCode === 'string' ? options.reviveCode.trim().toUpperCase() : '';
     if (!isValidRoomCode(code) || !(await getWorldStore().exists(code))) {
@@ -202,6 +253,7 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
   protected async setup(options: JoinOptions & { seed?: number }): Promise<void> {
     this.state = new VoxelState();
     this.chatEnabled = true;
+    if (options.host === true && SAVED_MODES.includes(this.mode as VoxelMode)) return this.setupHosted(options);
     const saved = await this.openSave(options);
     if (saved) {
       this.mode = saved.mode;
@@ -236,11 +288,186 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     this.setTimestep((dt) => this.tick(dt), TICK_MS);
     if (this.saveId) this.clock.setInterval(() => void this.saveWorld(false), VoxelRoom.autosaveMs);
 
-    // Binary messages have their own handlers (sent with sendBytes on the client).
+    this.bindPlay();
+    for (const s of this.subsystems) s.bind?.();
+  }
+
+  /** Binary messages have their own handlers (sent with sendBytes on the client). */
+  private bindPlay(): void {
     this.onMessageBytes(VoxelMsg.Edit, (client, data) => this.handleEdit(client, data));
     this.onMessageBytes(VoxelMsg.Move, (client, data) => this.handleMove(client, data));
     this.onMessage(VoxelMsg.Parkour, (client, data: ParkourEventMsg) => this.handleParkour(client, data));
+  }
+
+  // ---- hosted worlds ------------------------------------------------------------------
+
+  /**
+   * A world hosted from the creator's device: no store, no world yet. The room
+   * stays hidden and locked until the host's upload is loaded (loadHosted).
+   */
+  private async setupHosted(options: JoinOptions): Promise<void> {
+    this.hosted = {
+      worldName: cleanWorldName(options.worldName) || 'Hosted world',
+      hostName: '',
+      hostSession: null,
+      hostOptions: null,
+      wantPrivate: options.private !== false,
+      upload: new WorldUpload(this.roomId),
+      ready: false,
+      savePending: false,
+      closing: false,
+    };
+    this.saveId = null;
+    this.isPrivate = true;
+    await this.setPrivate(true);
+    await this.lock();
+    this.state.worldKind = 'hosted';
+    this.state.privateRoom = true;
+    this.state.genVersion = LATEST_GEN_VERSION;
+    // Placeholder until the upload arrives (nothing generates or ticks in it).
+    this.world = new ServerVoxelWorld(0, this.mode as VoxelMode, undefined, LATEST_GEN_VERSION);
+    this.patchRate = TICK_MS;
+    this.setTimestep((dt) => this.tick(dt), TICK_MS);
+    this.clock.setInterval(() => this.sendHostSave(false), VoxelRoom.autosaveMs);
+    this.clock.setTimeout(() => {
+      if (this.hosted && !this.hosted.ready) this.refuseUpload('The world took too long to arrive. Try again.');
+    }, UPLOAD_TIMEOUT_MS);
+    this.bindPlay();
+    this.onMessageBytes(VoxelMsg.HostUpload, (client, data) => this.handleUpload(client, data));
+    this.onMessage(VoxelMsg.HostSaveRequest, (client) => {
+      if (this.isHost(client) && this.hostAskBucket.take()) this.sendHostSave(true);
+    });
+    this.onMessage(VoxelMsg.HostPrivacy, (client, data: { public?: unknown }) => {
+      if (this.isHost(client) && typeof data?.public === 'boolean' && this.hostAskBucket.take()) void this.setHostedPrivacy(!data.public);
+    });
+  }
+
+  private isHost(client: Client): boolean {
+    return !!this.hosted && this.hosted.hostSession === client.sessionId;
+  }
+
+  private handleUpload(client: Client, raw: unknown): void {
+    const h = this.hosted;
+    const bytes = asBytes(raw);
+    if (!h || h.ready || !bytes || !this.isHost(client)) return;
+    if (!this.uploadBucket.take()) return this.refuseUpload(UPLOAD_ERRORS.outOfOrder);
+    const result = h.upload.accept(bytes);
+    if ('error' in result) return this.refuseUpload(result.error);
+    if (!result.done) return;
+    if (result.world.mode !== this.mode) return this.refuseUpload(UPLOAD_ERRORS.wrongMode);
+    try {
+      this.loadHosted(result.world);
+    } catch (err) {
+      this.log.warn(`hosted world in ${this.roomId} could not be loaded`, err);
+      return this.refuseUpload(UPLOAD_ERRORS.broken);
+    }
+    void this.openHosted();
+  }
+
+  /** Tells the host why its world was refused and closes the room. */
+  private refuseUpload(error: string): void {
+    const h = this.hosted;
+    if (!h || h.ready || h.closing) return;
+    h.closing = true;
+    const host = h.hostSession ? this.client(h.hostSession) : undefined;
+    host?.send(VoxelMsg.HostReady, { ok: false, error } satisfies HostReadyMsg);
+    this.log.info(`hosted world refused in ${this.roomId}: ${error}`);
+    this.clock.setTimeout(() => void this.disconnect(), 200);
+  }
+
+  /** Builds the uploaded world the way a revived save is restored. Throws if it cannot. */
+  private loadHosted(saved: SavedWorld): void {
+    this.state.seed = saved.seed >>> 0;
+    this.state.genVersion = saved.genVersion ?? 1;
+    this.world = new ServerVoxelWorld(this.state.seed, this.mode as VoxelMode, undefined, this.state.genVersion as GenVersion);
+    this.startFluids();
+    this.createSubsystems(saved.sections ?? null);
+    this.restore(saved);
+    // The host's device holds the world; nothing here says "restored from the server".
+    this.restoredAt = 0;
     for (const s of this.subsystems) s.bind?.();
+  }
+
+  /** The world is loaded: place the host in it, open the room, tell the host. */
+  private async openHosted(): Promise<void> {
+    const h = this.hosted!;
+    h.ready = true;
+    const host = h.hostSession ? this.client(h.hostSession) : undefined;
+    const player = h.hostSession ? this.state.players.get(h.hostSession) : undefined;
+    if (host && player) this.enterWorld(host, player, (h.hostOptions as JoinOptions | null) ?? { nickname: player.name });
+    h.hostOptions = null;
+    await this.setHostedPrivacy(h.wantPrivate, true);
+    await this.unlock();
+    this.broadcastPatch();
+    host?.send(VoxelMsg.HostReady, { ok: true, code: this.roomId, seed: this.state.seed } satisfies HostReadyMsg);
+    this.log.info(`hosted world "${h.worldName}" open in ${this.roomId} (${this.world.editCount} edits, ${this.isPrivate ? 'private' : 'public'})`);
+  }
+
+  private async setHostedPrivacy(isPrivate: boolean, quiet = false): Promise<void> {
+    const h = this.hosted;
+    if (!h) return;
+    h.wantPrivate = isPrivate;
+    if (!h.ready) return;
+    const changed = this.isPrivate !== isPrivate;
+    this.isPrivate = isPrivate;
+    this.state.privateRoom = isPrivate;
+    await this.setPrivate(isPrivate);
+    await this.refreshMetadata();
+    if (changed && !quiet) this.systemChat(isPrivate ? 'This world is now Private: only people with the code can join.' : 'This world is now Public: anyone can find and join it.');
+    if (changed) this.progressDirty = true;
+  }
+
+  /**
+   * Sends the whole world to the host (its device keeps it). Unless forced only
+   * when something changed; owed until the host is back if it is away.
+   */
+  private sendHostSave(force: boolean): void {
+    const h = this.hosted;
+    if (!h?.ready || h.closing) return;
+    if (!force && !h.savePending && !this.world.dirty && !this.progressDirty) return;
+    const host = h.hostSession ? this.client(h.hostSession) : undefined;
+    const player = h.hostSession ? this.state.players.get(h.hostSession) : undefined;
+    if (!host || !player?.connected) {
+      h.savePending = true;
+      return;
+    }
+    try {
+      const bytes = encodeWorld(this.buildSave(this.roomId));
+      this.world.markClean();
+      this.progressDirty = false;
+      h.savePending = false;
+      host.sendBytes(VoxelMsg.HostSave, bytes);
+      this.log.debug(`sent hosted world ${this.roomId} to its host (${bytes.byteLength} bytes)`);
+    } catch (err) {
+      this.log.error(`could not save hosted world ${this.roomId}`, err);
+    }
+  }
+
+  /** The host is gone for good: tell everyone, then close the room. */
+  private closeHosted(): void {
+    const h = this.hosted;
+    if (!h || h.closing) return;
+    h.closing = true;
+    if (h.ready && this.clients.length) {
+      this.broadcast(VoxelMsg.HostClosed, { text: HOST_LEFT_TEXT });
+      this.systemChat(HOST_LEFT_TEXT);
+    }
+    // A moment for the message to go out before the connections close.
+    this.clock.setTimeout(() => void this.disconnect(), 300);
+  }
+
+  protected override async refreshMetadata(): Promise<void> {
+    if (!this.hosted) return super.refreshMetadata();
+    if (this.state === undefined) return;
+    await this.setMetadata({
+      code: this.roomId,
+      mode: this.mode,
+      private: this.isPrivate,
+      status: this.describeStatus(),
+      hosted: true,
+      worldName: this.hosted.worldName,
+      hostName: this.hosted.hostName,
+    });
   }
 
   /** Creatures and survival run in every mode except parkour (sandbox: friendly creatures, creative combat). */
@@ -249,11 +476,13 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     this.subsystems = [];
     this.entities = null;
     this.survival = null;
+    this.teleports = null;
     if (this.mode === 'parkour') return;
     const api = this.roomApi();
     this.entities = new ServerEntities(api, sections);
     this.survival = new SurvivalRoomHost(api, this.entities, playerKeyHash, sections);
-    this.subsystems = [this.entities, this.survival];
+    this.teleports = new TeleportHost(api, this.entities, playerKeyHash);
+    this.subsystems = [this.entities, this.survival, this.teleports];
   }
 
   /** The room as subsystems see it. */
@@ -311,18 +540,42 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
   protected createPlayer(_client: Client, options: JoinOptions): VoxelPlayer {
     const p = new VoxelPlayer();
     p.color = typeof options.color === 'number' ? options.color & 0xffffff : 0x4fa3ff;
+    // A hosted world places its host once the world has arrived (enterWorld).
+    if (!this.hosted || this.hosted.ready) this.placePlayer(p, options);
+    return p;
+  }
+
+  /** Puts a joiner at the world spawn, or where survival remembers them. */
+  private placePlayer(p: VoxelPlayer, options: JoinOptions): void {
     let spawn = this.world.generator.findSpawn();
     for (const s of this.subsystems) spawn = s.spawnFor?.(options) ?? spawn;
     p.x = spawn.x;
     p.y = spawn.y;
     p.z = spawn.z;
-    return p;
   }
 
   protected override onPlayerJoined(client: Client, player: VoxelPlayer): void {
     if (this.restoredAt) {
       client.send(VoxelMsg.Chat, { id: '', name: '', color: 0, text: 'This world was restored from its last save.', system: true } satisfies ChatMessage);
     }
+    const options = this.joinOptions.get(client.sessionId) ?? { nickname: player.name };
+    this.joinOptions.delete(client.sessionId);
+    const h = this.hosted;
+    if (h && !h.hostSession) {
+      h.hostSession = client.sessionId;
+      h.hostName = player.name;
+    }
+    if (h && !h.ready) {
+      // The host waits for its own upload; it enters the world in openHosted().
+      h.hostOptions = options;
+      return;
+    }
+    this.enterWorld(client, player, options);
+  }
+
+  /** Movement checks, the edit list and subsystem joins for a player now in the world. */
+  private enterWorld(client: Client, player: VoxelPlayer, options: JoinOptions): void {
+    if (this.hosted && this.hosted.hostSession === client.sessionId && !this.runtime.has(client.sessionId)) this.placePlayer(player, options);
     const now = Date.now();
     this.runtime.set(client.sessionId, {
       editBucket: new TokenBucket(EDIT_BURST, EDIT_REFILL, now),
@@ -334,28 +587,45 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
       runCheckpoint: 0,
     });
     this.sendWorld(client);
-    for (const s of this.subsystems) s.join?.(client, player, this.joinOptions.get(client.sessionId) ?? { nickname: player.name });
-    this.joinOptions.delete(client.sessionId);
+    for (const s of this.subsystems) s.join?.(client, player, options);
   }
 
   /** Join options kept from onJoin until onPlayerJoined (subsystems read playerKey). */
   private readonly joinOptions = new Map<string, JoinOptions>();
 
   override onJoin(client: Client, options: JoinOptions = { nickname: '' }): void {
+    // A hosted world that is still arriving has room for its host only (the room is locked as well).
+    const h = this.hosted;
+    if (h && (h.closing || (!h.ready && h.hostSession))) throw new Error('That world is not open right now.');
     this.joinOptions.set(client.sessionId, options);
     super.onJoin(client, options);
   }
 
   protected override onPlayerReconnected(client: Client, player: VoxelPlayer): void {
+    if (this.hosted && !this.runtime.has(client.sessionId)) return; // the host, still uploading
     const rt = this.runtime.get(client.sessionId);
     if (rt) rt.graceUntil = Date.now() + 3000;
     this.sendWorld(client); // catch up on edits made while away
     for (const s of this.subsystems) s.reconnect?.(client, player);
+    if (this.isHost(client)) {
+      this.systemChat(`${player.name} (host) is back.`);
+      if (this.hosted!.savePending) this.sendHostSave(true);
+    }
+  }
+
+  protected override onPlayerDropped(sessionId: string, player: VoxelPlayer): void {
+    if (this.hosted?.ready && this.hosted.hostSession === sessionId) {
+      this.systemChat(`${player.name} (host) lost connection. Waiting for them to come back…`);
+    }
   }
 
   protected override onPlayerRemoved(sessionId: string): void {
-    this.runtime.delete(sessionId);
-    for (const s of this.subsystems) s.leave?.(sessionId);
+    const entered = this.runtime.delete(sessionId);
+    if (entered) for (const s of this.subsystems) s.leave?.(sessionId);
+    if (!this.hosted) return;
+    if (this.hosted.hostSession === sessionId) this.closeHosted();
+    // Their inventory is now in the world's records: the host keeps a copy.
+    else if (entered) this.sendHostSave(true);
   }
 
   protected override describeStatus(): string {
@@ -535,6 +805,24 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     }
   }
 
+  /** The world as saved now, under id. */
+  private buildSave(id: string): SavedWorld {
+    // Unknown sections of the restored save are written back unchanged; subsystems overwrite theirs.
+    const sections = new Map(this.restoredSections);
+    for (const s of this.subsystems) s.saveSections?.(sections);
+    return {
+      id,
+      seed: this.state.seed,
+      mode: this.mode as VoxelMode,
+      private: this.isPrivate,
+      timeOfDay: this.state.timeOfDay,
+      savedAt: Date.now(),
+      edits: this.world.encodedEdits(),
+      genVersion: this.state.genVersion as GenVersion,
+      sections,
+    };
+  }
+
   /** Writes the world to the store; unless forced only when it changed. Never throws. */
   private async saveWorld(force: boolean): Promise<void> {
     const id = this.saveId;
@@ -542,20 +830,7 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     // Nothing built or played and never saved: write no file, so empty rooms cannot push real builds out of the store.
     if (!this.hasSave && this.world.editCount === 0 && !this.subsystems.some((s) => s.hasProgress?.())) return;
     try {
-      // Unknown sections of the restored save are written back unchanged; subsystems overwrite theirs.
-      const sections = new Map(this.restoredSections);
-      for (const s of this.subsystems) s.saveSections?.(sections);
-      const world: SavedWorld = {
-        id,
-        seed: this.state.seed,
-        mode: this.mode as VoxelMode,
-        private: this.isPrivate,
-        timeOfDay: this.state.timeOfDay,
-        savedAt: Date.now(),
-        edits: this.world.encodedEdits(),
-        genVersion: this.state.genVersion as GenVersion,
-        sections,
-      };
+      const world = this.buildSave(id);
       this.world.markClean();
       this.progressDirty = false;
       await getWorldStore().save(world);
@@ -571,6 +846,7 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
   // ---- simulation tick ------------------------------------------------------------
 
   private tick(dtMs: number): void {
+    if (this.hosted && !this.hosted.ready) return;
     for (const s of this.subsystems) s.preTick?.(dtMs);
     if (this.fluids && ++this.fluidTicks % FLUID_TICKS === 0) this.fluids.step();
     this.world.pumpWarm(3);

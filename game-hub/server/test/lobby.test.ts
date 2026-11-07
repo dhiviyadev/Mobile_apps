@@ -41,7 +41,7 @@ describe('lobby & room system', () => {
     const list = await roomList();
     const listed = list.rooms.find((r) => r.roomId === a.roomId);
     expect(listed?.clients).toBe(2);
-    expect(listed?.maxClients).toBe(16);
+    expect(listed?.maxClients).toBe(100);
     expect(list.online.voxel).toBe(3);
 
     await Promise.all([a.leave(), b.leave(), c.leave()]);

@@ -76,3 +76,67 @@ export async function passMapVote(page: Page, card = 0): Promise<void> {
   await expect.poll(skip, { timeout: 10_000 }).not.toBe('open');
   await expect.poll(skip, { timeout: 10_000 }).toBe('done');
 }
+
+/** Opens the Voxelvale world menu (or uses it when it is already up, as after leaving a game). */
+export async function openWorldMenu(page: Page): Promise<void> {
+  const menu = page.getByTestId('world-menu');
+  if (!(await menu.isVisible())) await page.getByTestId('card-voxel').click();
+  await expect(menu).toBeVisible();
+  // The list is read from the device's storage: wait for it.
+  await expect(page.locator('[data-testid="world-card"], [data-testid="worlds-empty"]').first()).toBeVisible();
+}
+
+/**
+ * Plays Voxelvale offline: the parkour course, or the most recently played world
+ * of that mode (making a new one when there is none). Does not wait for the game.
+ */
+export async function playVoxelOffline(page: Page, mode: 'sandbox' | 'survival' | 'parkour'): Promise<void> {
+  await openWorldMenu(page);
+  if (mode === 'parkour') {
+    await page.getByTestId('play-parkour').click();
+    return;
+  }
+  const card = page.locator(`[data-testid="world-card"]:has(.vw-mode-${mode})`).first();
+  if (await card.count()) {
+    await card.getByTestId('play-world').click();
+    return;
+  }
+  await newVoxelWorld(page, mode);
+}
+
+/** Makes a new world from the menu (it starts right away). */
+export async function newVoxelWorld(page: Page, mode: 'sandbox' | 'survival', name?: string): Promise<void> {
+  await openWorldMenu(page);
+  await page.getByTestId('new-world').click();
+  if (name) await page.getByTestId('new-world-name').fill(name);
+  await page.getByTestId(`new-world-${mode}`).click();
+  await page.getByTestId('create-world').click();
+}
+
+/** Leaves the running game from the pause menu. */
+export async function leaveGame(page: Page): Promise<void> {
+  const pause = page.getByTestId('pause-menu');
+  // Desktop: a lost pointer lock may already have opened the menu (Escape would close it).
+  await page.waitForTimeout(150);
+  if (!(await pause.isVisible())) {
+    if (await page.locator('.touch-btn[data-id="menu"]').count()) await page.locator('.touch-btn[data-id="menu"]').tap();
+    else await page.keyboard.press('Escape');
+  }
+  await page.getByTestId('leave-game').click();
+}
+
+/**
+ * Hosts a brand-new world online from this device: makes it (it starts offline),
+ * leaves, then takes it online as Private or Public. Waits for the hosted game.
+ */
+export async function hostNewWorld(page: Page, mode: 'sandbox' | 'survival', opts: { name?: string; public?: boolean } = {}): Promise<string> {
+  await newVoxelWorld(page, mode, opts.name);
+  await waitForGame(page);
+  await leaveGame(page);
+  await openWorldMenu(page);
+  await page.getByTestId('world-card').first().getByTestId('host-world').click();
+  await page.getByTestId(opts.public ? 'host-public' : 'host-private').click();
+  await page.getByTestId('host-go').click();
+  await waitForGame(page);
+  return page.evaluate(() => (window as unknown as { __voxel: { net: { roomCode: string } } }).__voxel.net.roomCode);
+}

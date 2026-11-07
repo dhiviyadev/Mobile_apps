@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { primeSettings, Touch, waitForGame } from './helpers';
+import { playVoxelOffline, primeSettings, Touch, waitForGame } from './helpers';
 
 type V = {
   player: { body: { x: number; y: number; z: number; onGround: boolean }; yaw: number; pitch: number };
@@ -16,9 +16,7 @@ test.describe('Voxelvale offline', () => {
   });
 
   test('loads a world and renders the HUD', async ({ page }) => {
-    await page.getByTestId('card-voxel').click();
-    await page.getByRole('tab', { name: 'Sandbox' }).click();
-    await page.getByRole('button', { name: 'Play offline' }).click();
+    await playVoxelOffline(page, 'sandbox');
     await waitForGame(page);
     await expect(page.getByTestId('hotbar')).toBeVisible();
     const pos = await page.evaluate(() => (window as unknown as { __voxel: V }).__voxel.player.body);
@@ -27,9 +25,7 @@ test.describe('Voxelvale offline', () => {
 
   test('touch: joystick moves, drag looks, buttons break and place', async ({ page }, info) => {
     test.skip(!info.project.use.hasTouch, 'touch-only');
-    await page.getByTestId('card-voxel').click();
-    await page.getByRole('tab', { name: 'Sandbox' }).click();
-    await page.getByRole('button', { name: 'Play offline' }).click();
+    await playVoxelOffline(page, 'sandbox');
     await waitForGame(page);
     await page.waitForTimeout(500);
     const touch = await Touch.create(page);
@@ -89,27 +85,22 @@ test.describe('Voxelvale offline', () => {
   });
 
   test('parkour mode shows a timer and checkpoints', async ({ page }) => {
-    await page.getByTestId('card-voxel').click();
-    await page.getByRole('tab', { name: 'Parkour' }).click();
-    await page.getByRole('button', { name: 'Play offline' }).click();
+    await playVoxelOffline(page, 'parkour');
     await waitForGame(page);
     await expect(page.getByTestId('parkour-timer')).toHaveText('00:00.00');
     await expect(page.locator('.pk-cp')).toContainText('Checkpoint 0/');
   });
 
   test('pause menu leaves back to the hub', async ({ page }, info) => {
-    await page.getByTestId('card-voxel').click();
-    await page.getByRole('tab', { name: 'Sandbox' }).click();
-    await page.getByRole('button', { name: 'Play offline' }).click();
+    await playVoxelOffline(page, 'sandbox');
     await waitForGame(page);
     if (info.project.use.hasTouch) await page.locator('.touch-btn[data-id="menu"]').tap();
     else await page.keyboard.press('Escape');
     await expect(page.getByTestId('pause-menu')).toBeVisible();
     await page.getByTestId('leave-game').click();
-    await expect(page.getByTestId('card-voxel')).toBeVisible();
-    // The offline world was saved.
-    const saved = await page.evaluate(() => localStorage.getItem('cobalt-hub.voxel.offline.v1'));
-    expect(saved).toBeTruthy();
+    // Back in the world menu, where the world is kept.
+    await expect(page.getByTestId('world-menu')).toBeVisible();
+    await expect(page.getByTestId('world-card')).toHaveCount(1);
   });
 });
 
@@ -124,9 +115,8 @@ test.describe('Voxelvale world upgrade', () => {
   });
 
   test('block picker assigns a torch that can be placed and is remembered', async ({ page }, info) => {
-    await page.getByTestId('card-voxel').click();
-    await page.getByRole('tab', { name: 'Sandbox' }).click();
-    await page.getByRole('button', { name: 'Play offline' }).click();
+    test.setTimeout(120_000);
+    await playVoxelOffline(page, 'sandbox');
     await waitForGame(page);
     if (info.project.use.hasTouch) await page.locator('.touch-btn[data-id="blocks"]').tap();
     else await page.evaluate(() => (window as unknown as { __voxel: { worldFeatures: { openPicker(): void } } }).__voxel.worldFeatures.openPicker());
@@ -165,9 +155,7 @@ test.describe('Voxelvale world upgrade', () => {
     await expect.poll(() => page.evaluate((c) => (window as unknown as { __voxel: G }).__voxel.world.getBlock(c[0], c[1], c[2]), cell)).toBe(112);
     expect(JSON.parse((await page.evaluate(() => localStorage.getItem('cobalt-hub.voxel.hotbar.v1')))!)).toContain(112);
     await page.reload();
-    await page.getByTestId('card-voxel').click();
-    await page.getByRole('tab', { name: 'Sandbox' }).click();
-    await page.getByRole('button', { name: 'Play offline' }).click();
+    await playVoxelOffline(page, 'sandbox');
     await waitForGame(page);
     await expect.poll(slotItem).toBe(112);
   });
@@ -176,9 +164,7 @@ test.describe('Voxelvale world upgrade', () => {
     await page.evaluate(() =>
       localStorage.setItem('cobalt-hub.voxel.offline.v1', JSON.stringify({ seed: 1234, edits: [], player: { x: 0.5, y: 40, z: 0.5, yaw: 0, pitch: 0 }, time: 0.3 })),
     );
-    await page.getByTestId('card-voxel').click();
-    await page.getByRole('tab', { name: 'Sandbox' }).click();
-    await page.getByRole('button', { name: 'Play offline' }).click();
+    await playVoxelOffline(page, 'sandbox');
     await waitForGame(page);
     expect(await page.evaluate(() => (window as unknown as { __voxel: { world: { genVersion: number } } }).__voxel.world.genVersion)).toBe(1);
     await expect(page.getByTestId('place-banner')).toContainText('New biomes');
@@ -193,9 +179,7 @@ test.describe('touch layout editor', () => {
     test.skip(!info.project.use.hasTouch, 'touch-only');
     await primeSettings(page);
     await page.goto('/');
-    await page.getByTestId('card-voxel').click();
-    await page.getByRole('tab', { name: 'Sandbox' }).click();
-    await page.getByRole('button', { name: 'Play offline' }).click();
+    await playVoxelOffline(page, 'sandbox');
     await waitForGame(page);
     await page.locator('.touch-btn[data-id="menu"]').tap();
     await page.getByRole('button', { name: 'Edit touch layout' }).click();

@@ -5,7 +5,7 @@ that run in the browser, on iPad and Android tablets as well as keyboard and mou
 
 | | |
 | --- | --- |
-| **Voxelvale**: build, survive, explore and race in a shared, procedurally generated block world: sandbox, survival and parkour modes, 18 biomes, friendly and hostile creatures, four rare boss ruins, swords, axes, shields, bows and crossbows, up to 16 players. | **Arcfire Arena**: fast round-based shooter: 1v1, 2v2 and free-for-all, first to 5 rounds, six large maps with trampolines and launchers, a map vote before every match, twelve weapons, sliding, optional auto-shoot, bots on Easy, Normal or Hard. |
+| **Voxelvale**: build, survive, explore and race in a shared, procedurally generated block world: sandbox, survival and parkour modes, 18 biomes, friendly and hostile creatures, four rare boss ruins, swords, axes, shields, bows and crossbows, a teleport menu, your own worlds saved on your device, and up to 100 players in a world. | **Arcfire Arena**: fast round-based shooter: 1v1, 2v2 and free-for-all, first to 5 rounds, six large maps with trampolines and launchers, a map vote before every match, twelve weapons, sliding, optional auto-shoot, bots on Easy, Normal or Hard. |
 | ![Voxelvale](docs/screenshots/voxel-sandbox.png) | ![Arcfire Arena](docs/screenshots/arena-live.png) |
 
 All names, art, music and sound are original. Textures are painted in code, audio is synthesised with WebAudio, and maps and terrain are generated, so there are **no third-party assets** to license and the download stays small.
@@ -321,7 +321,17 @@ All six phases are complete, plus a follow-up that removed the Voxelvale limitat
 - A private room's world is saved under its room code. Entering that code later reopens it, with the same terrain, builds, water and time of day, for 30 days after the last visit (`WORLD_TTL_DAYS`). Reopening by code is rate limited.
 - Quick-match sandbox rooms use eight persistent public worlds; a new public room continues the most recently played free one.
 - Worlds autosave every 30 s while changed and on close. Parkour courses are not saved, and a room nobody built in is never written.
-- The pause menu says whether, and for how long, the current world is kept. Offline worlds are still saved in the browser.
+- The pause menu says whether, and for how long, the current world is kept. Your own worlds are saved on your device (see *Your worlds*).
+
+**Your worlds.** Tapping Voxelvale opens its world menu:
+- **Your worlds** lists the worlds saved on this device (newest played first) with a small generated picture, the mode, when you last played and for how long. Each has **Play**, **Play online…**, and under **⋯** Rename, Duplicate, Export file and Delete. **New world** asks for a name, Sandbox or Survival, an optional seed (any text) and, for Survival, whether items are kept on a defeat and whether players can hurt each other. **Import** adds a `.voxelvale` file. Keyboard: arrows choose a world, Enter plays, Delete deletes, Esc goes back.
+- Worlds live in the browser's IndexedDB (installed apps usually get durable storage). Where a browser cannot keep them (some in-app browsers) the menu says so: export them, or install the app. An exported world (`<name>.voxelvale`, the same file format the server saves) opens in any copy of the app, inventory and saved places included.
+- The old offline saves (one sandbox and one survival world) become "My Sandbox World" and "My Survival World" the first time the menu opens.
+- **Play online…** hosts the world from your device, **Private** (only people with the code join) or **Public** (listed under *Join others → Open worlds*). The world is uploaded to the game server, everyone plays it there, and the server sends saves back to your device every 30 s, when a player leaves, and when you quit. It reuses its code next time if that code is free, and friends get their inventory back because their records travel in your save. When the host leaves, the others are told and the world closes. Change Private/Public in the pause menu (**Who can join…**).
+- **Join others** joins by code, lists Public hosted worlds, and has the server's shared **drop-in** worlds (Quick Match; they start over when the server restarts). **Parkour** stays on its own button.
+- Up to 100 players fit in a world (30 headless players use about 3 ms of the server's 50 ms tick).
+
+**Teleport menu** (sandbox and survival; **P**, the Teleport touch button or the pause menu): save up to 20 places per world with a name and colour (distance and direction shown), teleport back to them, and ask other players to let you teleport to them (they get a small Accept / Decline card, **Y** / **N**, for 60 s; one open request per pair, 10 s between asks, and an auto-decline switch). Survival teleports count down 3 s (cancelled by a hit or moving away), then recharge for 30 s, and are not allowed with a boss nearby; sandbox teleports are instant. Online the server checks every teleport and moves you itself; places are saved per player in the world.
 
 **Light and water.** Lamps (and parkour checkpoints) light their surroundings, caves and interiors are dark by day, and the block in your hand takes the light where you stand.
 

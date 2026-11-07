@@ -123,6 +123,11 @@ export class SurvivalController implements VoxelModule {
   private changed = true;
   // vitals
   private hp = 20;
+
+  /** Current health (20 in sandbox). */
+  get health(): number {
+    return this.hp;
+  }
   private food = 20;
   private vflags = 0;
   private slowMul = 1;

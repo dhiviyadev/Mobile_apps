@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { primeSettings, Touch, waitForGame } from './helpers';
+import { playVoxelOffline, primeSettings, Touch, waitForGame } from './helpers';
 
 type Creature = { id: number; kind: string; x: number; y: number; z: number; health: number };
 type V = {
@@ -16,9 +16,7 @@ type V = {
 const HAY_BALE = 86;
 
 async function startSandbox(page: Page): Promise<void> {
-  await page.getByTestId('card-voxel').click();
-  await page.getByRole('tab', { name: 'Sandbox' }).click();
-  await page.getByRole('button', { name: 'Play offline' }).click();
+  await playVoxelOffline(page, 'sandbox');
   await waitForGame(page);
   await page.waitForTimeout(400);
 }
@@ -89,7 +87,7 @@ test.describe('Voxelvale creatures (offline)', () => {
     }, { timeout: 30_000 }).toBe('tamed');
     // Saved with the world and back after reopening it.
     await page.evaluate(() => (window as unknown as { __voxel: V }).__voxel.exit());
-    await expect.poll(() => page.evaluate(() => !!localStorage.getItem('cobalt-hub.voxel.offline.v1'))).toBe(true);
+    await expect(page.getByTestId('world-card')).toHaveCount(1);
     await page.reload();
     await startSandbox(page);
     await expect.poll(() => page.evaluate(() => (window as unknown as { __voxel: V }).__voxel.localEntities.sim.saveMobs().length)).toBe(1);
