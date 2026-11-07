@@ -45,6 +45,7 @@ game-hub/
 
 ### Key design decisions
 - **One simulation, three users.** The arena's `ArenaSimulation` runs on the server for online play, in the browser for practice against bots, and its per-input step (`applyCommand`) drives client-side prediction. Bots send the same input commands as players, so they obey the same rules.
+- **Build height 256.** Voxelvale blocks go from y 0 to 255 (terrain tops out around 60, clouds float at y 128). Chunks keep only the 16-high sections up to what is built in them, so tall builds cost memory and meshing time only where they stand.
 - **Seeded worlds.** Voxelvale terrain is generated identically on every client and on the server from a seed; only edits travel over the network, and only edits are saved (a seed plus a compact edit list per world).
 - **Lighting in the mesher.** Sky light and lamp light are flood-filled per chunk in the mesh workers and baked into vertices with smooth (per-corner) averaging, so caves are dark, lamps light their surroundings, and the GPU still does one texture fetch per pixel.
 - **Server authority where it matters.** Arena: movement, fire rate, ammo, line of sight and hits are all decided on the server, with lag compensation. Voxelvale: block edits are validated by the server; movement is client-simulated but speed-checked (it's a co-op sandbox).

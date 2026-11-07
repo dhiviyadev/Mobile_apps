@@ -613,3 +613,16 @@ npm test && npm run e2e
 - Room rules (PvP, keep items) of a hosted survival world can be changed in game only while it is Private (the rules check needs a private room); new worlds take them from the New world dialog.
 - A Public hosted world can also receive Quick Match players of its mode, like any public room.
 - The e2e game server runs with `NODE_ENV=test` so online tests can give items.
+
+## Upgrade: Max build height 256 ✅
+
+### What was built
+- `CHUNK_HEIGHT` 64 → 256 for every mode and generator. Generated terrain is unchanged (generators fill `TERRAIN_HEIGHT` = 64 layers; golden hashes hold); edits, saves and the wire already stored y as a byte, so no format changed. `PROTOCOL_VERSION` 3 keeps pages and servers from before out (they would drop or refuse edits above 64).
+- Chunk arrays hold whole 16-high sections up to the highest block built in that chunk (`chunkLayers`, `ensureLayers`, `chunkBlock` in `shared/src/voxel/chunk.ts`); the client World and the server's chunk views grow only the chunks built in. Mesh regions are as tall as their tallest chunk; light stops 15 layers above the region's highest block and passes air above the terrain cheaply; meshing skips empty layers, rows and sections.
+- Clouds at y 128 (fading at their tile edge); fog weighs height little above water, so the ground stays visible from a tall build; camera far plane covers the build height; mob spawning, pathfinding, open-sky checks, saved creatures, the Duskwing flight ceiling and the anti-cheat move bounds use the new height.
+
+### How to test
+`shared/test/height.test.ts`, `server/test/height.test.ts`, `client/test/world.test.ts`, and the pillar test in `client/e2e/voxel-worlds.spec.ts`.
+
+### Known issues / notes
+- Sections are allocated as a prefix: a single block at y 250 makes that chunk's array full height (64 KB instead of 16 KB), but meshing and light still skip the empty sections in between.
