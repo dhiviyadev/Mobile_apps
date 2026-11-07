@@ -14,6 +14,7 @@
  * the current brightness, so time of day never needs a remesh.
  */
 import { BLOCKS } from './blocks';
+import { CHUNK_HEIGHT, TERRAIN_HEIGHT } from './constants';
 import type { BlockQuery } from './physics';
 
 export const MAX_LIGHT = 15;
@@ -48,7 +49,7 @@ for (let id = 0; id < 256; id++) {
 export function approxLight(get: BlockQuery, x: number, y: number, z: number, sky = MAX_LIGHT): number {
   let best = 0;
   let open = true;
-  for (let yy = y + 1; yy < 64; yy++) {
+  for (let yy = y + 1; yy < CHUNK_HEIGHT; yy++) {
     if (LIGHT_OPAQUE[get(x, yy, z)]) {
       open = false;
       break;
@@ -110,8 +111,37 @@ export function computeLight(
   columnLevel.fill(MAX_LIGHT, 0, layer);
   shadeTop.fill(-1, 0, layer);
   outBlock.fill(0, 0, volume);
+  const levels = columnLevel.subarray(0, layer);
+  const words = height > TERRAIN_HEIGHT && (blocks.byteOffset & 3) === 0 && (layer & 3) === 0 ? new Uint32Array(blocks.buffer, blocks.byteOffset, volume >> 2) : null;
   let tail = 0;
   for (let y = height - 1; y >= 0; y--) {
+    if (words && y >= TERRAIN_HEIGHT) {
+      // Above the generated terrain only builds are solid, so most cells are air, which passes
+      // the light through unchanged: copy the column levels, then visit only the 4-cell groups
+      // holding blocks (the open space around a tall build costs next to nothing).
+      outSky.set(levels, y * layer);
+      for (let w = (y * layer) >> 2, end = w + (layer >> 2); w < end; w++) {
+        if (words[w] === 0) continue;
+        for (let i = w << 2, col = i - y * layer, k = 0; k < 4; k++, i++, col++) {
+          const f = FALL[blocks[i]];
+          if (f === 0) continue;
+          let level = columnLevel[col];
+          const drop = f & 15;
+          if (drop !== 0 && level !== 0) {
+            level = level > drop ? level - drop : 0;
+            columnLevel[col] = level;
+            if (shadeTop[col] < 0) shadeTop[col] = y;
+          }
+          outSky[i] = level;
+          if (f > 15) {
+            outBlock[i] = f >> 4;
+            queued[i] = 1;
+            queue[tail++] = i;
+          }
+        }
+      }
+      continue;
+    }
     for (let col = 0, i = y * layer; col < layer; col++, i++) {
       const f = FALL[blocks[i]];
       let level = columnLevel[col];

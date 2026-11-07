@@ -22,6 +22,7 @@ import {
   SUPPORT,
   Support,
 } from './blocks';
+import { CHUNK_HEIGHT } from './constants';
 import type { VoxelHit } from './raycast';
 
 export type BlockGet = (x: number, y: number, z: number) => number;
@@ -80,7 +81,7 @@ export function collectUnsupported(get: BlockGet, x: number, y: number, z: numbe
       const nx = cx + dx;
       const ny = cy + dy;
       const nz = cz + dz;
-      if (ny < 0 || ny > 63) continue;
+      if (ny < 0 || ny >= CHUNK_HEIGHT) continue;
       const id = view(nx, ny, nz);
       if (SUPPORT[id] === Support.None || hasSupport(view, nx, ny, nz, id)) continue;
       gone.add(`${nx},${ny},${nz}`);

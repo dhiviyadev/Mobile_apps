@@ -7,6 +7,7 @@ import {
   Block,
   blockDef,
   type BlockQuery,
+  CHUNK_HEIGHT,
   clamp,
   collides,
   createBody,
@@ -76,7 +77,7 @@ export class LocalPlayer {
 
   /** Moves up until the player no longer overlaps blocks (spawn safety). */
   unstick(get: BlockQuery): void {
-    for (let i = 0; i < 64 && collides(get, this.body.x, this.body.y, this.body.z); i++) this.body.y += 1;
+    for (let i = 0; i < CHUNK_HEIGHT && collides(get, this.body.x, this.body.y, this.body.z); i++) this.body.y += 1;
     this.prev.set(this.body.x, this.body.y, this.body.z);
   }
 

@@ -6,7 +6,7 @@
  */
 import { Block, IS_LIQUID, IS_REPLACEABLE, IS_SOLID } from '../blocks';
 import { Team } from '../combat';
-import { SEA_LEVEL } from '../constants';
+import { CHUNK_HEIGHT, FLIGHT_CEILING, SEA_LEVEL } from '../constants';
 import { isBossDefeated, StructureType, type StructureInfo } from '../structures/types';
 import type { PlayerTarget } from './api';
 import { insideBox, standY } from './ai/common';
@@ -115,7 +115,7 @@ export class Spawner {
 
   private topSolid(x: number, z: number, fromY: number): number {
     const get = this.w.host.getBlock;
-    for (let y = Math.min(63, fromY); y > 0; y--) {
+    for (let y = Math.min(CHUNK_HEIGHT - 1, fromY); y > 0; y--) {
       const b = get(x, y, z);
       if (IS_SOLID[b]) return y;
       if (IS_LIQUID[b]) return -1;
@@ -182,12 +182,12 @@ export class Spawner {
     const col = this.column(p);
     if (!col) return;
     const get = w.host.getBlock;
-    const top = this.topSolid(col.x, col.z, 63);
+    const top = this.topSolid(col.x, col.z, CHUNK_HEIGHT - 1);
     const cands: { y: number; cave: boolean }[] = [];
     if (top > 0 && surface) cands.push({ y: top + 1, cave: false });
     for (let i = 0; i < 3; i++) {
       const y = Math.floor(p.y - 16 + w.rng() * 32);
-      if (y < 2 || y > 62 || (top > 0 && y > top - 4)) continue;
+      if (y < 2 || y > CHUNK_HEIGHT - 2 || (top > 0 && y > top - 4)) continue;
       const floor = get(col.x, y - 1, col.z);
       if (!IS_SOLID[floor] || BAD_FLOOR.has(floor) || IS_SOLID[get(col.x, y, col.z)] || IS_SOLID[get(col.x, y + 1, col.z)]) continue;
       cands.push({ y, cave: true });
@@ -281,7 +281,7 @@ export class Spawner {
     if (m.def.daylight === 'flee') {
       if (w.daylight > 0.4) {
         m.sunTime += dt;
-        if (m.sunTime > 10 || m.y > 62) w.removeMob(m);
+        if (m.sunTime > 10 || m.y > FLIGHT_CEILING) w.removeMob(m);
       } else m.sunTime = 0;
     } else if (m.def.daylight === 'shade') {
       const sun = w.daylight > 0.55 && m.underSky && near > 16;

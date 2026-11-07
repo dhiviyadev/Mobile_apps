@@ -9,6 +9,8 @@ import {
   CHUNK_SIZE,
   CHUNK_VOLUME,
   chunkKey,
+  chunkLayers,
+  ensureLayers,
   collides,
   createBody,
   createWorldGenerator,
@@ -36,6 +38,7 @@ import {
   REGION_VOLUME,
   regionDistance,
   regionIndex,
+  regionLayers,
   streamMeshRange,
   streamUnloadRange,
 } from '../src/voxel/mesher';
@@ -233,7 +236,8 @@ describe('greedy mesher', () => {
     for (let x = -16; x < 32; x++) for (let z = -16; z < 32; z++) vol[regionIndex(x, 0, z)] = Block.Stone;
     vol[regionIndex(5, 1, 5)] = Block.Lamp;
     const { light } = meshChunk(vol);
-    expect(light).toHaveLength(CHUNK_SIZE * CHUNK_SIZE * CHUNK_HEIGHT);
+    // Up to MAX_LIGHT layers above the highest block (layer 1); everything above is open sky.
+    expect(light).toHaveLength(CHUNK_SIZE * CHUNK_SIZE * (2 + 15));
     expect(light[blockIndex(6, 1, 5)]).toBe((15 << 4) | 14); // open sky, next to the lamp
     expect(light[blockIndex(5, 1, 9)] & 15).toBe(11);
     expect(light[blockIndex(5, 0, 5)]).toBe(0); // inside stone
@@ -331,7 +335,8 @@ describe('greedy mesher', () => {
     for (let cz = -1; cz <= 1; cz++) for (let cx = -1; cx <= 1; cx++) chunks.push(gen.generateChunk(cx, cz));
     const region = buildRegion(chunks);
     const center = chunks[4];
-    for (let y = 0; y < CHUNK_HEIGHT; y++) {
+    expect(regionLayers(region)).toBe(64);
+    for (let y = 0; y < chunkLayers(center); y++) {
       for (let z = 0; z < CHUNK_SIZE; z++) {
         for (let x = 0; x < CHUNK_SIZE; x++) expect(region[regionIndex(x, y, z)]).toBe(center[blockIndex(x, y, z)]);
       }
@@ -386,7 +391,9 @@ describe('region dependencies', () => {
     const gen = new TerrainGenerator(31);
     const chunks = new Map<string, Uint8Array>();
     for (let cz = -2; cz <= 2; cz++) for (let cx = -2; cx <= 2; cx++) chunks.set(chunkKey(cx, cz), gen.generateChunk(cx, cz));
-    const centre = chunks.get(chunkKey(0, 0))!;
+    // The centre chunk holds the full build height: edits go up to y 255.
+    const centre = ensureLayers(chunks.get(chunkKey(0, 0))!, CHUNK_HEIGHT - 1);
+    chunks.set(chunkKey(0, 0), centre);
     const region = new Uint8Array(REGION_VOLUME);
     const meshOf = (cx: number, cz: number) => {
       const n: Uint8Array[] = [];

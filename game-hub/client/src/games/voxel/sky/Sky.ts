@@ -16,7 +16,15 @@ const NIGHT_HORIZON = new THREE.Color(0x1a2342);
 
 /** Must stay inside the camera's far plane (see VoxelGame.applyRenderDistance). */
 export const SKY_RADIUS = 200;
-const wrap = (v: number) => ((((v + 180) % 360) + 360) % 360) - 180;
+/**
+ * Height of the cloud layer: high above the terrain (which tops out around
+ * y 60), so tall builds (the build height is 256) poke through it.
+ */
+export const CLOUD_Y = 128;
+/** Clouds wrap in a square tile this wide around the camera; they fade into the horizon colour near its edge. */
+const CLOUD_TILE = 480;
+const HALF_TILE = CLOUD_TILE / 2;
+const wrap = (v: number) => ((((v + HALF_TILE) % CLOUD_TILE) + CLOUD_TILE) % CLOUD_TILE) - HALF_TILE;
 
 export class Sky {
   readonly group = new THREE.Group();
@@ -34,6 +42,7 @@ export class Sky {
   private cloudOffset = 0;
   private lastDomeTime = -1;
   private readonly tmpColor = new THREE.Color();
+  private readonly cloudColor = new THREE.Color();
   private readonly tmpMatrix = new THREE.Matrix4();
   private readonly tmpDir = new THREE.Vector3();
   private readonly cloudBase: { x: number; z: number; sx: number; sz: number }[] = [];
@@ -71,7 +80,8 @@ export class Sky {
     this.clouds.frustumCulled = false;
     this.clouds.renderOrder = 2;
     for (let i = 0; i < cloudCount; i++) {
-      this.cloudBase.push({ x: (rnd() - 0.5) * 360, z: (rnd() - 0.5) * 360, sx: 12 + rnd() * 26, sz: 8 + rnd() * 18 });
+      this.cloudBase.push({ x: (rnd() - 0.5) * CLOUD_TILE, z: (rnd() - 0.5) * CLOUD_TILE, sx: 16 + rnd() * 32, sz: 10 + rnd() * 22 });
+      this.clouds.setColorAt(i, this.cloudColor.setRGB(1, 1, 1));
     }
 
     this.group.add(this.dome, this.sun, this.moon, this.stars, this.clouds);
@@ -111,20 +121,24 @@ export class Sky {
     (this.moon.material as THREE.MeshBasicMaterial).opacity = 1 - this.daylight * 0.8;
     (this.stars.material as THREE.PointsMaterial).opacity = Math.max(0, 1 - this.daylight * 2.2);
 
-    // Clouds drift along +X and stay put in world space, wrapping in a 360 m tile around the camera.
+    // Clouds drift along +X and stay put in world space, wrapping in a CLOUD_TILE square around the
+    // camera; towards the tile edge they take on the horizon colour so they never pop in or out.
     this.cloudOffset += dtDays * 2400;
     const m = this.tmpMatrix;
     const cloudTint = 0.35 + this.daylight * 0.65;
-    (this.clouds.material as THREE.MeshBasicMaterial).color.setRGB(cloudTint, cloudTint, cloudTint * 1.04);
+    const white = this.tmpColor.setRGB(cloudTint, cloudTint, cloudTint * 1.04);
     for (let i = 0; i < this.cloudBase.length; i++) {
       const b = this.cloudBase[i];
       const x = wrap(b.x + this.cloudOffset - cameraPos.x);
       const z = wrap(b.z - cameraPos.z);
-      m.makeScale(b.sx, 2.5, b.sz);
-      m.setPosition(x, 78 - cameraPos.y, z);
+      m.makeScale(b.sx, 3, b.sz);
+      m.setPosition(x, CLOUD_Y - cameraPos.y, z);
       this.clouds.setMatrixAt(i, m);
+      const haze = THREE.MathUtils.smoothstep(Math.max(Math.abs(x), Math.abs(z)) / HALF_TILE, 0.55, 1);
+      this.clouds.setColorAt(i, this.cloudColor.copy(white).lerp(this.horizon, haze));
     }
     this.clouds.instanceMatrix.needsUpdate = true;
+    if (this.clouds.instanceColor) this.clouds.instanceColor.needsUpdate = true;
   }
 
   dispose(): void {

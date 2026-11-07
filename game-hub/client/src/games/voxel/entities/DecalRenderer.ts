@@ -4,7 +4,7 @@
  * and flash red at the end) and hazard zones (spores, frost, thorns, fire).
  */
 import * as THREE from 'three';
-import type { VoxelUniforms } from '../world/materials';
+import { FOG_DISTANCE, type VoxelUniforms } from '../world/materials';
 
 export const DecalShape = {
   Shadow: 0,
@@ -29,13 +29,14 @@ const VERT = /* glsl */ `
   varying vec3 vColor;
   varying vec4 vParams;
   varying float vFogDist;
+  ${FOG_DISTANCE}
   void main() {
     vP = uv * 2.0 - 1.0;
     vShape = aShape;
     vColor = aColor;
     vParams = aParams;
     vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-    vFogDist = length(mv.xyz);
+    vFogDist = fogDistance(modelMatrix * instanceMatrix * vec4(position, 1.0));
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -147,7 +148,7 @@ export class DecalRenderer {
     geo.setAttribute('aColor', this.color);
     geo.setAttribute('aParams', this.params);
     const mat = new THREE.ShaderMaterial({
-      uniforms: { uTime: uniforms.uTime, uDaylight: uniforms.uDaylight, uFogNear: uniforms.uFogNear, uFogFar: uniforms.uFogFar },
+      uniforms: { uTime: uniforms.uTime, uDaylight: uniforms.uDaylight, uFogNear: uniforms.uFogNear, uFogFar: uniforms.uFogFar, uFogVertical: uniforms.uFogVertical },
       vertexShader: VERT,
       fragmentShader: FRAG,
       transparent: true,

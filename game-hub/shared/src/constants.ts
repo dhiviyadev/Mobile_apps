@@ -72,5 +72,7 @@ export const CLOSE_KICKED = 4100;
  * voxel upgrades share one bump if they ship in the same deploy; voxel bumps again if it ships later.
  *   1 = before versioning (clients sent nothing)
  *   2 = Arcfire Arena upgrade (self-snapshot v2, vote phase, new schema fields)
+ *   3 = Voxelvale build height 256: edits and moves above y 64 (older clients drop such edits and
+ *       older servers refuse them, so mixed versions would see different worlds)
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;

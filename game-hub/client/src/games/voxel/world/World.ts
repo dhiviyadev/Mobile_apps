@@ -4,7 +4,9 @@
  *
  * Chunks are generated from the seed in workers; player edits are kept in a
  * separate overlay map and re-applied whenever a chunk is (re)generated, so
- * unloading far chunks never loses changes.
+ * unloading far chunks never loses changes. A chunk's block array holds only
+ * the sections up to what is built (see chunkLayers): generated terrain is 64
+ * high and building above grows that one chunk's array.
  */
 import * as THREE from 'three';
 import {
@@ -14,6 +16,8 @@ import {
   CHUNK_SIZE,
   chunkInWorld,
   chunkKey,
+  chunkLayers,
+  ensureLayers,
   toChunkCoord,
   toLocal,
   type GenVersion,
@@ -26,8 +30,8 @@ import {
   isFluidOnlyChange,
   type MeshBuffers,
   neighbourNeedsRemesh,
-  REGION_VOLUME,
   regionDistance,
+  regionLayers,
   streamMeshRange,
   streamUnloadRange,
 } from '@hub/shared/voxel/mesher';
@@ -82,7 +86,6 @@ export interface WorldStats {
   pendingJobs: number;
 }
 
-const BOUNDS_SPHERE = new THREE.Sphere(new THREE.Vector3(CHUNK_SIZE / 2, CHUNK_HEIGHT / 2, CHUNK_SIZE / 2), Math.hypot(8, 32, 8) + 1);
 const NEIGHBOURS = [
   [-1, -1], [0, -1], [1, -1],
   [-1, 0], [1, 0],
@@ -142,7 +145,8 @@ export class World {
     if (y >= CHUNK_HEIGHT) return Block.Air;
     const c = this.chunks.get(chunkKey(toChunkCoord(x), toChunkCoord(z)));
     if (!c?.blocks) return Block.Bedrock;
-    return c.blocks[blockIndex(toLocal(x), y, toLocal(z))];
+    const i = blockIndex(toLocal(x), y, toLocal(z));
+    return i < c.blocks.length ? c.blocks[i] : Block.Air;
   };
 
   // ---- fast reader for the offline creature sim (WP-C may replace this body; keep the region) ----
@@ -166,7 +170,9 @@ export class World {
         last = this.chunks.get(chunkKey(cx, cz));
       }
       const b = last?.blocks;
-      return b ? b[((y << 4) + (z & 15)) * 16 + (x & 15)] : Block.Bedrock;
+      if (!b) return Block.Bedrock;
+      const i = ((y << 4) + (z & 15)) * 16 + (x & 15);
+      return i < b.length ? b[i] : Block.Air;
     };
   }
   // ---- end fast reader ----
@@ -183,7 +189,9 @@ export class World {
     if (y < 0) return 0;
     if (y >= CHUNK_HEIGHT) return OPEN_SKY_LIGHT;
     const light = this.chunks.get(chunkKey(toChunkCoord(x), toChunkCoord(z)))?.light;
-    return light ? light[blockIndex(toLocal(x), y, toLocal(z))] : OPEN_SKY_LIGHT;
+    const i = blockIndex(toLocal(x), y, toLocal(z));
+    // The mesh keeps light only up to its light box; above it is open sky.
+    return light && i < light.length ? light[i] : OPEN_SKY_LIGHT;
   }
 
   /** Sets a block, records it as an edit, and schedules remeshing. */
@@ -364,9 +372,11 @@ export class World {
     let old: number | null = null; // unknown when the chunk is not loaded
     if (c?.blocks) {
       const idx = blockIndex(lx, y, lz);
-      old = c.blocks[idx];
+      old = idx < c.blocks.length ? c.blocks[idx] : Block.Air;
       // Server echoes of our own optimistic edits are no-ops: skip the remesh.
       if (old === id) return;
+      // Building above the chunk's stored sections grows its array.
+      c.blocks = ensureLayers(c.blocks, y);
       c.blocks[idx] = id;
     }
     // Flowing water remeshes behind player edits and streaming; anything else jumps the queue.
@@ -421,7 +431,13 @@ export class World {
         c.generating = false;
         if (this.disposed || this.chunks.get(c.key) !== c) return;
         const e = this.edits.get(c.key);
-        if (e) for (const [idx, id] of e) blocks[idx] = id;
+        if (e) {
+          // Tall edits: grow the generated (terrain-high) array once to the highest one.
+          let topIdx = -1;
+          for (const [idx, id] of e) if (idx > topIdx && id !== Block.Air) topIdx = idx;
+          if (topIdx >= 0) blocks = ensureLayers(blocks, topIdx >> 8);
+          for (const [idx, id] of e) if (idx < blocks.length) blocks[idx] = id;
+        }
         c.blocks = blocks;
         c.dirty = true;
         // Neighbours that meshed against "missing" data must rebuild their borders.
@@ -446,7 +462,8 @@ export class World {
       .mesh(region, this.decorOn)
       .then(({ mesh, region }) => {
         c.meshing = false;
-        if (this.spareRegions.length < 8) this.spareRegions.push(region);
+        // The job got a view of the start of a buffer: keep the whole buffer.
+        if (this.spareRegions.length < 8) this.spareRegions.push(new Uint8Array(region.buffer));
         if (this.disposed || this.chunks.get(c.key) !== c) return;
         if (c.version !== version) c.dirty = true; // edited meanwhile: mesh again, but show this one now
         c.opaque = this.applyMesh(c, c.opaque, mesh.opaque, this.opaqueMaterial, 0);
@@ -473,8 +490,10 @@ export class World {
     geo.setAttribute('tile', new THREE.BufferAttribute(data.tiles, 2));
     geo.setAttribute('light', new THREE.BufferAttribute(data.lights, 4, true));
     geo.setIndex(new THREE.BufferAttribute(data.indices, 1));
-    geo.boundingSphere = BOUNDS_SPHERE.clone();
-    geo.boundingBox = new THREE.Box3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(CHUNK_SIZE, CHUNK_HEIGHT, CHUNK_SIZE));
+    // Bounds of the chunk's stored sections (64 high for plain terrain): tall builds are culled as a whole.
+    const h = c.blocks ? chunkLayers(c.blocks) : CHUNK_HEIGHT;
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(CHUNK_SIZE / 2, h / 2, CHUNK_SIZE / 2), Math.hypot(CHUNK_SIZE / 2, h / 2, CHUNK_SIZE / 2) + 1);
+    geo.boundingBox = new THREE.Box3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(CHUNK_SIZE, h, CHUNK_SIZE));
     if (existing) {
       existing.geometry.dispose();
       existing.geometry = geo;
@@ -490,13 +509,26 @@ export class World {
     return mesh;
   }
 
-  /** Copies the chunk and its 8 neighbours into a 48x64x48 region (a recycled buffer when one is free). */
+  /**
+   * Copies the chunk and its 8 neighbours into a 48xHx48 region, H the tallest
+   * of their arrays (a recycled buffer when one is large enough).
+   */
   private regionFor(c: Chunk): Uint8Array {
     const n = this.regionChunks;
+    let layers = 0;
     for (let dz = -1; dz <= 1; dz++) {
-      for (let dx = -1; dx <= 1; dx++) n[(dz + 1) * 3 + dx + 1] = this.chunks.get(chunkKey(c.cx + dx, c.cz + dz))?.blocks ?? null;
+      for (let dx = -1; dx <= 1; dx++) {
+        const b = this.chunks.get(chunkKey(c.cx + dx, c.cz + dz))?.blocks ?? null;
+        n[(dz + 1) * 3 + dx + 1] = b;
+        if (b && chunkLayers(b) > layers) layers = chunkLayers(b);
+      }
     }
-    const region = buildRegion(n, this.spareRegions.pop() ?? new Uint8Array(REGION_VOLUME));
+    // Prefer a spare that fits; a too small one is left for later jobs.
+    const spares = this.spareRegions;
+    let pick = -1;
+    for (let i = 0; i < spares.length; i++) if (regionLayers(spares[i]) >= layers && (pick < 0 || spares[i].length < spares[pick].length)) pick = i;
+    const spare = pick >= 0 ? spares.splice(pick, 1)[0] : undefined;
+    const region = buildRegion(n, spare);
     n.fill(null);
     return region;
   }

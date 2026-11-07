@@ -14,7 +14,7 @@ import { SimplexNoise } from '../../util/noise';
 import { hash4, hashFloat } from '../../util/rng';
 import { Block } from '../blocks';
 import { blockIndex } from '../chunk';
-import { CHUNK_HEIGHT, CHUNK_SIZE, CHUNK_VOLUME, SEA_LEVEL } from '../constants';
+import { CHUNK_SIZE, SEA_LEVEL, TERRAIN_HEIGHT, TERRAIN_VOLUME } from '../constants';
 import { Biome } from './biomes';
 
 export interface Column {
@@ -23,7 +23,7 @@ export interface Column {
 }
 
 const TREE_CELL = 5;
-const MAX_TERRAIN = CHUNK_HEIGHT - 10;
+const MAX_TERRAIN = TERRAIN_HEIGHT - 10;
 
 const smoothstep = (a: number, b: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -97,7 +97,7 @@ export class TerrainGeneratorV1 {
   }
 
   /** Fills a 16x64x16 chunk. Reuses `out` if provided. */
-  generateChunk(cx: number, cz: number, out: Uint8Array = new Uint8Array(CHUNK_VOLUME)): Uint8Array {
+  generateChunk(cx: number, cz: number, out: Uint8Array = new Uint8Array(TERRAIN_VOLUME)): Uint8Array {
     out.fill(Block.Air);
     const x0 = cx * CHUNK_SIZE;
     const z0 = cz * CHUNK_SIZE;
@@ -187,7 +187,7 @@ export class TerrainGeneratorV1 {
     const set = (wx: number, y: number, wz: number, b: Block, onlyAir: boolean) => {
       const lx = wx - x0;
       const lz = wz - z0;
-      if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= CHUNK_HEIGHT) return;
+      if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 0 || y >= TERRAIN_HEIGHT) return;
       const i = blockIndex(lx, y, lz);
       if (onlyAir && out[i] !== Block.Air) return;
       out[i] = b;
@@ -235,7 +235,7 @@ export class TerrainGeneratorV1 {
         }
       }
     }
-    return { x: 0.5, y: CHUNK_HEIGHT - 4, z: 0.5 };
+    return { x: 0.5, y: TERRAIN_HEIGHT - 4, z: 0.5 };
   }
 
   private nearTree(x: number, z: number): boolean {

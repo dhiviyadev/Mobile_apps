@@ -6,6 +6,7 @@
  */
 import { DamageKind } from '../../combat';
 import { IS_SOLID } from '../../blocks';
+import { FLIGHT_CEILING } from '../../constants';
 import { HazardKind, PROJECTILE_DEFS, type PlayerTarget } from '../api';
 import { variantHitEffects } from '../defs';
 import { openSky } from '../perception';
@@ -464,6 +465,8 @@ export const flyerBrain: Brain = {
       if (IS_SOLID[get(Math.floor(ax), Math.floor(m.y + 0.3), Math.floor(az))]) it.vy = Math.max(it.vy ?? 0, 4);
       it.faceYaw = yawTo(m, m.x + it.vx, m.z + it.vz);
     }
+    // Never above the flight ceiling (tall builds reach close to the build height).
+    if (m.y >= FLIGHT_CEILING && (it.vy ?? 0) > 0) it.vy = 0;
   },
 };
 

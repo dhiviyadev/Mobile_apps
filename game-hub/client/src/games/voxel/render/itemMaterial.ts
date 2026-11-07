@@ -4,7 +4,7 @@
  * block light, emissive) and the shared voxel uniforms bring daylight and fog.
  */
 import * as THREE from 'three';
-import type { VoxelUniforms } from '../world/materials';
+import { FOG_DISTANCE, type VoxelUniforms } from '../world/materials';
 
 const VERT = /* glsl */ `
   attribute vec4 light;
@@ -13,6 +13,7 @@ const VERT = /* glsl */ `
   uniform float uFlash;
   varying vec3 vColor;
   varying float vFogDist;
+  ${FOG_DISTANCE}
   float brightness(float level) {
     return pow(0.8, (1.0 - level) * 15.0);
   }
@@ -22,11 +23,12 @@ const VERT = /* glsl */ `
     vec3 lit = max(max(vec3(sky), lamp), vec3(0.06));
     vColor = mix(color * light.x * mix(lit, vec3(1.0), light.w), vec3(1.0, 0.25, 0.2), uFlash);
     #ifdef USE_INSTANCING
-      vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+      vec4 local = instanceMatrix * vec4(position, 1.0);
     #else
-      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      vec4 local = vec4(position, 1.0);
     #endif
-    vFogDist = length(mv.xyz);
+    vec4 mv = modelViewMatrix * local;
+    vFogDist = fogDistance(modelMatrix * local);
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -51,6 +53,7 @@ export function createItemMaterial(u: VoxelUniforms, opts: { transparent?: boole
       uFogColor: u.uFogColor,
       uFogNear: u.uFogNear,
       uFogFar: u.uFogFar,
+      uFogVertical: u.uFogVertical,
       uFlash: { value: 0 },
       uOpacity: { value: 1 },
     },

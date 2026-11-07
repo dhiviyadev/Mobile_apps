@@ -9,7 +9,7 @@ import { SimplexNoise } from '../../util/noise';
 import { hash4, hashFloat, mulberry32 } from '../../util/rng';
 import { Block } from '../blocks';
 import { blockIndex } from '../chunk';
-import { CHUNK_HEIGHT, CHUNK_SIZE, CHUNK_VOLUME, SEA_LEVEL } from '../constants';
+import { CHUNK_SIZE, SEA_LEVEL, TERRAIN_HEIGHT, TERRAIN_VOLUME } from '../constants';
 import { buildStructure, computeStructures, type PlacedStructure } from '../structures/place';
 import type { StructureInfo } from '../structures/types';
 import type { StructureVolume } from '../structures/volume';
@@ -429,7 +429,7 @@ export class TerrainGeneratorV2 {
   // ---- chunks ----------------------------------------------------------------------------------
 
   /** Fills a 16x64x16 chunk. Reuses `out` if provided. */
-  generateChunk(cx: number, cz: number, out: Uint8Array = new Uint8Array(CHUNK_VOLUME)): Uint8Array {
+  generateChunk(cx: number, cz: number, out: Uint8Array = new Uint8Array(TERRAIN_VOLUME)): Uint8Array {
     out.fill(Block.Air);
     const x0 = cx * CHUNK_SIZE;
     const z0 = cz * CHUNK_SIZE;
@@ -538,7 +538,7 @@ export class TerrainGeneratorV2 {
     const set = (wx: number, y: number, wz: number, b: Block, onlyAir: boolean): boolean => {
       const lx = wx - x0;
       const lz = wz - z0;
-      if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 1 || y >= CHUNK_HEIGHT) return false;
+      if (lx < 0 || lx >= CHUNK_SIZE || lz < 0 || lz >= CHUNK_SIZE || y < 1 || y >= TERRAIN_HEIGHT) return false;
       const i = blockIndex(lx, y, lz);
       if (onlyAir && out[i] !== Block.Air) return false;
       out[i] = b;

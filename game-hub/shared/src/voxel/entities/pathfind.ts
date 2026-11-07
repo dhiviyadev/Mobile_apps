@@ -5,6 +5,7 @@
  * budget per tick (PathScheduler). Bosses use a 2D ArenaGrid instead.
  */
 import { CONTACT_DAMAGE, IS_LIQUID, IS_SOLID } from '../blocks';
+import { CHUNK_HEIGHT } from '../constants';
 import type { BlockQuery } from '../physics';
 import type { Box3i } from '../structures/types';
 import type { Mob } from './types';
@@ -44,7 +45,7 @@ const DIRS: readonly [number, number, number][] = [
   [1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1],
   [1, 1, 1.414], [1, -1, 1.414], [-1, 1, 1.414], [-1, -1, 1.414],
 ];
-const packKey = (x: number, y: number, z: number) => ((x + 1024) * 2048 + (z + 1024)) * 64 + y;
+const packKey = (x: number, y: number, z: number) => ((x + 1024) * 2048 + (z + 1024)) * CHUNK_HEIGHT + y;
 
 export class Pathfinder {
   private readonly nx = new Int16Array(MAX_NODES);
@@ -66,7 +67,7 @@ export class Pathfinder {
 
   /** Body fits at the feet cell and something holds it up (floor, liquid for swimmers, a wall for climbers). */
   private standable(x: number, y: number, z: number, r: PathRequest): boolean {
-    if (y < 1 || y > 62) return false;
+    if (y < 1 || y > CHUNK_HEIGHT - 2) return false;
     const get = this.get;
     const h = Math.max(1, Math.ceil(r.height - 0.01));
     for (let k = 0; k < h; k++) {

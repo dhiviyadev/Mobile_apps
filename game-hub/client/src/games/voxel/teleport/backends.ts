@@ -5,6 +5,7 @@
 import {
   CHUNK_HEIGHT,
   CHUNK_SIZE,
+  chunkBlock,
   safeSpotNear,
   TeleportCore,
   type TeleportEvent,
@@ -53,7 +54,7 @@ function farReader(game: VoxelGame): (x: number, y: number, z: number) => number
     }
     const lx = x - cx * CHUNK_SIZE;
     const lz = z - cz * CHUNK_SIZE;
-    return blocks[((y << 4) + lz) * 16 + lx];
+    return chunkBlock(blocks, lx, y, lz);
   };
 }
 

@@ -7,7 +7,7 @@
  */
 import * as THREE from 'three';
 import type { MobVariant } from '@hub/shared';
-import type { VoxelUniforms } from '../world/materials';
+import { FOG_DISTANCE, type VoxelUniforms } from '../world/materials';
 import type { Pose } from './animate';
 import { paletteColor, type CompiledModel } from './models';
 
@@ -18,6 +18,7 @@ const VERT = /* glsl */ `
   varying vec3 vColor;
   varying vec3 vLight;
   varying float vFogDist;
+  ${FOG_DISTANCE}
   float brightness(float level) { return pow(0.8, (1.0 - level) * 15.0); }
   void main() {
     vec3 n = normalize(mat3(instanceMatrix) * normal);
@@ -29,7 +30,7 @@ const VERT = /* glsl */ `
     vLight = mix(shade * lit, vec3(1.0), aLight.w);
     vColor = mix(aColor, vec3(1.0, 0.32, 0.28), aLight.z * 0.75);
     vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
-    vFogDist = length(mv.xyz);
+    vFogDist = fogDistance(modelMatrix * instanceMatrix * vec4(position, 1.0));
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -67,7 +68,7 @@ class InstanceLayer {
     geo.setAttribute('aColor', this.color);
     geo.setAttribute('aLight', this.light);
     const mat = new THREE.ShaderMaterial({
-      uniforms: { uDaylight: uniforms.uDaylight, uFogColor: uniforms.uFogColor, uFogNear: uniforms.uFogNear, uFogFar: uniforms.uFogFar, uAlpha: { value: translucent ? 0.85 : 1 } },
+      uniforms: { uDaylight: uniforms.uDaylight, uFogColor: uniforms.uFogColor, uFogNear: uniforms.uFogNear, uFogFar: uniforms.uFogFar, uFogVertical: uniforms.uFogVertical, uAlpha: { value: translucent ? 0.85 : 1 } },
       vertexShader: VERT,
       fragmentShader: FRAG,
       transparent: translucent,

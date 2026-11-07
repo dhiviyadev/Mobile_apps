@@ -1,9 +1,14 @@
 /**
  * Greedy mesher with per-vertex ambient occlusion and smooth lighting.
  *
- * Input is a "region": the 16x64x16 chunk plus its 8 neighbours (48x64x48).
- * Light (see light.ts) is computed over the whole region, which makes it exact
- * for the centre chunk; faces and AO only look one block past the chunk edge.
+ * Input is a "region": the 16xHx16 chunk plus its 8 neighbours (48xHx48),
+ * where H is the tallest of the 9 chunk arrays (see chunk.ts: chunk arrays
+ * hold whole 16-high sections up to what is built, at most 256). Light (see
+ * light.ts) is computed over the whole region, which makes it exact for the
+ * centre chunk; faces and AO only look one block past the chunk edge.
+ * Work follows what is built: light stops MAX_LIGHT layers above the highest
+ * block of the region (all air and full sky light above), and faces and
+ * shapes are only built in the centre chunk's sections that hold blocks.
  * Runs inside Web Workers on the client.
  *
  * Output: two vertex buffers per chunk:
@@ -40,18 +45,24 @@ import {
   TILE_TOP,
   USE_NEIGHBOUR_LIGHT,
 } from './blocks';
-import { blockIndex } from './chunk';
-import { CHUNK_HEIGHT, CHUNK_SIZE, CHUNK_VOLUME } from './constants';
+import { chunkLayers, topOfContent } from './chunk';
+import { CHUNK_HEIGHT, CHUNK_LAYER, CHUNK_SIZE, SECTION_HEIGHT } from './constants';
 import { changesLight, computeLight, lightAboveTop, MAX_LIGHT } from './light';
 
 export const REGION_SIZE = CHUNK_SIZE * 3; // 48
-export const REGION_VOLUME = REGION_SIZE * REGION_SIZE * CHUNK_HEIGHT;
+/** Cells in one layer of a region. */
+export const REGION_LAYER = REGION_SIZE * REGION_SIZE;
+/** Cells in a full-height region; most regions are shorter (regionLayers). */
+export const REGION_VOLUME = REGION_LAYER * CHUNK_HEIGHT;
 export { ATLAS_COLS };
+
+/** Layers a region array holds (above: air). */
+export const regionLayers = (region: Uint8Array): number => (region.length / REGION_LAYER) | 0;
 
 /** Offset of the centre chunk inside the region on x and z. */
 const BORDER = CHUNK_SIZE;
 
-/** Index into a region; x,z chunk-local in [-16, 31] (centre chunk 0..15), y in [0, 63]. */
+/** Index into a region; x,z chunk-local in [-16, 31] (centre chunk 0..15), y in [0, regionLayers). */
 export const regionIndex = (x: number, y: number, z: number): number => (y * REGION_SIZE + (z + BORDER)) * REGION_SIZE + (x + BORDER);
 
 /** 32-bit view of a byte array, or null when it is not 4-byte aligned. */
@@ -59,35 +70,43 @@ const asWords = (a: Uint8Array): Uint32Array | null =>
   (a.byteOffset & 3) === 0 && (a.length & 3) === 0 ? new Uint32Array(a.buffer, a.byteOffset, a.length >> 2) : null;
 
 /**
- * Copies a chunk and its 8 neighbours into one region. `chunks` holds 9 block
- * arrays row by row, index (dz + 1) * 3 + (dx + 1); missing ones read as air.
- * Runs on the main thread for every mesh job, so rows are copied 4 bytes at a time.
+ * Copies a chunk and its 8 neighbours into one region, as tall as the tallest
+ * of them (at least one section). `chunks` holds 9 block arrays row by row,
+ * index (dz + 1) * 3 + (dx + 1); missing ones and the layers above a shorter
+ * one read as air. `out` is a buffer to reuse when it is large enough: the
+ * result is then a view of its start. Runs on the main thread for every mesh
+ * job, so rows are copied 4 bytes at a time.
  */
-export function buildRegion(chunks: readonly (Uint8Array | null)[], out: Uint8Array = new Uint8Array(REGION_VOLUME)): Uint8Array {
+export function buildRegion(chunks: readonly (Uint8Array | null)[], out?: Uint8Array): Uint8Array {
   const S = CHUNK_SIZE;
-  const out32 = asWords(out);
+  let layers = SECTION_HEIGHT;
+  for (const c of chunks) if (c && chunkLayers(c) > layers) layers = chunkLayers(c);
+  const size = layers * REGION_LAYER;
+  const region = out && out.length >= size ? out.subarray(0, size) : new Uint8Array(size);
+  const out32 = asWords(region);
   for (let j = 0; j < 3; j++) {
     for (let i = 0; i < 3; i++) {
       const src = chunks[j * 3 + i];
       const src32 = src && out32 ? asWords(src) : null;
-      for (let y = 0; y < CHUNK_HEIGHT; y++) {
+      const srcLayers = src ? chunkLayers(src) : 0;
+      for (let y = 0; y < layers; y++) {
         for (let z = 0; z < S; z++) {
           let d = (y * REGION_SIZE + j * S + z) * REGION_SIZE + i * S;
           let s = (y * S + z) * S;
-          if (!src) {
-            out.fill(0, d, d + S);
+          if (y >= srcLayers) {
+            region.fill(0, d, d + S);
           } else if (src32 && out32) {
             d >>= 2;
             s >>= 2;
             for (let k = 0; k < S >> 2; k++) out32[d + k] = src32[s + k];
           } else {
-            for (let k = 0; k < S; k++) out[d++] = src[s++];
+            for (let k = 0; k < S; k++) region[d++] = src![s++];
           }
         }
       }
     }
   }
-  return out;
+  return region;
 }
 
 // ---- region dependencies (used by the client World for remeshing and streaming) ----
@@ -158,7 +177,10 @@ export interface MeshBuffers {
 export interface ChunkMesh {
   opaque: MeshBuffers;
   liquid: MeshBuffers;
-  /** Light of every cell of the centre chunk (blockIndex order): sky << 4 | block. */
+  /**
+   * Light of the centre chunk's cells (blockIndex order): sky << 4 | block, for
+   * its lower layers only; every cell above them is open sky (sky 15, block 0).
+   */
   light: Uint8Array;
 }
 
@@ -261,10 +283,21 @@ const mask = new Int32Array(CHUNK_HEIGHT * CHUNK_SIZE);
 const skyMask = new Int32Array(CHUNK_HEIGHT * CHUNK_SIZE);
 const blockMask = new Int32Array(CHUNK_HEIGHT * CHUNK_SIZE);
 /** Region light plus one extra layer above the world (open sky; block light from lightAboveTop). */
-let skyLight: Uint8Array | null = null;
-let blockLight: Uint8Array | null = null;
+let skyLight = new Uint8Array(0);
+let blockLight = new Uint8Array(0);
+/** Sections (bit per SECTION_HEIGHT layers) of the centre chunk that hold any block. */
+let centreSections = 0;
+/** Per layer of the centre chunk: bit z set when its row of 16 cells (all x) holds any block. */
+const centreRows = new Uint16Array(CHUNK_HEIGHT);
 
-const DIMS = [CHUNK_SIZE, CHUNK_HEIGHT, CHUNK_SIZE];
+/** Mesh extent per axis; y is the centre chunk's highest block + 1 (set per mesh). */
+const DIMS = [CHUNK_SIZE, 0, CHUNK_SIZE];
+/**
+ * Light is computed this many layers above the highest block of a region: no
+ * light reaches further up (MAX_LIGHT levels), so the cells above are exactly
+ * open sky without any propagation.
+ */
+const LIGHT_HEADROOM = MAX_LIGHT;
 
 /** True when all 4 bytes of a packed per-corner value are equal. */
 const uniformBytes = (bits: number): boolean => bits === Math.imul(bits & 0xff, 0x01010101);
@@ -285,11 +318,11 @@ let fixups = new Int32Array(0);
  * inside: they take the brightest light of their 6 neighbours instead (not
  * propagated further). Covers the cells one past the chunk edge that faces read.
  */
-function fixNeighbourLight(region: Uint8Array, sky: Uint8Array, blk: Uint8Array): void {
+function fixNeighbourLight(region: Uint8Array, sky: Uint8Array, blk: Uint8Array, top: number): void {
   const S = REGION_SIZE;
   const layer = S * S;
   let n = 0;
-  for (let y = 0; y < CHUNK_HEIGHT; y++) {
+  for (let y = 0; y < top; y++) {
     for (let z = -1; z <= CHUNK_SIZE; z++) {
       for (let x = -1; x <= CHUNK_SIZE; x++) {
         const i = regionIndex(x, y, z);
@@ -326,19 +359,29 @@ export function meshChunk(region: Uint8Array, opts: MeshOptions = {}): ChunkMesh
   liquidBuilder ??= new Builder(1024);
   opaqueBuilder.reset();
   liquidBuilder.reset();
-  if (!skyLight || !blockLight) {
-    skyLight = new Uint8Array(REGION_VOLUME + REGION_SIZE * REGION_SIZE).fill(MAX_LIGHT);
-    blockLight = new Uint8Array(REGION_VOLUME + REGION_SIZE * REGION_SIZE);
+  const height = regionLayers(region);
+  // Highest block of the whole region; the centre chunk's highest block and the sections holding blocks.
+  const top = topOfContent(region, REGION_LAYER, height);
+  const meshTop = scanCentre(region, top);
+  // Light box: up to LIGHT_HEADROOM layers above the highest block (exact, see there), plus one
+  // layer above the box for faces at its top (open sky; block light from lightAboveTop).
+  const lightTop = Math.min(height, top + LIGHT_HEADROOM);
+  const lightSize = (lightTop + 1) * REGION_LAYER;
+  if (skyLight.length < lightSize) {
+    skyLight = new Uint8Array(lightSize);
+    blockLight = new Uint8Array(lightSize);
   }
-  computeLight(region, REGION_SIZE, CHUNK_HEIGHT, REGION_SIZE, skyLight, blockLight);
-  lightAboveTop(blockLight, REGION_SIZE, CHUNK_HEIGHT, REGION_SIZE);
-  fixNeighbourLight(region, skyLight, blockLight);
+  computeLight(region, REGION_SIZE, lightTop, REGION_SIZE, skyLight, blockLight);
+  skyLight.fill(MAX_LIGHT, lightTop * REGION_LAYER, lightSize);
+  lightAboveTop(blockLight, REGION_SIZE, lightTop, REGION_SIZE);
+  fixNeighbourLight(region, skyLight, blockLight, top);
   const sky = skyLight;
   const blk = blockLight;
+  DIMS[1] = meshTop;
 
   const get = (x: number, y: number, z: number): number => {
     if (y < 0) return 14; // bedrock below the world: never show bottom faces
-    if (y >= CHUNK_HEIGHT) return 0;
+    if (y >= height) return 0;
     return region[regionIndex(x, y, z)];
   };
   const opaqueAt = (x: number, y: number, z: number): number => (IS_TRANSPARENT[get(x, y, z)] ? 0 : 1);
@@ -358,12 +401,15 @@ export function meshChunk(region: Uint8Array, opts: MeshOptions = {}): ChunkMesh
     for (let sign = 1; sign >= -1; sign -= 2) {
       const face = axis * 2 + (sign > 0 ? 0 : 1);
       for (let slice = 0; slice < DIMS[axis]; slice++) {
+        // Empty layers and rows have no faces: skipped (the mask is all zero between slices).
+        if (axis === 1 && centreRows[slice] === 0) continue;
         // ---- build the mask for this slice --------------------------------------
         for (let v = 0; v < dv; v++) {
           for (let u = 0; u < du; u++) {
             pos[axis] = slice;
             pos[uAxis] = u;
             pos[vAxis] = v;
+            if (!(centreRows[pos[1]] & (1 << pos[2]))) continue;
             const b = get(pos[0], pos[1], pos[2]);
             let key = 0;
             let skyBits = 0;
@@ -387,7 +433,7 @@ export function meshChunk(region: Uint8Array, opts: MeshOptions = {}): ChunkMesh
               else visible = IS_TRANSPARENT[n] === 1;
               if (visible) {
                 const emissive = IS_EMISSIVE[b] === 1;
-                // The cell in front of a visible face is never opaque (y may be 64: open sky).
+                // The cell in front of a visible face is never opaque (y may be the light box's top: open sky).
                 const qi = regionIndex(q[0], q[1], q[2]);
                 // AO and smooth light for the 4 corners: (u-,v-), (u+,v-), (u+,v+), (u-,v+)
                 let ao = 0;
@@ -483,18 +529,48 @@ export function meshChunk(region: Uint8Array, opts: MeshOptions = {}): ChunkMesh
     }
   }
 
-  emitShapes(get, sky, blk, opts.decor !== false);
+  emitShapes(get, sky, blk, opts.decor !== false, meshTop);
 
-  const light = new Uint8Array(CHUNK_VOLUME);
-  for (let y = 0; y < CHUNK_HEIGHT; y++) {
+  // Centre chunk light for the layers of the light box (above it: open sky, see ChunkMesh.light).
+  const light = new Uint8Array(lightTop * CHUNK_LAYER);
+  for (let y = 0, o = 0; y < lightTop; y++) {
     for (let z = 0; z < CHUNK_SIZE; z++) {
-      for (let x = 0; x < CHUNK_SIZE; x++) {
-        const ri = regionIndex(x, y, z);
-        light[blockIndex(x, y, z)] = (sky[ri] << 4) | blk[ri];
-      }
+      for (let x = 0, ri = regionIndex(0, y, z); x < CHUNK_SIZE; x++, ri++, o++) light[o] = (sky[ri] << 4) | blk[ri];
     }
   }
   return { opaque: opaqueBuilder.finish(), liquid: liquidBuilder.finish(), light };
+}
+
+/**
+ * Sets centreRows and centreSections from the centre chunk's cells below `top`
+ * (the region's highest block + 1) and returns the centre chunk's highest block + 1.
+ */
+function scanCentre(region: Uint8Array, top: number): number {
+  centreSections = 0;
+  centreRows.fill(0);
+  let meshTop = 0;
+  // Each row of the centre chunk is 4 aligned words (it starts 16 cells into a 48-cell row).
+  const words = (region.byteOffset & 3) === 0 ? new Uint32Array(region.buffer, region.byteOffset, (top * REGION_LAYER) >> 2) : null;
+  for (let y = 0; y < top; y++) {
+    let rows = 0;
+    for (let z = 0; z < CHUNK_SIZE; z++) {
+      const i = regionIndex(0, y, z);
+      let any = false;
+      if (words) {
+        const w = i >> 2;
+        any = (words[w] | words[w + 1] | words[w + 2] | words[w + 3]) !== 0;
+      } else {
+        for (let x = 0; x < CHUNK_SIZE && !any; x++) any = region[i + x] !== 0;
+      }
+      if (any) rows |= 1 << z;
+    }
+    centreRows[y] = rows;
+    if (rows) {
+      centreSections |= 1 << (y >> 4);
+      meshTop = y + 1;
+    }
+  }
+  return meshTop;
 }
 
 const corners = new Array<number>(12);
@@ -686,9 +762,15 @@ const CROSS_LO = 0.146;
 const CROSS_HI = 0.854;
 
 /** Second pass: every non-cube cell of the centre chunk; not merged, no AO, lit by its own (fixed-up) cell. */
-function emitShapes(get: (x: number, y: number, z: number) => number, sky: Uint8Array, blk: Uint8Array, decor: boolean): void {
-  for (let y = 0; y < CHUNK_HEIGHT; y++) {
+function emitShapes(get: (x: number, y: number, z: number) => number, sky: Uint8Array, blk: Uint8Array, decor: boolean, meshTop: number): void {
+  for (let y = 0; y < meshTop; y++) {
+    if (!(centreSections & (1 << (y >> 4)))) {
+      y |= SECTION_HEIGHT - 1; // skip the rest of an empty section
+      continue;
+    }
+    const rows = centreRows[y];
     for (let z = 0; z < CHUNK_SIZE; z++) {
+      if (!(rows & (1 << z))) continue;
       for (let x = 0; x < CHUNK_SIZE; x++) {
         const b = get(x, y, z);
         const shape = SHAPE[b];

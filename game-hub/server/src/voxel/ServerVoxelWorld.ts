@@ -10,6 +10,10 @@
  * through reader(), which never generates (unavailable chunks read as
  * Bedrock) and asks for them with warm(), generated within a time budget by
  * pumpWarm() every tick.
+ *
+ * A view holds only the sections up to what is built (see chunkLayers):
+ * generated terrain is 64 high, and an edit above grows that view's array, so
+ * tall builds cost memory only in the chunks that have them.
  */
 import {
   type BlockEdit,
@@ -20,6 +24,7 @@ import {
   chunkInWorld,
   chunkKey,
   ENDLESS_LIMIT,
+  ensureLayers,
   createWorldGenerator,
   type GenVersion,
   LATEST_GEN_VERSION,
@@ -91,7 +96,7 @@ export class ServerVoxelWorld {
     return chunkInWorld(cx, cz, this.radiusChunks);
   }
 
-  /** Cell inside this world (y 0..63, x/z within its radius). */
+  /** Cell inside this world (y 0..CHUNK_HEIGHT-1, x/z within its radius). */
   blockInWorld(x: number, y: number, z: number): boolean {
     return blockInWorld(x, y, z, this.radiusChunks);
   }
@@ -118,7 +123,9 @@ export class ServerVoxelWorld {
         epoch = this.viewEpoch;
         last = views.get(s)?.data;
       }
-      return last ? last[((y << 4) + (z & 15)) * 16 + (x & 15)] : BEDROCK;
+      if (!last) return BEDROCK;
+      const i = ((y << 4) + (z & 15)) * 16 + (x & 15);
+      return i < last.length ? last[i] : 0;
     };
   }
 
@@ -195,8 +202,9 @@ export class ServerVoxelWorld {
     const cx = toChunkCoord(x);
     const cz = toChunkCoord(z);
     const idx = blockIndex(toLocal(x), y, toLocal(z));
-    if (!this.chunkInWorld(cx, cz)) return this.edits.get(packPos(x, y, z)) ?? this.outsideChunk(cx, cz)[idx];
-    return this.view(cx, cz)[idx];
+    if (!this.chunkInWorld(cx, cz)) return this.edits.get(packPos(x, y, z)) ?? this.outsideChunk(cx, cz)[idx] ?? 0;
+    const v = this.view(cx, cz);
+    return idx < v.length ? v[idx] : 0;
   }
 
   /** Records an edit. Returns false if the edit budget for this room is exhausted or the cell is past the wire's range. */
@@ -226,7 +234,15 @@ export class ServerVoxelWorld {
     }
     if (inWorld) {
       const v = this.views.get(slotOf(cx, cz));
-      if (v) v.data[blockIndex(toLocal(x), y, toLocal(z))] = id;
+      const idx = blockIndex(toLocal(x), y, toLocal(z));
+      if (v && (idx < v.data.length || id !== 0)) {
+        if (idx >= v.data.length) {
+          // Built above the view's sections: grow it; readers holding the old array drop it.
+          v.data = ensureLayers(v.data, y);
+          this.viewEpoch++;
+        }
+        v.data[idx] = id;
+      }
     }
     return true;
   }
@@ -301,8 +317,8 @@ export class ServerVoxelWorld {
     const cx = toChunkCoord(x);
     const cz = toChunkCoord(z);
     const idx = blockIndex(toLocal(x), y, toLocal(z));
-    if (!this.chunkInWorld(cx, cz)) return this.outsideChunk(cx, cz)[idx];
-    if (!this.edits.has(key)) return this.view(cx, cz)[idx];
+    if (!this.chunkInWorld(cx, cz)) return this.outsideChunk(cx, cz)[idx] ?? 0;
+    if (!this.edits.has(key)) return this.view(cx, cz)[idx] ?? 0;
     const known = this.generatedAt.get(key);
     if (known !== undefined) return known;
     // Restored edit: generate the chunk once and remember every edited cell's original block.
@@ -310,9 +326,9 @@ export class ServerVoxelWorld {
     for (const k of this.editsByChunk.get(slotOf(cx, cz)) ?? []) {
       if (this.generatedAt.has(k)) continue;
       const [ex, ey, ez] = unpackPos(k);
-      this.generatedAt.set(k, raw[blockIndex(toLocal(ex), ey, toLocal(ez))]);
+      this.generatedAt.set(k, raw[blockIndex(toLocal(ex), ey, toLocal(ez))] ?? 0);
     }
-    return this.generatedAt.get(key) ?? raw[idx];
+    return this.generatedAt.get(key) ?? raw[idx] ?? 0;
   }
 
   /** The chunk view (generated + edits), generated now when missing. */
@@ -328,12 +344,21 @@ export class ServerVoxelWorld {
       }
       return cached.data;
     }
-    const v = this.generator.generateChunk(cx, cz);
+    let v = this.generator.generateChunk(cx, cz);
     const edits = this.editsByChunk.get(s);
     if (edits) {
+      // Grow the terrain-high array once to the highest non-air edit.
+      let top = -1;
+      for (const k of edits) if (k % 256 > top && this.edits.get(k) !== 0) top = k % 256;
+      if (top >= 0) v = ensureLayers(v, top);
       for (const k of edits) {
         const [x, y, z] = unpackPos(k);
         const i = blockIndex(toLocal(x), y, toLocal(z));
+        if (i >= v.length) {
+          // An air edit above the array: nothing to write (the generated block there is air too).
+          if (!this.generatedAt.has(k)) this.generatedAt.set(k, 0);
+          continue;
+        }
         if (!this.generatedAt.has(k)) this.generatedAt.set(k, v[i]);
         v[i] = this.edits.get(k)!;
       }

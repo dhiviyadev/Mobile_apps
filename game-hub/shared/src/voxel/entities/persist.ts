@@ -3,7 +3,7 @@
  * (version 1) online and the `mobs` JSON field of offline saves.
  */
 import { cleanText } from '../../util/text';
-import { ENDLESS_LIMIT } from '../constants';
+import { CHUNK_HEIGHT, ENDLESS_LIMIT } from '../constants';
 import { isFriendlyKind, isMobKind, MOB_DEFS } from './defs';
 import { MobFlag, MobVariant, type SavedMob } from './types';
 
@@ -18,7 +18,7 @@ const enc = new TextEncoder();
 const dec = new TextDecoder();
 
 function validPos(x: number, y: number, z: number): boolean {
-  return [x, y, z].every(Number.isFinite) && y > 0 && y < 64 && x >= -ENDLESS_LIMIT && x < ENDLESS_LIMIT && z >= -ENDLESS_LIMIT && z < ENDLESS_LIMIT;
+  return [x, y, z].every(Number.isFinite) && y > 0 && y < CHUNK_HEIGHT && x >= -ENDLESS_LIMIT && x < ENDLESS_LIMIT && z >= -ENDLESS_LIMIT && z < ENDLESS_LIMIT;
 }
 
 const isVariant = (v: unknown): v is MobVariant => typeof v === 'number' && MobVariant[v] !== undefined;

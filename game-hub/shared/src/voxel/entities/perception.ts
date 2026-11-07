@@ -4,6 +4,7 @@
  * spawn light.
  */
 import { IS_SOLID, IS_TRANSPARENT, SHAPE_BOUNDS } from '../blocks';
+import { CHUNK_HEIGHT } from '../constants';
 import { approxLight, LIGHT_OPAQUE } from '../light';
 import type { BlockQuery } from '../physics';
 
@@ -139,7 +140,7 @@ export function lineOfSight(get: BlockQuery, ax: number, ay: number, az: number,
 
 /** No light-opaque block above the cell in its column (leaves are not light-opaque, so forests count as open). */
 export function openSky(get: BlockQuery, x: number, y: number, z: number): boolean {
-  for (let yy = y + 1; yy < 64; yy++) if (LIGHT_OPAQUE[get(x, yy, z)]) return false;
+  for (let yy = y + 1; yy < CHUNK_HEIGHT; yy++) if (LIGHT_OPAQUE[get(x, yy, z)]) return false;
   return true;
 }
 

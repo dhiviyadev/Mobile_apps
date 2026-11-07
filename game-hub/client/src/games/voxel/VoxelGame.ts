@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import {
   blockDef,
+  CHUNK_HEIGHT,
   createWorldGenerator,
   DAY_LENGTH_SECONDS,
   forwardFromYawPitch,
@@ -104,6 +105,8 @@ export interface VoxelGameOptions {
 const OFFLINE_SAVE_INTERVAL = 30;
 /** Offline water simulation rate (online, the server runs it). */
 const FLUID_INTERVAL = 0.2;
+/** Fog weight of height differences above water (uFogVertical): 200 blocks down fog like 30 sideways. */
+const AIR_FOG_VERTICAL = 0.15;
 
 export class VoxelGame {
   readonly renderer: GameRenderer;
@@ -520,6 +523,7 @@ export class VoxelGame {
       u.uFogColor.value.setHex(0x1d4f7a).multiplyScalar(0.4 + this.sky.daylight * 0.6);
       u.uFogNear.value = 2;
       u.uFogFar.value = 22;
+      u.uFogVertical.value = 1;
     } else {
       u.uFogColor.value.copy(this.sky.horizon);
       // Biome fog tint (WorldFeatures eases it between biomes).
@@ -527,6 +531,8 @@ export class VoxelGame {
       if (tint.weight > 0) u.uFogColor.value.lerp(tint.color, (0.15 + 0.15 * this.sky.daylight) * tint.weight);
       u.uFogNear.value = far * 0.6;
       u.uFogFar.value = far * 0.95;
+      // Height counts little: the ground stays visible from the top of a tall build.
+      u.uFogVertical.value = AIR_FOG_VERTICAL;
     }
   }
 
@@ -649,7 +655,8 @@ export class VoxelGame {
     // Dense ground cover costs vertices: hidden on the low preset (and not targeted then).
     this.world.decor = this.renderer.profile.preset !== 'low';
     if (this.interaction) this.interaction.decorHidden = !this.world.decor;
-    const far = this.world.renderDistance * 16 + 32;
+    // Far enough for the sky, the loaded chunks and the ground seen from the build height.
+    const far = Math.hypot(this.world.renderDistance * 16 + 32, CHUNK_HEIGHT);
     this.camera.far = Math.max(SKY_RADIUS * 1.2, far);
     this.camera.updateProjectionMatrix();
   }

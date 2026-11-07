@@ -17,7 +17,7 @@ import { SimplexNoise } from '../../util/noise';
 import { hash4, hashFloat } from '../../util/rng';
 import { Block } from '../blocks';
 import { blockIndex } from '../chunk';
-import { CHUNK_HEIGHT, CHUNK_SIZE, CHUNK_VOLUME, ENDLESS_LIMIT, SEA_LEVEL } from '../constants';
+import { CHUNK_SIZE, ENDLESS_LIMIT, SEA_LEVEL, TERRAIN_HEIGHT, TERRAIN_VOLUME } from '../constants';
 import { LazyStructures, type PlacedStructure } from '../structures/place';
 import type { StructureInfo } from '../structures/types';
 import { Biome, CLIMATE_TABLE, hClass, tClass } from './biomes';
@@ -35,7 +35,7 @@ const RIM = 2;
 /** Cave lattice: one sample every LAT blocks, a chunk needs (16/4+1)^2 x (64/4+1). */
 const LAT = 4;
 const LN = CHUNK_SIZE / LAT + 1;
-const LY = CHUNK_HEIGHT / LAT + 1;
+const LY = TERRAIN_HEIGHT / LAT + 1;
 const LATTICE = LN * LN * LY;
 /** Height cache around a chunk for the coast and opening checks. */
 const PAD = 6;
@@ -230,7 +230,7 @@ export class TerrainGeneratorV3 extends TerrainGeneratorV2 {
 
   // ---- chunks ---------------------------------------------------------------------------------
 
-  override generateChunk(cx: number, cz: number, out: Uint8Array = new Uint8Array(CHUNK_VOLUME)): Uint8Array {
+  override generateChunk(cx: number, cz: number, out: Uint8Array = new Uint8Array(TERRAIN_VOLUME)): Uint8Array {
     const x0 = cx * CHUNK_SIZE;
     const z0 = cz * CHUNK_SIZE;
     // Wholly past the edge: solid bedrock.
@@ -245,7 +245,7 @@ export class TerrainGeneratorV3 extends TerrainGeneratorV2 {
       for (let lz = 0; lz < CHUNK_SIZE; lz++) {
         for (let lx = 0; lx < CHUNK_SIZE; lx++) {
           if (edgeDistance(x0 + lx, z0 + lz) >= RIM) continue;
-          for (let y = 0; y < CHUNK_HEIGHT; y++) out[blockIndex(lx, y, lz)] = Block.Bedrock;
+          for (let y = 0; y < TERRAIN_HEIGHT; y++) out[blockIndex(lx, y, lz)] = Block.Bedrock;
         }
       }
     }
@@ -325,9 +325,9 @@ export class TerrainGeneratorV3 extends TerrainGeneratorV2 {
     return h >= SEA + 3 && this.lowestAround(x, z, 5) >= SEA + 2 && this.lowestAround(x, z, 2) >= SEA + 2;
   }
 
-  /** Lowest y the structures over this column leave alone (no carving at or above it), or CHUNK_HEIGHT. */
+  /** Lowest y the structures over this column leave alone (no carving at or above it), or TERRAIN_HEIGHT. */
   private structureFloor(x: number, z: number): number {
-    let floor = CHUNK_HEIGHT;
+    let floor = TERRAIN_HEIGHT;
     for (const p of this.chunkStructs) {
       const b = p.info.bounds;
       if (x >= b.x0 - 3 && x < b.x1 + 3 && z >= b.z0 - 3 && z < b.z1 + 3) floor = Math.min(floor, b.y0 - 3);
@@ -352,7 +352,7 @@ export class TerrainGeneratorV3 extends TerrainGeneratorV2 {
     let ravine = 0;
     let ravineFloor = 0;
     let shaftFloor = -1;
-    if (!nearSpawn && sFloor === CHUNK_HEIGHT && h >= SEA + 3) {
+    if (!nearSpawn && sFloor === TERRAIN_HEIGHT && h >= SEA + 3) {
       const mouth = this.nMouth.noise2(wx / 70, wz / 70) > MOUTH;
       ravine = this.ravineWidth(wx, wz);
       const shaft = this.shaftAt(wx, wz);
@@ -362,7 +362,7 @@ export class TerrainGeneratorV3 extends TerrainGeneratorV2 {
         if (shaft) shaftFloor = shaft.floor;
       } else ravine = 0;
     }
-    const yMax = Math.min(Math.max(openTop, ravine ? h : 0, shaftFloor >= 0 ? h : 0), sFloor - 1, CHUNK_HEIGHT - 2);
+    const yMax = Math.min(Math.max(openTop, ravine ? h : 0, shaftFloor >= 0 ? h : 0), sFloor - 1, TERRAIN_HEIGHT - 2);
     if (yMax < 2) return;
     const rv = ravine ? Math.abs(this.nRavine.noise2(wx / 150, wz / 150)) : 0;
     // Lattice cell of the column and its x/z weights.

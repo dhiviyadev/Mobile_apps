@@ -5,6 +5,7 @@
 import type { DamageOutcome, DamageRequest } from '../../combat';
 import { DamageKind } from '../../combat';
 import { IS_LIQUID, IS_SOLID } from '../../blocks';
+import { CHUNK_HEIGHT } from '../../constants';
 import type { PlayerTarget } from '../api';
 import { variantHitEffects, type AttackDef } from '../defs';
 import { openSky } from '../perception';
@@ -59,7 +60,7 @@ export function standY(w: EntityWorld, x: number, y: number, z: number, height: 
   const h = Math.max(1, Math.ceil(height - 0.01));
   for (let i = 0; i <= range * 2; i++) {
     const yy = by + (i % 2 === 0 ? i / 2 : -(i + 1) / 2);
-    if (yy < 1 || yy > 62) continue;
+    if (yy < 1 || yy > CHUNK_HEIGHT - 2) continue;
     if (!IS_SOLID[get(bx, yy - 1, bz)] && !(allowWater && IS_LIQUID[get(bx, yy - 1, bz)])) continue;
     let free = true;
     for (let k = 0; k < h && free; k++) if (IS_SOLID[get(bx, yy + k, bz)]) free = false;

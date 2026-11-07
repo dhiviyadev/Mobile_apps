@@ -18,6 +18,8 @@ export interface VoxelUniforms {
   uFogColor: { value: THREE.Color };
   uFogNear: { value: number };
   uFogFar: { value: number };
+  /** Weight of height differences in the fog distance (1 = plain distance; see FOG_DISTANCE). */
+  uFogVertical: { value: number };
   uTime: { value: number };
   /** Atlas col/row of the lava tile: its texture scrolls slowly. */
   uLavaTile: { value: THREE.Vector2 };
@@ -30,10 +32,27 @@ export function createVoxelUniforms(atlas: THREE.Texture): VoxelUniforms {
     uFogColor: { value: new THREE.Color(0xbfe3ff) },
     uFogNear: { value: 40 },
     uFogFar: { value: 70 },
+    uFogVertical: { value: 1 },
     uTime: { value: 0 },
     uLavaTile: { value: new THREE.Vector2(Tile.Lava % ATLAS_TILES, Math.floor(Tile.Lava / ATLAS_TILES)) },
   };
 }
+
+/**
+ * Fog distance for the voxel shaders (terrain, creatures, items, decals): the
+ * horizontal distance from the camera plus the height difference weighted by
+ * uFogVertical. Fog hides the edge of the loaded chunks, which is only ever
+ * sideways; above water the weight is small, so the ground stays clear when
+ * looking down from a tall build (the build height is 256).
+ * `world` is the vertex's world position.
+ */
+export const FOG_DISTANCE = /* glsl */ `
+  uniform float uFogVertical;
+  float fogDistance(vec4 world) {
+    vec3 d = world.xyz - cameraPosition;
+    return length(vec3(d.x, d.y * uFogVertical, d.z));
+  }
+`;
 
 /**
  * light = (face shade * AO, sky light, block light, emissive), each 0..1.
@@ -48,6 +67,7 @@ const VERT = /* glsl */ `
   varying vec2 vTile;
   varying vec3 vLight;
   varying float vFogDist;
+  ${FOG_DISTANCE}
   float brightness(float level) {
     return pow(0.8, (1.0 - level) * 15.0);
   }
@@ -59,7 +79,7 @@ const VERT = /* glsl */ `
     vec3 lit = max(max(vec3(sky), lamp), vec3(0.035));
     vLight = light.x * mix(lit, vec3(1.0), light.w);
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    vFogDist = length(mv.xyz);
+    vFogDist = fogDistance(modelMatrix * vec4(position, 1.0));
     gl_Position = projectionMatrix * mv;
   }
 `;

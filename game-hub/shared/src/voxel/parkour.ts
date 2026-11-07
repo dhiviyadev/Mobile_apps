@@ -6,7 +6,7 @@
 import { mulberry32 } from '../util/rng';
 import { Block } from './blocks';
 import { blockIndex, packPos } from './chunk';
-import { CHUNK_HEIGHT, CHUNK_SIZE, CHUNK_VOLUME, SEA_LEVEL } from './constants';
+import { CHUNK_SIZE, SEA_LEVEL, TERRAIN_HEIGHT, TERRAIN_VOLUME } from './constants';
 
 export interface ParkourCourse {
   /** packPos(x, y, z) -> block id */
@@ -59,7 +59,7 @@ export function generateParkourCourse(seed: number): ParkourCourse {
     const isCheckpoint = i % CHECKPOINT_EVERY === 0;
     // Pick the vertical change, staying inside a comfortable band.
     let dy = rnd() < 0.45 ? 1 : rnd() < 0.7 ? 0 : -1;
-    if (y + dy > CHUNK_HEIGHT - 8) dy = -1;
+    if (y + dy > TERRAIN_HEIGHT - 8) dy = -1;
     if (y + dy < COURSE_Y - 6) dy = 1;
     if (isCheckpoint) dy = Math.min(dy, 0);
     const sprint = difficulty > 0.6;
@@ -128,7 +128,7 @@ export function generateParkourCourse(seed: number): ParkourCourse {
 }
 
 /** Builds a parkour chunk: calm sea with a sandy floor, plus the course. */
-export function generateParkourChunk(course: ParkourCourse, cx: number, cz: number, out: Uint8Array = new Uint8Array(CHUNK_VOLUME)): Uint8Array {
+export function generateParkourChunk(course: ParkourCourse, cx: number, cz: number, out: Uint8Array = new Uint8Array(TERRAIN_VOLUME)): Uint8Array {
   out.fill(Block.Air);
   const floor = SEA_LEVEL - 8;
   for (let lz = 0; lz < CHUNK_SIZE; lz++) {

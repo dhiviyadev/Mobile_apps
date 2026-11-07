@@ -43,6 +43,7 @@ import {
   type BlockEdit,
   blockDef,
   type ChatMessage,
+  CHUNK_HEIGHT,
   CLOSE_KICKED,
   DAY_LENGTH_SECONDS,
   decodeEdit,
@@ -975,7 +976,7 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     rt.lastMoveAt = now;
 
     const limit = this.world.generator.limit;
-    const inBounds = Math.abs(m.x) <= limit && Math.abs(m.z) <= limit && m.y > -64 && m.y < 128;
+    const inBounds = Math.abs(m.x) <= limit && Math.abs(m.z) <= limit && m.y > -64 && m.y < CHUNK_HEIGHT + 64;
     const horizontal = Math.hypot(m.x - player.x, m.z - player.z);
     const vertical = Math.abs(m.y - player.y);
     let allowance = 0;
