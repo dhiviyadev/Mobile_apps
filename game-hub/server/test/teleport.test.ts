@@ -76,7 +76,8 @@ describe('teleport menu (server)', () => {
     a.op({ op: 'go', index: 0 });
     await until(() => a.teleports.length > 0);
     expect(Math.hypot(a.teleports[0].x - home.x, a.teleports[0].z - home.z)).toBeLessThan(2);
-    expect(Math.hypot(a.me().x - home.x, a.me().z - home.z)).toBeLessThan(2);
+    // The state patch can arrive a moment after the teleport message on a slow machine.
+    await until(() => Math.hypot(a.me().x - home.x, a.me().z - home.z) < 2);
 
     // Ben asks, Ana accepts: Ben lands next to Ana, and his next moves from there are accepted.
     b.op({ op: 'ask', to: a.room.sessionId });
