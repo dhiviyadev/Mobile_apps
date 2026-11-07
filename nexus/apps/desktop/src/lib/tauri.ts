@@ -59,6 +59,7 @@ export const shell = {
   toggleMini: () => invoke("toggle_mini"),
   hideMini: () => invoke("hide_mini"),
   setMiniExpanded: (expanded: boolean) => invoke("set_mini_expanded", { expanded }),
+  setMiniHeight: (height: number) => invoke("set_mini_height", { height }),
   setAlwaysOnTop: (on: boolean) => invoke("set_mini_always_on_top", { on }),
   pickFolder: () => invoke<string | null>("pick_folder"),
   startDragging: async () => {

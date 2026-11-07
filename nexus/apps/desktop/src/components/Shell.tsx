@@ -31,7 +31,7 @@ export function Sidebar() {
   const proposed = boot?.memory.proposed ?? 0;
 
   return (
-    <aside className="flex w-[216px] flex-none flex-col border-r border-line-soft bg-sidebar">
+    <aside className="glass-chrome flex w-[224px] flex-none flex-col border-r border-white/[0.07]">
       <div className="drag h-[46px] flex-none" />
       <div className="flex items-center gap-2.5 px-4 pb-4">
         <Orb state={orb} size={26} />
@@ -49,24 +49,31 @@ export function Sidebar() {
               key={n.id}
               onClick={() => setWorkspace(n.id)}
               className={cls(
-                "focus-ring group flex h-8 items-center gap-2.5 rounded-[9px] px-2.5 text-[13px] transition-colors",
-                active ? "bg-white/[0.07] text-fg" : "text-fg-2 hover:bg-white/[0.035] hover:text-fg",
+                "focus-ring press group relative flex h-9 items-center gap-2.5 rounded-full px-3 text-[13px] transition-colors duration-200",
+                active ? "text-fg" : "text-fg-2 hover:bg-white/[0.04] hover:text-fg",
               )}
             >
-              <Icon size={15} strokeWidth={active ? 2.1 : 1.8} className={active ? "text-accent-strong" : "text-muted group-hover:text-fg-2"} />
-              <span className="flex-1 text-left">{n.label}</span>
-              {n.id === "agents" && running > 0 && <span className="text-[11px] text-accent">{running}</span>}
+              {active && (
+                <motion.span
+                  layoutId="nav-pill"
+                  transition={{ type: "spring", stiffness: 480, damping: 36, mass: 0.9 }}
+                  className="absolute inset-0 rounded-full border border-white/[0.13] bg-[linear-gradient(180deg,rgba(255,255,255,0.14),rgba(255,255,255,0.05))] shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_6px_18px_-8px_rgba(0,0,0,0.6)]"
+                />
+              )}
+              <Icon size={15} strokeWidth={active ? 2.1 : 1.8} className={cls("relative transition-colors", active ? "text-accent-strong drop-shadow-[0_0_6px_rgba(230,236,245,0.5)]" : "text-muted group-hover:text-fg-2")} />
+              <span className="relative flex-1 text-left">{n.label}</span>
+              {n.id === "agents" && running > 0 && <span className="relative text-[11px] text-accent">{running}</span>}
               {n.id === "knowledge" && proposed > 0 && <span className="h-1.5 w-1.5 rounded-full bg-warn" title={`${proposed} memories to review`} />}
-              <span className="text-[10.5px] text-muted/0 group-hover:text-muted">⌘{n.key}</span>
+              <span className="relative text-[10.5px] text-muted/0 transition-colors group-hover:text-muted">⌘{n.key}</span>
             </button>
           );
         })}
       </nav>
       <RecentChats />
-      <div className="mt-auto space-y-1 border-t border-line-soft p-2.5">
+      <div className="mt-auto space-y-1 border-t border-white/[0.06] p-2.5">
         <button
           onClick={() => setWorkspace("settings")}
-          className={cls("flex h-8 w-full items-center gap-2.5 rounded-[9px] px-2.5 text-[13px]", workspace === "settings" ? "bg-white/[0.07] text-fg" : "text-fg-2 hover:bg-white/[0.035] hover:text-fg")}
+          className={cls("press flex h-9 w-full items-center gap-2.5 rounded-full px-3 text-[13px]", workspace === "settings" ? "bg-white/[0.09] text-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]" : "text-fg-2 hover:bg-white/[0.04] hover:text-fg")}
         >
           <Settings size={15} className="text-muted" /> Settings
         </button>
@@ -94,8 +101,8 @@ function RecentChats() {
             setWorkspace("chat");
           }}
           className={cls(
-            "flex h-7 w-full items-center rounded-[8px] px-2.5 text-left text-[12.5px] transition-colors",
-            workspace === "chat" && activeId === c.id ? "bg-white/[0.06] text-fg" : "text-fg-2 hover:bg-white/[0.03] hover:text-fg",
+            "press flex h-7 w-full items-center rounded-full px-3 text-left text-[12.5px] transition-colors",
+            workspace === "chat" && activeId === c.id ? "bg-white/[0.08] text-fg" : "text-fg-2 hover:bg-white/[0.04] hover:text-fg",
           )}
         >
           <span className="truncate">{c.title}</span>
@@ -135,12 +142,12 @@ export function TitleBar({ title }: { title: string }) {
   const unread = notifications.filter((n) => !n.read).length;
 
   return (
-    <header className="drag relative flex h-[46px] flex-none items-center justify-between gap-3 border-b border-line-soft px-4">
+    <header className="glass-chrome drag relative z-20 flex h-[46px] flex-none items-center justify-between gap-3 border-b border-white/[0.06] px-4">
       <p className="text-[12.5px] font-medium text-fg-2">{title}</p>
       <div className="no-drag flex items-center gap-1.5">
         <button
           onClick={() => setPalette(true)}
-          className="flex h-7 w-[260px] items-center gap-2 rounded-[9px] border border-line-soft bg-white/[0.025] px-2.5 text-[12px] text-muted transition-colors hover:border-line hover:text-fg-2"
+          className="glass-inset press flex h-7 w-[270px] items-center gap-2 rounded-full px-3 text-[12px] text-muted transition-colors hover:border-white/20 hover:text-fg-2"
         >
           <Search size={13} /> Search or run a command
           <span className="ml-auto flex gap-0.5">
@@ -156,10 +163,12 @@ export function TitleBar({ title }: { title: string }) {
           <AnimatePresence>
             {notifOpen && (
               <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                className="surface-elevated absolute right-0 top-9 z-50 w-80 p-2"
+                initial={{ opacity: 0, y: -6, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                transition={{ type: "spring", stiffness: 520, damping: 34 }}
+                style={{ transformOrigin: "top right" }}
+                className="surface-elevated absolute right-0 top-10 z-50 w-80 p-2"
               >
                 {notifications.length === 0 ? (
                   <p className="p-3 text-[12px] text-muted">No notifications</p>
@@ -203,7 +212,7 @@ export function HaltedBanner() {
   const halted = useCore((s) => s.halted);
   if (!halted) return null;
   return (
-    <div className="flex items-center justify-center gap-2 border-b border-[#5a3337] bg-[#2a1a1c] py-1.5 text-[12px] text-[#f0c4c4]">
+    <div className="relative z-10 flex items-center justify-center gap-2 border-b border-[#e6a6a6]/25 bg-[#e6a6a6]/10 py-1.5 text-[12px] text-[#f3c9c9] backdrop-blur-xl">
       <OctagonX size={13} /> Emergency stop is active. All agent actions, automations and generations are blocked until you resume.
     </div>
   );
@@ -273,16 +282,16 @@ export function CommandPalette() {
   return (
     <AnimatePresence>
       {open && (
-        <motion.div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-[14vh]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setPalette(false)}>
+        <motion.div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-[14vh] backdrop-blur-[2px]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setPalette(false)}>
           <motion.div
-            initial={{ opacity: 0, scale: 0.98, y: -6 }}
+            initial={{ opacity: 0, scale: 0.94, y: -14 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ duration: 0.16 }}
+            exit={{ opacity: 0, scale: 0.97, y: -6 }}
+            transition={{ type: "spring", stiffness: 460, damping: 32 }}
             onMouseDown={(e) => e.stopPropagation()}
-            className="surface-elevated silver-edge glass w-[600px] overflow-hidden"
+            className="surface-elevated silver-edge w-[620px] overflow-hidden"
           >
-            <div className="flex items-center gap-2.5 border-b border-line-soft px-4">
+            <div className="flex items-center gap-2.5 border-b border-white/[0.07] px-4">
               <Command size={15} className="text-muted" />
               <input
                 ref={input}
@@ -312,11 +321,18 @@ export function CommandPalette() {
                     <button
                       onMouseEnter={() => setIdx(i)}
                       onClick={() => exec(c)}
-                      className={cls("flex h-9 w-full items-center gap-3 rounded-[9px] px-3 text-left text-[13px]", i === idx ? "bg-white/[0.07] text-fg" : "text-fg-2")}
+                      className={cls("relative flex h-9 w-full items-center gap-3 rounded-xl px-3 text-left text-[13px]", i === idx ? "text-fg" : "text-fg-2")}
                     >
-                      <Icon size={14} className="text-muted" />
-                      <span className="flex-1 truncate">{c.label}</span>
-                      {c.hint && <span className="text-[11px] text-muted">{c.hint}</span>}
+                      {i === idx && (
+                        <motion.span
+                          layoutId="palette-hl"
+                          transition={{ type: "spring", stiffness: 700, damping: 45 }}
+                          className="absolute inset-0 rounded-xl border border-white/[0.1] bg-white/[0.09] shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]"
+                        />
+                      )}
+                      <Icon size={14} className="relative text-muted" />
+                      <span className="relative flex-1 truncate">{c.label}</span>
+                      {c.hint && <span className="relative text-[11px] text-muted">{c.hint}</span>}
                     </button>
                   </li>
                 );

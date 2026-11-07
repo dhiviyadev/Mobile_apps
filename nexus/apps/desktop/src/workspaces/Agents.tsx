@@ -69,17 +69,18 @@ export function Agents() {
       <HermesCard st={hermes} />
 
       <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-3">
-        {agents.map((a) => {
+        {agents.map((a, i) => {
           const Icon = ICONS[a.id] ?? Bot;
           return (
             <button
               key={a.id}
               onClick={() => setSel(a.id)}
-              className={cls("surface silver-edge p-4 text-left transition-colors", sel === a.id ? "border-[#3d424d] bg-elevated" : "hover:bg-[#21242b]")}
+              style={{ ["--i" as string]: i }}
+              className={cls("surface glass-hover press rise p-4 text-left", sel === a.id && "silver-edge bg-white/[0.06]")}
             >
               <div className="flex items-center justify-between">
-                <div className="grid h-8 w-8 place-items-center rounded-[10px] border border-line bg-white/[0.03]">
-                  <Icon size={15} className="text-accent" />
+                <div className="grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-[radial-gradient(circle_at_35%_25%,rgba(255,255,255,0.22),rgba(255,255,255,0.04)_60%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]">
+                  <Icon size={15} className="text-accent-strong" />
                 </div>
                 <span className="flex items-center gap-1.5 text-[11px] text-muted">
                   <Dot tone={a.status === "busy" ? "ok" : a.status === "disabled" ? "danger" : "neutral"} pulse={a.status === "busy"} />
@@ -255,8 +256,8 @@ export function HermesCard({ st }: { st: HermesStatus | null }) {
   return (
     <div className="surface silver-edge flex flex-wrap items-center gap-x-8 gap-y-3 p-4">
       <div className="flex items-center gap-3">
-        <div className="grid h-9 w-9 place-items-center rounded-[10px] border border-line bg-white/[0.03]">
-          <Cpu size={16} className="text-accent" />
+        <div className="grid h-10 w-10 place-items-center rounded-full border border-white/15 bg-[radial-gradient(circle_at_35%_25%,rgba(255,255,255,0.22),rgba(255,255,255,0.04)_60%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]">
+          <Cpu size={16} className="text-accent-strong" />
         </div>
         <div>
           <p className="flex items-center gap-2 text-[13.5px] font-medium text-fg">

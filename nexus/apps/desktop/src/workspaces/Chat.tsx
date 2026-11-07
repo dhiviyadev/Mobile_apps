@@ -48,7 +48,7 @@ export function Chat() {
 
   return (
     <div className="flex h-full min-h-0">
-      <div className="flex w-[260px] flex-none flex-col border-r border-line-soft">
+      <div className="glass-chrome flex w-[264px] flex-none flex-col border-r border-white/[0.06]">
         <div className="flex items-center gap-2 p-3">
           <div className="relative flex-1">
             <Search size={13} className="absolute left-2.5 top-2.5 text-muted" />
@@ -63,7 +63,7 @@ export function Chat() {
             <button
               key={c.id}
               onClick={() => void open(c.id)}
-              className={cls("group flex w-full flex-col rounded-[10px] px-3 py-2 text-left transition-colors", c.id === activeId ? "bg-white/[0.06]" : "hover:bg-white/[0.03]")}
+              className={cls("press group flex w-full flex-col rounded-2xl px-3 py-2 text-left transition-colors", c.id === activeId ? "bg-white/[0.09] shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]" : "hover:bg-white/[0.04]")}
             >
               <span className="truncate text-[13px] text-fg">{c.title}</span>
               <span className="text-[11px] text-muted">
@@ -76,7 +76,7 @@ export function Chat() {
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-12 flex-none items-center justify-between gap-3 border-b border-line-soft px-5">
+        <div className="glass-chrome relative z-10 flex h-12 flex-none items-center justify-between gap-3 border-b border-white/[0.06] px-5">
           <p className="truncate text-[13px] font-medium text-fg">{conv?.title ?? "New conversation"}</p>
           <div className="flex items-center gap-1.5">
             <Select
@@ -150,7 +150,7 @@ export function Chat() {
               <>
                 {live.userText && (
                   <div className="mb-6 flex justify-end">
-                    <div className="selectable max-w-[85%] whitespace-pre-wrap rounded-[14px] rounded-br-[5px] border border-line-soft bg-elevated px-3.5 py-2.5 text-[14px] leading-relaxed text-fg">
+                    <div className="selectable rise max-w-[85%] whitespace-pre-wrap rounded-[20px] rounded-br-[6px] border border-white/[0.12] bg-[linear-gradient(180deg,rgba(255,255,255,0.13),rgba(255,255,255,0.06))] px-4 py-2.5 text-[14px] leading-relaxed text-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_10px_28px_-14px_rgba(0,0,0,0.7)] backdrop-blur-xl">
                       {live.userText}
                     </div>
                   </div>
@@ -190,7 +190,7 @@ function MessageView({ m, isLast, onRegenerate, speaking, canSpeak }: { m: Messa
   if (m.role === "user") {
     return (
       <div className="mb-6 flex justify-end">
-        <div className="selectable max-w-[85%] whitespace-pre-wrap rounded-[14px] rounded-br-[5px] border border-line-soft bg-elevated px-3.5 py-2.5 text-[14px] leading-relaxed text-fg">
+        <div className="selectable rise max-w-[85%] whitespace-pre-wrap rounded-[20px] rounded-br-[6px] border border-white/[0.12] bg-[linear-gradient(180deg,rgba(255,255,255,0.13),rgba(255,255,255,0.06))] px-4 py-2.5 text-[14px] leading-relaxed text-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_10px_28px_-14px_rgba(0,0,0,0.7)] backdrop-blur-xl">
           {m.content}
           {Array.isArray(m.metadata.attachments) && m.metadata.attachments.length > 0 && (
             <p className="mt-1.5 flex items-center gap-1 text-[11px] text-muted">
@@ -251,7 +251,7 @@ function MessageView({ m, isLast, onRegenerate, speaking, canSpeak }: { m: Messa
 function AssistantHeader({ model }: { model: string | null | undefined }) {
   return (
     <div className="mb-1.5 flex items-center gap-2">
-      <span className="h-3.5 w-3.5 rounded-full bg-[radial-gradient(circle_at_35%_30%,#fff,#9aa1ad_45%,#3a3e47)]" />
+      <Orb state="idle" size={18} />
       <span className="text-[12px] font-medium text-fg-2">NEXUS</span>
       {model && <span className="text-[11px] text-muted">{model}</span>}
     </div>
@@ -266,7 +266,7 @@ function Sources({ sources }: { sources: Source[] }) {
           key={`${s.path}-${i}`}
           title={s.path}
           onClick={() => void api.post("/api/files/open", { path: s.path, reveal: "1" }).catch(() => undefined)}
-          className="inline-flex h-6 max-w-[260px] items-center gap-1.5 rounded-md border border-line-soft bg-white/[0.025] px-2 text-[11px] text-fg-2 hover:border-line hover:text-fg"
+          className="press inline-flex h-6 max-w-[260px] items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-2.5 text-[11px] text-fg-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md hover:border-white/20 hover:text-fg"
         >
           <span className="text-muted">[{i + 1}]</span>
           <span className="truncate">{s.title}</span>

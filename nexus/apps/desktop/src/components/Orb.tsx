@@ -21,8 +21,11 @@ export function useOrbState(): OrbState {
 }
 
 /**
- * The NEXUS ambient orb. Pure CSS layers; a small canvas draws the waveform
- * only while listening. Animations pause when the window is hidden.
+ * The NEXUS orb: a liquid-glass droplet. A dark glass body holds two morphing,
+ * counter-rotating silver caustics under a rim-lit shell with a specular
+ * highlight. Pure CSS (transform/opacity/border-radius on a small element);
+ * a tiny canvas draws the voice waveform only while listening. Animations
+ * pause when the window is hidden and stop under Reduce Motion.
  */
 export function Orb({ state, size = 120, level = 0, waveform }: { state: OrbState; size?: number; level?: number; waveform?: Uint8Array | null }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -63,11 +66,16 @@ export function Orb({ state, size = 120, level = 0, waveform }: { state: OrbStat
   return (
     <div ref={ref} className="orb" data-state={state} style={{ ["--size" as string]: `${size}px` }} role="img" aria-label={`NEXUS is ${state}`}>
       <div className="orb-halo" />
+      {size >= 48 && <div className="orb-reflection" />}
       <div className="orb-ring" />
       <div className="orb-ring" />
       <div className="orb-ring" />
-      <div className="orb-core" />
-      <div className="orb-sheen" />
+      <div className="orb-core">
+        <div className="orb-liquid" />
+        <div className="orb-liquid second" />
+      </div>
+      <div className="orb-shell" />
+      <div className="orb-shine" />
       {state === "listening" && <canvas ref={canvas} />}
     </div>
   );

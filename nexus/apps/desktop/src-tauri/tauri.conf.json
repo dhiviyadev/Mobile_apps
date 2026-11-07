@@ -25,7 +25,14 @@
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "backgroundColor": "#101114",
-        "visible": true
+        "visible": true,
+        "transparent": true,
+        "windowEffects": {
+          "effects": [
+            "underWindowBackground"
+          ],
+          "state": "followsWindowActiveState"
+        }
       },
       {
         "label": "mini",
@@ -41,7 +48,14 @@
         "skipTaskbar": true,
         "shadow": false,
         "visibleOnAllWorkspaces": true,
-        "focus": false
+        "focus": false,
+        "windowEffects": {
+          "effects": [
+            "hudWindow"
+          ],
+          "state": "active",
+          "radius": 26
+        }
       }
     ],
     "security": {
@@ -50,11 +64,20 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
+    "targets": [
+      "app",
+      "dmg"
+    ],
     "category": "Productivity",
     "shortDescription": "Local-first personal AI operating system",
-    "copyright": "© 2026 NEXUS",
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "copyright": "\u00a9 2026 NEXUS",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
     "macOS": {
       "minimumSystemVersion": "13.0"
     }

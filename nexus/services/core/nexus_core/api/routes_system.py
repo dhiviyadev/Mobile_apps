@@ -35,6 +35,8 @@ async def bootstrap(st: AppState = Depends(get_state)) -> dict[str, Any]:
             default_model = None
     return {
         "profile": {"name": st.prefs.get("profile.name") or ""},
+        "appearance": {"material": st.prefs.get("appearance.material") or "ambient",
+                       "motion": st.prefs.get("appearance.motion") or "full"},
         "hardware": hardware(),
         "halted": st.approvals.halted,
         "ollama": {"online": ollama_ok, "installed": len(installed), "running": [m.get("name") for m in running],
@@ -112,6 +114,10 @@ class SettingsPatch(BaseModel):
 
 @router.patch("/settings")
 def patch_settings(body: SettingsPatch, st: AppState = Depends(get_state)) -> dict[str, Any]:
+    enums = {"appearance.material": {"ambient", "desktop", "solid"}, "appearance.motion": {"full", "calm"}}
+    for k, allowed in enums.items():
+        if k in body.values and body.values[k] not in allowed:
+            raise HTTPException(400, f"{k} must be one of {sorted(allowed)}")
     try:
         values = st.prefs.update(body.values)
     except KeyError as exc:

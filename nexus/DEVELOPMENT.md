@@ -33,8 +33,13 @@ services/core/.venv/bin/python scripts/dev/fake_ollama.py --port 11434
 * New migrations: add `NNN_description.sql` to `nexus_core/db/migrations` (applied in order, once).
 * TypeScript strict mode with `noUncheckedIndexedAccess`. Zustand v5: selectors must return stable
   references — use `EMPTY` from `stores/core.ts` instead of `?? []`.
-* UI tokens live in `src/styles.css` (`@theme`). Keep to graphite surfaces, silver accent, 12–16 px
-  radii; no neon, no gradients beyond the orb.
+* UI tokens live in `src/styles.css` (`@theme`). The material is **liquid glass on graphite**: use
+  `.surface` (cards), `.surface-elevated` (popovers/dialogs), `.glass-chrome` (sidebar/title bar),
+  `.glass-inset` (inputs/wells), `.btn-liquid` (primary actions). Add `.press` for the springy press,
+  `.glass-hover` for lift, `.rise` + `--i` for staggered entrances, and Framer Motion `layoutId`
+  pills for selection. Animate only `transform`/`opacity` (plus the orb's small `border-radius`
+  morph); every effect must degrade under Motion: Calm, Material: Solid, Reduce Motion and Reduce
+  Transparency. Silver accent, no neon.
 
 ## Tests
 

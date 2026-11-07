@@ -7,6 +7,8 @@ import { Markdown } from "@/components/Markdown";
 import { Timeline } from "@/components/Timeline";
 import { ApprovalStack } from "@/components/Approvals";
 import { Orb, useOrbState, usePauseWhenHidden } from "@/components/Orb";
+import { Ambient } from "@/components/Ambient";
+import { motion } from "framer-motion";
 import { IconButton } from "@/components/ui";
 import { listen, shell } from "@/lib/tauri";
 import { speak } from "@/hooks/useVoice";
@@ -28,7 +30,23 @@ export function MiniApp() {
   const [wave, setWave] = useState<Uint8Array | null>(null);
   const [ptt, setPtt] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
+  const header = useRef<HTMLDivElement>(null);
+  const footer = useRef<HTMLDivElement>(null);
   usePauseWhenHidden();
+
+  // While collapsed, size the native window to exactly header + composer (+ outer padding/borders).
+  useEffect(() => {
+    if (expanded || !header.current || !footer.current) return;
+    const fit = () => {
+      const h = (header.current?.offsetHeight ?? 0) + (footer.current?.offsetHeight ?? 0) + 12 + 2;
+      void shell.setMiniHeight(Math.ceil(h));
+    };
+    const ro = new ResizeObserver(fit);
+    ro.observe(header.current);
+    ro.observe(footer.current);
+    fit();
+    return () => ro.disconnect();
+  }, [expanded]);
 
   useEffect(() => {
     document.body.classList.add("mini-window");
@@ -71,8 +89,14 @@ export function MiniApp() {
 
   return (
     <div className="flex h-full flex-col p-1.5">
-      <div className="surface-elevated silver-edge glass flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="drag flex h-11 flex-none items-center gap-2.5 px-3" onMouseDown={(e) => e.target === e.currentTarget && void shell.startDragging()}>
+      <Ambient field={false} />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.94, y: -8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: "spring", stiffness: 420, damping: 30 }}
+        className="surface-elevated silver-edge flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px]"
+      >
+        <div ref={header} className="drag flex h-11 flex-none items-center gap-2.5 px-3" onMouseDown={(e) => e.target === e.currentTarget && void shell.startDragging()}>
           <Orb state={orb} size={24} level={level} waveform={wave} />
           <p className="flex-1 text-[12px] font-medium tracking-[0.14em] text-fg-2">NEXUS</p>
           <div className="no-drag flex items-center">
@@ -95,19 +119,19 @@ export function MiniApp() {
         </div>
 
         {expanded && (
-          <div ref={scroller} className="min-h-0 flex-1 space-y-3 overflow-y-auto border-t border-line-soft px-3.5 py-3">
+          <div ref={scroller} className="min-h-0 flex-1 space-y-3 overflow-y-auto border-t border-white/[0.07] px-3.5 py-3">
             {status !== "online" && <p className="text-[12px] text-danger">Core service offline.</p>}
             {list.length === 0 && !live && <p className="pt-6 text-center text-[12px] text-muted">Ask anything. ⌥⇧Space to talk.</p>}
             {list.map((m) =>
               m.role === "user" ? (
-                <div key={m.id} className="ml-8 rounded-xl bg-white/[0.05] px-3 py-2 text-[13px] text-fg">{m.content}</div>
+                <div key={m.id} className="rise ml-8 rounded-2xl rounded-br-md border border-white/10 bg-white/[0.08] px-3 py-2 text-[13px] text-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">{m.content}</div>
               ) : (
-                <div key={m.id} className="text-[13px]"><Markdown text={m.content} /></div>
+                <div key={m.id} className="rise text-[13px]"><Markdown text={m.content} /></div>
               ),
             )}
             {live && (
               <>
-                {live.userText && <div className="ml-8 rounded-xl bg-white/[0.05] px-3 py-2 text-[13px] text-fg">{live.userText}</div>}
+                {live.userText && <div className="rise ml-8 rounded-2xl rounded-br-md border border-white/10 bg-white/[0.08] px-3 py-2 text-[13px] text-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">{live.userText}</div>}
                 {live.text ? <Markdown text={live.text} streaming /> : <p className="shimmer text-[12.5px]">Thinking…</p>}
               </>
             )}
@@ -116,7 +140,7 @@ export function MiniApp() {
           </div>
         )}
 
-        <div className="flex-none p-2">
+        <div ref={footer} className="flex-none p-2">
           <Composer
             compact
             autoFocus
@@ -135,7 +159,7 @@ export function MiniApp() {
             }}
           />
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

@@ -60,10 +60,10 @@ export function Automations() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
         <div className="space-y-2">
           {items.length === 0 && <div className="surface"><Empty icon={<Clock size={22} />} title="No automations yet" body="Start from a template on the right, or create your own." /></div>}
-          {items.map((a) => (
-            <div key={a.id} className="surface group p-4">
+          {items.map((a, i) => (
+            <div key={a.id} style={{ ["--i" as string]: i }} className="surface glass-hover rise group p-4">
               <div className="flex items-start gap-3">
-                <div className="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-[10px] border border-line bg-white/[0.03]">
+                <div className="mt-0.5 grid h-9 w-9 flex-none place-items-center rounded-full border border-white/15 bg-[radial-gradient(circle_at_35%_25%,rgba(255,255,255,0.22),rgba(255,255,255,0.04)_60%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]">
                   {a.trigger.type === "schedule" ? <Clock size={14} className="text-accent" /> : a.trigger.type === "file" ? <FolderSearch size={14} className="text-accent" /> : <Hand size={14} className="text-accent" />}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -121,8 +121,8 @@ export function Automations() {
         <div>
           <p className="mb-2 px-1 text-[11px] font-medium uppercase tracking-[0.1em] text-muted">Templates</p>
           <div className="space-y-2">
-            {templates.map((t) => (
-              <button key={t.template} onClick={() => setEditing({ ...t, conditions: t.conditions ?? [] })} className="surface w-full p-3.5 text-left transition-colors hover:bg-[#21242b]">
+            {templates.map((t, i) => (
+              <button key={t.template} style={{ ["--i" as string]: i + 2 }} onClick={() => setEditing({ ...t, conditions: t.conditions ?? [] })} className="surface glass-hover press rise w-full p-3.5 text-left">
                 <p className="text-[13px] font-medium text-fg">{t.name}</p>
                 <p className="mt-0.5 text-[12px] leading-snug text-fg-2">{t.description}</p>
                 <p className="mt-1.5 text-[11px] text-muted">{t.trigger.type === "schedule" ? t.trigger.cron : t.trigger.type} · {t.actions.map((x) => x.type.replace("_", " ")).join(" → ")}</p>
@@ -191,7 +191,7 @@ function Editor({ initial, folders, onClose, onSaved }: { initial: Partial<Autom
         {actions.map((act, i) => (
           <div key={i}>
             {i > 0 && <ArrowDown size={12} className="mx-auto mb-2 text-muted" />}
-            <div className="rounded-xl border border-line bg-[#191b20] p-3">
+            <div className="rounded-xl border border-line bg-black/20 p-3">
               <div className="flex items-center gap-2">
                 <span className="text-[11px] text-muted">{i + 1}</span>
                 <Select value={act.type} onChange={(v) => setA({ ...a, actions: actions.map((x, j) => (j === i ? { type: v } : x)) })} options={ACTION_TYPES} />

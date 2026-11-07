@@ -104,6 +104,24 @@ transport is available, agents run on the NEXUS native runtime and the timeline 
 NEXUS never writes to `~/.hermes`, reads `config.yaml` read-only for display, and never reads
 `~/.hermes/.env`. Hermes keeps working on its own when NEXUS is closed.
 
+## Visual system
+
+Liquid glass on graphite. A fixed **ambient light field** (three pre-softened radial gradients
+drifting via `transform`, a static grain layer and a vignette) sits behind translucent panes that use
+`backdrop-filter: blur + saturate`, a masked gradient rim, and an inner specular edge. One **shared
+pointer light** is published as CSS variables once per animation frame and rendered by every pane
+with a fixed-attachment gradient, so all glass is lit by the same source with no per-element work.
+The field brightens while the orb is thinking/executing (`html[data-activity]`). Selection uses
+spring-driven `layoutId` pills (sidebar, segmented controls, palette). The orb is a dark glass body
+with two counter-rotating, morphing caustic layers, a rim-lit shell and a specular highlight.
+
+Cost controls: animations pause when the window is hidden; **Motion: Calm** freezes the field and
+pointer light; **Material: Solid** removes all backdrop blur; macOS *Reduce Motion* / *Reduce
+Transparency* are honoured automatically. **Material: Desktop** makes the main window see-through
+to the wallpaper using native macOS vibrancy (`windowEffects`); the floating assistant always uses
+HUD vibrancy. Backdrop *refraction* filters (SVG displacement) are not used because WebKit doesn't
+support them in `backdrop-filter`.
+
 ## Persistence
 
 SQLite in `data/database/nexus.db` (WAL). Migrations: numbered SQL files in

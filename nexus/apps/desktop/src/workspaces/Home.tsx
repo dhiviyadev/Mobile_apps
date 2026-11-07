@@ -27,7 +27,7 @@ export function TaskRow({ task, onClick }: { task: Task; onClick?: () => void })
     task.status === "waiting_approval" ? <CircleAlert size={14} className="text-warn" /> :
     <Loader2 size={14} className="animate-spin text-accent" />;
   return (
-    <button onClick={onClick} className="flex w-full items-center gap-3 rounded-[10px] px-2.5 py-2 text-left transition-colors hover:bg-white/[0.03]">
+    <button onClick={onClick} className="press flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-white/[0.06]">
       {icon}
       <span className="min-w-0 flex-1 truncate text-[13px] text-fg">{task.title}</span>
       <span className="flex-none text-[11px] text-muted">{relTime(task.created_at)}</span>
@@ -67,12 +67,12 @@ export function Home() {
 
   return (
     <div className="mx-auto flex max-w-[980px] flex-col px-8 pb-14 pt-10">
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="flex flex-col items-center text-center">
-        <Orb state={orb} size={132} level={level} waveform={wave} />
+      <motion.div initial={{ opacity: 0, y: 18, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 160, damping: 22 }} className="flex flex-col items-center text-center">
+        <Orb state={orb} size={156} level={level} waveform={wave} />
         <p className="mt-6 text-[12px] uppercase tracking-[0.2em] text-muted">
           {longDate(now)} · {clock(now)}
         </p>
-        <h1 className="mt-2 font-[family-name:var(--font-display)] text-[30px] font-semibold tracking-tight text-fg">
+        <h1 className="mt-2 bg-[linear-gradient(180deg,#ffffff_20%,#b9c0cb_100%)] bg-clip-text font-[family-name:var(--font-display)] text-[34px] font-semibold tracking-tight text-transparent">
           {greeting(now, boot?.profile.name || undefined)}
         </h1>
         <p className="mt-1.5 text-[13.5px] text-fg-2">
@@ -84,7 +84,7 @@ export function Home() {
         </p>
       </motion.div>
 
-      <div className="mx-auto mt-8 w-full max-w-[720px]">
+      <div className="rise mx-auto mt-8 w-full max-w-[720px]" style={{ ["--i" as string]: 3 }}>
         <Composer
           autoFocus
           onVoiceLevel={(l, w) => {
@@ -107,7 +107,7 @@ export function Home() {
                   if (q.workspace) return setWorkspace(q.workspace);
                   void api.post<Task>(`/api/agents/${q.agent}/tasks`, { prompt: q.prompt }).then((t) => focusTask(t.id));
                 }}
-                className="flex h-8 items-center gap-1.5 rounded-full border border-line-soft bg-white/[0.02] px-3 text-[12px] text-fg-2 transition-colors hover:border-line hover:text-fg"
+                className="press flex h-8 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-3.5 text-[12px] text-fg-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] backdrop-blur-xl transition-colors hover:border-white/20 hover:bg-white/[0.09] hover:text-fg"
               >
                 <Icon size={13} className="text-muted" /> {q.label}
               </button>
@@ -116,7 +116,7 @@ export function Home() {
         </div>
       </div>
 
-      <div className="mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[12px] text-fg-2">
+      <div className="rise mx-auto mt-9 flex w-fit flex-wrap items-center justify-center gap-x-6 gap-y-2 rounded-full border border-white/[0.07] bg-white/[0.03] px-5 py-2 text-[12px] text-fg-2 backdrop-blur-xl" style={{ ["--i" as string]: 5 }}>
         <span className="flex items-center gap-2">
           <Dot tone={boot?.ollama.online ? "ok" : "danger"} /> {boot?.ollama.online ? model ?? "No model selected" : "Ollama offline"}
         </span>
@@ -134,13 +134,13 @@ export function Home() {
         </span>
       </div>
 
-      <div className="mt-10 grid grid-cols-1 gap-x-10 gap-y-8 md:grid-cols-2">
-        <section>
+      <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <section className="surface glass-hover rise p-3" style={{ ["--i" as string]: 6 }}>
           <Header title="Recent tasks" onMore={() => setWorkspace("agents")} />
           {recent.length ? recent.map((t) => <TaskRow key={t.id} task={t} onClick={() => focusTask(t.id)} />) : <Empty title="No tasks yet" body="Ask an agent to do something and its execution timeline appears here." />}
         </section>
 
-        <section>
+        <section className="surface glass-hover rise p-3" style={{ ["--i" as string]: 7 }}>
           <Header title="Active agents" onMore={() => setWorkspace("agents")} />
           {busyAgents.length ? (
             busyAgents.map((a) => (
@@ -169,7 +169,7 @@ export function Home() {
           )}
         </section>
 
-        <section>
+        <section className="surface glass-hover rise p-3" style={{ ["--i" as string]: 8 }}>
           <Header title="Conversations" onMore={() => setWorkspace("chat")} />
           {boot?.conversations.length ? (
             boot.conversations.map((c) => (
@@ -179,7 +179,7 @@ export function Home() {
                   void open(c.id);
                   setWorkspace("chat");
                 }}
-                className="flex w-full items-center gap-3 rounded-[10px] px-2.5 py-2 text-left hover:bg-white/[0.03]"
+                className="press flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left hover:bg-white/[0.06]"
               >
                 <MessageSquare size={14} className="text-muted" />
                 <span className="flex-1 truncate text-[13px] text-fg">{c.title}</span>
@@ -191,7 +191,7 @@ export function Home() {
           )}
         </section>
 
-        <section>
+        <section className="surface glass-hover rise p-3" style={{ ["--i" as string]: 9 }}>
           <Header title="Projects & folders" onMore={() => setWorkspace("knowledge")} />
           {boot?.folders.length ? (
             boot.folders.slice(0, 6).map((f) => (

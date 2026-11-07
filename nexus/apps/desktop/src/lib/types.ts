@@ -244,6 +244,7 @@ export interface VoiceStatus {
 
 export interface Bootstrap {
   profile: { name: string };
+  appearance: { material: "ambient" | "desktop" | "solid"; motion: "full" | "calm" };
   hardware: Record<string, unknown>;
   halted: boolean;
   ollama: { online: boolean; installed: number; running: string[]; default_model: string | null };

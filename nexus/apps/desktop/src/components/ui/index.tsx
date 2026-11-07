@@ -1,18 +1,21 @@
-import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
+import { forwardRef, useId, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
+import { motion } from "framer-motion";
 import { cls } from "@/lib/format";
+
+const SPRING = { type: "spring", stiffness: 520, damping: 38, mass: 0.8 } as const;
 
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "subtle";
 
 export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: "sm" | "md"; icon?: ReactNode }>(
   function Button({ variant = "secondary", size = "md", icon, className, children, ...rest }, ref) {
-    const base = "focus-ring inline-flex items-center justify-center gap-1.5 rounded-[10px] font-medium transition-colors duration-150 disabled:opacity-40 disabled:pointer-events-none whitespace-nowrap";
-    const sizes = { sm: "h-7 px-2.5 text-[12px]", md: "h-8 px-3 text-[12.5px]" };
+    const base = "focus-ring press inline-flex items-center justify-center gap-1.5 rounded-full font-medium disabled:opacity-40 disabled:pointer-events-none whitespace-nowrap";
+    const sizes = { sm: "h-7 px-3 text-[12px]", md: "h-8 px-3.5 text-[12.5px]" };
     const variants: Record<Variant, string> = {
-      primary: "bg-accent text-[#14161a] hover:bg-accent-strong shadow-[0_1px_0_rgba(255,255,255,0.4)_inset]",
-      secondary: "bg-elevated text-fg border border-line hover:border-[#3d424d] hover:bg-[#2a2e37]",
-      ghost: "text-fg-2 hover:text-fg hover:bg-white/[0.04]",
-      subtle: "bg-white/[0.04] text-fg-2 hover:text-fg hover:bg-white/[0.07]",
-      danger: "bg-[#3a2326] text-[#f0c4c4] border border-[#5a3337] hover:bg-[#46292d]",
+      primary: "btn-liquid",
+      secondary: "bg-white/[0.07] text-fg border border-white/[0.1] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] hover:bg-white/[0.11] backdrop-blur-md",
+      ghost: "text-fg-2 hover:text-fg hover:bg-white/[0.06]",
+      subtle: "bg-white/[0.05] text-fg-2 hover:text-fg hover:bg-white/[0.09]",
+      danger: "bg-[#e6a6a6]/[0.12] text-[#f3c9c9] border border-[#e6a6a6]/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] hover:bg-[#e6a6a6]/[0.18]",
     };
     return (
       <button ref={ref} className={cls(base, sizes[size], variants[variant], className)} {...rest}>
@@ -29,8 +32,8 @@ export function IconButton({ label, className, children, active, ...rest }: Butt
       aria-label={label}
       title={label}
       className={cls(
-        "focus-ring grid h-8 w-8 place-items-center rounded-[10px] text-fg-2 transition-colors hover:bg-white/[0.05] hover:text-fg disabled:opacity-40",
-        active && "bg-white/[0.07] text-fg",
+        "focus-ring press grid h-8 w-8 place-items-center rounded-full text-fg-2 hover:bg-white/[0.08] hover:text-fg hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] disabled:opacity-40",
+        active && "bg-white/[0.1] text-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.14)]",
         className,
       )}
       {...rest}
@@ -42,7 +45,7 @@ export function IconButton({ label, className, children, active, ...rest }: Butt
 
 export function Card({ className, children, title, action, pad = true }: { className?: string; children: ReactNode; title?: ReactNode; action?: ReactNode; pad?: boolean }) {
   return (
-    <section className={cls("surface", pad && "p-4", className)}>
+    <section className={cls("surface rise", pad && "p-5", className)}>
       {(title || action) && (
         <header className={cls("mb-3 flex items-center justify-between gap-2", !pad && "px-4 pt-4")}>
           {title && <h3 className="text-[12px] font-medium uppercase tracking-[0.08em] text-muted">{title}</h3>}
@@ -62,7 +65,7 @@ export function Badge({ tone = "neutral", children, className }: { tone?: "neutr
     danger: "bg-[#e0a0a0]/[0.08] text-danger border-[#e0a0a0]/20",
     accent: "bg-accent/[0.1] text-accent-strong border-accent/25",
   };
-  return <span className={cls("inline-flex h-5 items-center gap-1 rounded-md border px-1.5 text-[11px] font-medium", tones[tone], className)}>{children}</span>;
+  return <span className={cls("inline-flex h-5 items-center gap-1 rounded-full border px-2 text-[11px] font-medium backdrop-blur-sm", tones[tone], className)}>{children}</span>;
 }
 
 export function Dot({ tone = "neutral", pulse }: { tone?: "neutral" | "ok" | "warn" | "danger"; pulse?: boolean }) {
@@ -80,7 +83,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     <input
       ref={ref}
       className={cls(
-        "focus-ring h-8 w-full rounded-[10px] border border-line bg-[#15171b] px-3 text-[13px] text-fg placeholder:text-muted transition-colors focus:border-[#454b57]",
+        "glass-inset h-8 w-full rounded-[12px] px-3 text-[13px] text-fg placeholder:text-muted transition-[border-color,box-shadow] duration-200",
         className,
       )}
       {...rest}
@@ -92,7 +95,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
   return (
     <textarea
       ref={ref}
-      className={cls("focus-ring w-full rounded-[10px] border border-line bg-[#15171b] px-3 py-2 text-[13px] text-fg placeholder:text-muted focus:border-[#454b57]", className)}
+      className={cls("glass-inset w-full rounded-[12px] px-3 py-2 text-[13px] text-fg placeholder:text-muted transition-[border-color,box-shadow] duration-200", className)}
       {...rest}
     />
   );
@@ -103,7 +106,7 @@ export function Select({ value, onChange, options, className, placeholder }: { v
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className={cls("focus-ring h-8 rounded-[10px] border border-line bg-[#15171b] px-2.5 text-[12.5px] text-fg", className)}
+      className={cls("glass-inset h-8 rounded-[12px] px-2.5 text-[12.5px] text-fg", className)}
     >
       {placeholder !== undefined && <option value="">{placeholder}</option>}
       {options.map((o) => (
@@ -123,15 +126,26 @@ export function Toggle({ checked, onChange, label, disabled }: { checked: boolea
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={cls("focus-ring relative h-[18px] w-[32px] flex-none rounded-full border transition-colors duration-200 disabled:opacity-40", checked ? "border-accent/60 bg-accent/80" : "border-line bg-[#2a2e36]")}
+      className={cls(
+        "focus-ring relative flex h-[22px] w-[38px] flex-none items-center rounded-full border px-[2px] transition-colors duration-300 disabled:opacity-40",
+        checked ? "justify-end border-white/25 bg-[linear-gradient(180deg,#dfe4ea,#aab1bd)] shadow-[0_0_14px_rgba(205,214,228,0.35)]" : "justify-start border-white/10 bg-black/25 shadow-[inset_0_1px_2px_rgba(0,0,0,0.4)]",
+      )}
     >
-      <span className={cls("absolute top-[2px] h-3 w-3 rounded-full transition-all duration-200", checked ? "left-[16px] bg-[#16181c]" : "left-[2px] bg-fg-2")} />
+      <motion.span
+        layout
+        transition={SPRING}
+        whileTap={{ scaleX: 1.25 }}
+        className={cls(
+          "block h-4 w-4 rounded-full shadow-[0_1px_3px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.9)]",
+          checked ? "bg-[radial-gradient(circle_at_35%_30%,#ffffff,#e9edf2_60%,#cfd5de)]" : "bg-[radial-gradient(circle_at_35%_30%,#c9ced6,#9aa1ac)]",
+        )}
+      />
     </button>
   );
 }
 
 export function Kbd({ children }: { children: ReactNode }) {
-  return <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-[5px] border border-line bg-white/[0.03] px-1 font-sans text-[10.5px] text-muted">{children}</kbd>;
+  return <kbd className="inline-flex h-5 min-w-5 items-center justify-center rounded-[6px] border border-white/10 bg-white/[0.06] px-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] font-sans text-[10.5px] text-muted">{children}</kbd>;
 }
 
 export function Empty({ icon, title, body, action }: { icon?: ReactNode; title: string; body?: ReactNode; action?: ReactNode }) {
@@ -157,10 +171,10 @@ export function Stat({ label, value, sub }: { label: string; value: ReactNode; s
 
 export function Meter({ value, tone }: { value: number; tone?: "ok" | "warn" | "danger" }) {
   const t = tone ?? (value > 90 ? "danger" : value > 75 ? "warn" : "ok");
-  const color = { ok: "bg-accent/70", warn: "bg-warn/80", danger: "bg-danger/80" }[t];
+  const color = { ok: "bg-[linear-gradient(90deg,#9aa4b4,#e9edf3)]", warn: "bg-warn/80", danger: "bg-danger/80" }[t];
   return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
-      <div className={cls("h-full rounded-full transition-[width] duration-500", color)} style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/25 shadow-[inset_0_1px_1px_rgba(0,0,0,0.4)]">
+      <div className={cls("h-full rounded-full shadow-[0_0_10px_rgba(220,228,240,0.35)] transition-[width] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)]", color)} style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
     </div>
   );
 }
@@ -171,22 +185,36 @@ export function Sparkline({ values, max = 100, height = 36 }: { values: number[]
   const pts = values.map((v, i) => `${(i / (values.length - 1)) * w},${height - (Math.min(v, max) / max) * (height - 2) - 1}`);
   return (
     <svg viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" className="w-full" style={{ height }} aria-hidden>
-      <polyline points={`0,${height} ${pts.join(" ")} ${w},${height}`} fill="rgb(197 203 213 / 0.07)" stroke="none" />
-      <polyline points={pts.join(" ")} fill="none" stroke="rgb(197 203 213 / 0.75)" strokeWidth="1.25" vectorEffect="non-scaling-stroke" />
+      <defs>
+        <linearGradient id="spark-fill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="rgb(220 228 240)" stopOpacity="0.22" />
+          <stop offset="100%" stopColor="rgb(220 228 240)" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <polyline points={`0,${height} ${pts.join(" ")} ${w},${height}`} fill="url(#spark-fill)" stroke="none" />
+      <polyline points={pts.join(" ")} fill="none" stroke="rgb(230 236 245 / 0.85)" strokeWidth="1.4" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
     </svg>
   );
 }
 
 export function Segmented<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode }[] }) {
+  const id = useId();
   return (
-    <div className="inline-flex rounded-[10px] border border-line-soft bg-[#15171b] p-0.5">
+    <div className="glass-inset relative inline-flex rounded-full p-[3px]">
       {options.map((o) => (
         <button
           key={o.value}
           onClick={() => onChange(o.value)}
-          className={cls("focus-ring h-7 rounded-[8px] px-2.5 text-[12px] font-medium transition-colors", value === o.value ? "bg-elevated text-fg shadow-sm" : "text-muted hover:text-fg-2")}
+          className={cls("focus-ring press relative h-7 rounded-full px-3 text-[12px] font-medium transition-colors duration-200", value === o.value ? "text-fg" : "text-muted hover:text-fg-2")}
         >
-          {o.label}
+          {value === o.value && (
+            <motion.span
+              layoutId={`seg-${id}`}
+              transition={SPRING}
+              className="absolute inset-0 rounded-full border border-white/[0.14] bg-white/[0.12] shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_4px_14px_-4px_rgba(0,0,0,0.5)]"
+            />
+          )}
+          <span className="relative">{o.label}</span>
         </button>
       ))}
     </div>

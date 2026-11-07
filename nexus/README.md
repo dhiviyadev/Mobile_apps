@@ -3,7 +3,7 @@
 **Your intelligence. Your machine. Your control.**
 
 NEXUS is a local-first personal AI operating system for macOS on Apple Silicon. It combines a
-premium native desktop app, a floating mini assistant, specialist agents (orchestrated by
+liquid-glass native desktop app, a floating mini assistant, specialist agents (orchestrated by
 [Hermes Agent](https://github.com/NousResearch/hermes-agent) when available), local inference via
 [Ollama](https://ollama.com), persistent reviewed memory, a private document knowledge base,
 workflow automations and controlled macOS integration — with no cloud dependency.

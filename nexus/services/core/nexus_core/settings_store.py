@@ -44,6 +44,9 @@ DEFAULTS: dict[str, Any] = {
     "notifications.native": True,
     # Profile
     "profile.name": "",
+    # Appearance (shared by the main and floating windows)
+    "appearance.material": "ambient",  # ambient | desktop | solid
+    "appearance.motion": "full",  # full | calm
 }
 
 

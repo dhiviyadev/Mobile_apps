@@ -89,7 +89,7 @@ export const useCore = create<CoreState>((set, get) => ({
     bus.on<Approval>("approval.decided", (e) => set((s) => ({ approvals: s.approvals.filter((a) => a.id !== e.data.id) })));
     bus.on<Notification>("notification.created", (e) => set((s) => ({ notifications: [e.data, ...s.notifications].slice(0, 30) })));
     bus.on<{ halted: boolean }>("system.halted", (e) => set({ halted: e.data.halted }));
-    for (const t of ["automation", "agent", "conversation", "knowledge", "memory"]) bus.on(t, () => scheduleRefresh(get));
+    for (const t of ["automation", "agent", "conversation", "knowledge", "memory", "settings"]) bus.on(t, () => scheduleRefresh(get));
     await get().refresh();
     void bus.connect();
   },

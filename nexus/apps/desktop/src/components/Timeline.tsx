@@ -42,7 +42,7 @@ export function Timeline({ taskId, compact }: { taskId: string; compact?: boolea
   const rows: TaskEvent[] = (events ?? []).filter((e) => e.type !== "model.thinking" || e === events?.at(-1));
 
   return (
-    <div className={cls("rounded-xl border border-line-soft bg-[#16181d]", compact ? "p-3" : "p-4")}>
+    <div className={cls("rounded-xl border border-line-soft bg-black/20 backdrop-blur-xl", compact ? "p-3" : "p-4")}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           {live ? <Loader2 size={13} className="animate-spin text-accent" /> : task.status === "completed" ? <Check size={13} className="text-ok" /> : <X size={13} className="text-danger" />}
@@ -61,7 +61,7 @@ export function Timeline({ taskId, compact }: { taskId: string; compact?: boolea
       <ol className="relative ml-1.5 space-y-1.5 border-l border-line-soft pl-4">
         {rows.map((e, i) => (
           <motion.li key={e.seq} initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.18 }} className="relative">
-            <span className={cls("absolute -left-[23px] top-[3px] grid h-[14px] w-[14px] place-items-center rounded-full bg-[#16181d]", tone(e.type))}>
+            <span className={cls("absolute -left-[23px] top-[3px] grid h-[14px] w-[14px] place-items-center rounded-full bg-black/20 backdrop-blur-xl", tone(e.type))}>
               {live && i === rows.length - 1 && !e.type.startsWith("task.") ? <Loader2 size={11} className="animate-spin" /> : iconFor(e.type)}
             </span>
             <p className={cls("text-[12px] leading-5", live && i === rows.length - 1 ? "text-fg" : "text-fg-2")}>{e.title}</p>

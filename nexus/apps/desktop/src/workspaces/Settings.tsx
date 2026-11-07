@@ -1,19 +1,23 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Archive, KeyRound, Volume2 } from "lucide-react";
+import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { useCore } from "@/stores/core";
 import type { HermesStatus, ModelsResponse, VoiceStatus } from "@/lib/types";
-import { Badge, Button, Card, Input, SectionTitle, Select, Toggle } from "@/components/ui";
+import { Badge, Button, Card, Input, SectionTitle, Segmented, Select, Toggle } from "@/components/ui";
+import { Orb } from "@/components/Orb";
+import { applyAppearance, type Material, type Motion } from "@/components/Ambient";
 import { HermesCard } from "./Agents";
 import { speak } from "@/hooks/useVoice";
 import { invoke, isTauri } from "@/lib/tauri";
 import { bytes, cls, relTime } from "@/lib/format";
 
 type Values = Record<string, unknown>;
-type Section = "general" | "models" | "hermes" | "cloud" | "voice" | "scripts" | "security" | "backup";
+type Section = "general" | "appearance" | "models" | "hermes" | "cloud" | "voice" | "scripts" | "security" | "backup";
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: "general", label: "General" },
+  { id: "appearance", label: "Appearance" },
   { id: "models", label: "Models" },
   { id: "hermes", label: "Hermes" },
   { id: "cloud", label: "Cloud (optional)" },
@@ -43,14 +47,22 @@ export function Settings() {
     <div className="mx-auto flex max-w-[1080px] gap-8 px-8 py-8">
       <nav className="w-44 flex-none space-y-0.5 pt-12">
         {SECTIONS.map((s) => (
-          <button key={s.id} onClick={() => setSection(s.id)} className={cls("flex h-8 w-full items-center rounded-[9px] px-3 text-[13px]", section === s.id ? "bg-white/[0.07] text-fg" : "text-fg-2 hover:bg-white/[0.03]")}>
-            {s.label}
+          <button key={s.id} onClick={() => setSection(s.id)} className={cls("press relative flex h-8 w-full items-center rounded-full px-3 text-[13px] transition-colors", section === s.id ? "text-fg" : "text-fg-2 hover:bg-white/[0.04]")}>
+            {section === s.id && (
+              <motion.span
+                layoutId="settings-pill"
+                transition={{ type: "spring", stiffness: 480, damping: 36 }}
+                className="absolute inset-0 rounded-full border border-white/[0.12] bg-white/[0.09] shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]"
+              />
+            )}
+            <span className="relative">{s.label}</span>
           </button>
         ))}
       </nav>
       <div className="min-w-0 flex-1">
         <SectionTitle title={SECTIONS.find((s) => s.id === section)!.label} />
         {section === "general" && <General values={values} set={set} stat={stat} />}
+        {section === "appearance" && <Appearance values={values} set={set} />}
         {section === "models" && <Models values={values} set={set} />}
         {section === "hermes" && <Hermes />}
         {section === "cloud" && <CloudSettings values={values} set={set} />}
@@ -109,6 +121,58 @@ function General({ values, set, stat }: { values: Values; set: SetFn; stat: Reco
         <span className="text-[12px] text-fg-2">⌥Space floating assistant · ⌥⇧Space push-to-talk · ⌘K commands</span>
       </Row>
     </Card>
+  );
+}
+
+function Appearance({ values, set }: { values: Values; set: SetFn }) {
+  const material = (values["appearance.material"] as Material) ?? "ambient";
+  const motion = (values["appearance.motion"] as Motion) ?? "full";
+  const change = (m: Material, mo: Motion) => {
+    applyAppearance(m, mo); // instant locally; the other window follows via the core
+    void set("appearance.material", m);
+    void set("appearance.motion", mo);
+  };
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="flex items-center gap-6">
+          <div className="flex gap-5">
+            {(["idle", "listening", "thinking", "executing"] as const).map((st) => (
+              <div key={st} className="flex flex-col items-center gap-2">
+                <Orb state={st} size={56} level={st === "listening" ? 0.5 : 0} />
+                <span className="text-[11px] capitalize text-muted">{st}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[12.5px] leading-relaxed text-fg-2">
+            Liquid glass surfaces over a slow ambient light field. The field brightens while NEXUS is thinking or working, and one soft light follows your pointer across every pane.
+          </p>
+        </div>
+      </Card>
+      <Card>
+        <Row label="Material" hint="Ambient: glass over NEXUS's light field. Desktop: see-through to your wallpaper (macOS vibrancy). Solid: opaque graphite — lightest on the GPU.">
+          <Segmented<Material>
+            value={material}
+            onChange={(m) => change(m, motion)}
+            options={[
+              { value: "ambient", label: "Ambient" },
+              { value: "desktop", label: "Desktop" },
+              { value: "solid", label: "Solid" },
+            ]}
+          />
+        </Row>
+        <Row label="Motion" hint="Calm freezes the ambient field and the pointer light, and slows the orb. macOS Reduce Motion and Reduce Transparency are always respected.">
+          <Segmented<Motion>
+            value={motion}
+            onChange={(mo) => change(material, mo)}
+            options={[
+              { value: "full", label: "Full" },
+              { value: "calm", label: "Calm" },
+            ]}
+          />
+        </Row>
+      </Card>
+    </div>
   );
 }
 
@@ -226,7 +290,7 @@ function Hermes() {
         <p className="text-[12.5px] leading-relaxed text-fg-2">
           Add these lines to <code className="font-mono">~/.hermes/.env</code>, run <code className="font-mono">hermes gateway</code>, then paste the same key above. Without it NEXUS uses Hermes' CLI one-shot mode (if <code className="font-mono">hermes</code> is on PATH) or the NEXUS native runtime.
         </p>
-        <pre className="selectable mt-3 rounded-xl border border-line bg-[#14161a] p-3 font-mono text-[12px] text-fg-2">{`API_SERVER_ENABLED=true\nAPI_SERVER_KEY=<a long random string>`}</pre>
+        <pre className="selectable mt-3 rounded-xl border border-line bg-black/30 p-3 font-mono text-[12px] text-fg-2">{`API_SERVER_ENABLED=true\nAPI_SERVER_KEY=<a long random string>`}</pre>
       </Card>
     </div>
   );

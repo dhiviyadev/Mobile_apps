@@ -7,6 +7,7 @@ import { CommandPalette, HaltedBanner, NAV, Sidebar, TitleBar } from "@/componen
 import { ApprovalStack } from "@/components/Approvals";
 import { Timeline } from "@/components/Timeline";
 import { Orb, usePauseWhenHidden } from "@/components/Orb";
+import { Ambient } from "@/components/Ambient";
 import { Button, IconButton, Input } from "@/components/ui";
 import { setToken } from "@/lib/api";
 import { bus } from "@/lib/events";
@@ -75,26 +76,45 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [paletteOpen, setPalette, setWorkspace, newConv]);
 
-  if (status === "unauthorized" || (status === "offline" && !useCore.getState().boot)) return <ConnectionGate />;
+  if (status === "unauthorized" || (status === "offline" && !useCore.getState().boot)) {
+    return (
+      <>
+        <Ambient />
+        <ConnectionGate />
+      </>
+    );
+  }
   if (status === "connecting" && !useCore.getState().boot) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-6">
-        <div className="drag absolute inset-x-0 top-0 h-10" />
-        <Orb state="thinking" size={88} />
-        <p className="text-[12.5px] text-muted">Starting NEXUS…</p>
-      </div>
+      <>
+        <Ambient />
+        <div className="app-layer flex h-full flex-col items-center justify-center gap-6">
+          <div className="drag absolute inset-x-0 top-0 h-10" />
+          <Orb state="thinking" size={96} />
+          <p className="shimmer text-[12.5px]">Starting NEXUS…</p>
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="flex h-full">
+    <>
+    <Ambient />
+    <div className="app-layer flex h-full">
       <Sidebar />
       <main className="flex min-w-0 flex-1 flex-col">
         <TitleBar title={TITLES[workspace]} />
         <HaltedBanner />
         <div className={workspace === "chat" ? "min-h-0 flex-1" : "min-h-0 flex-1 overflow-y-auto"}>
           <AnimatePresence mode="wait">
-            <motion.div key={workspace} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.12 }} className="h-full">
+            <motion.div
+              key={workspace}
+              initial={{ opacity: 0, y: 14, scale: 0.992 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6, scale: 0.996, transition: { duration: 0.12 } }}
+              transition={{ type: "spring", stiffness: 380, damping: 34, mass: 0.9 }}
+              className="h-full"
+            >
               {workspace === "home" && <Home />}
               {workspace === "chat" && <Chat />}
               {workspace === "agents" && <Agents />}
@@ -110,6 +130,7 @@ export function App() {
       <ApprovalStack />
       <CommandPalette />
     </div>
+    </>
   );
 }
 
@@ -121,7 +142,7 @@ function TaskDrawer() {
   const workspace = useCore((s) => s.workspace);
   if (!id || workspace === "chat") return null;
   return (
-    <motion.aside initial={{ x: 24, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="flex w-[360px] flex-none flex-col border-l border-line-soft bg-sidebar">
+    <motion.aside initial={{ x: 40, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ type: "spring", stiffness: 380, damping: 34 }} className="glass-chrome flex w-[360px] flex-none flex-col border-l border-white/[0.07]">
       <div className="drag flex h-[46px] items-center justify-between px-3">
         <p className="text-[12px] font-medium text-fg-2">Task</p>
         <IconButton label="Close" className="no-drag" onClick={() => focus(null)}>
@@ -142,9 +163,9 @@ function ConnectionGate() {
   const { status, error, refresh } = useCore();
   const [token, setTok] = useState("");
   return (
-    <div className="flex h-full items-center justify-center">
+    <div className="app-layer flex h-full items-center justify-center">
       <div className="drag absolute inset-x-0 top-0 h-10" />
-      <div className="surface-elevated silver-edge w-[460px] p-7 text-center">
+      <motion.div initial={{ opacity: 0, y: 16, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 300, damping: 28 }} className="surface-elevated silver-edge w-[460px] p-7 text-center">
         <div className="mx-auto w-fit">
           <Orb state="idle" size={72} />
         </div>
@@ -176,7 +197,7 @@ function ConnectionGate() {
         <Button className="mt-4" variant="ghost" icon={status === "connecting" ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} onClick={() => void refresh()}>
           Retry
         </Button>
-      </div>
+      </motion.div>
     </div>
   );
 }

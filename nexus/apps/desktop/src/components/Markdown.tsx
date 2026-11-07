@@ -14,7 +14,7 @@ function textOf(node: ReactNode): string {
 function CodeBlock({ children, lang }: { children: ReactNode; lang: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="group my-3 overflow-hidden rounded-xl border border-line bg-[#14161a]">
+    <div className="group my-3 overflow-hidden rounded-xl border border-line bg-black/30">
       <div className="flex h-8 items-center justify-between border-b border-line-soft px-3 text-[11px] text-muted">
         <span className="font-mono">{lang || "text"}</span>
         <button

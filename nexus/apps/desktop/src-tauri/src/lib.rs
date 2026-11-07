@@ -104,6 +104,15 @@ fn set_mini_expanded(app: AppHandle, expanded: bool) {
     }
 }
 
+/// Collapsed mini window follows its content height (engines lay out text slightly differently).
+#[tauri::command]
+fn set_mini_height(app: AppHandle, height: f64) {
+    if let Some(w) = mini(&app) {
+        let h = height.clamp(110.0, MINI_EXPANDED.1);
+        let _ = w.set_size(tauri::LogicalSize::new(MINI_COLLAPSED.0, h));
+    }
+}
+
 #[tauri::command]
 fn set_mini_always_on_top(app: AppHandle, on: bool) {
     if let Some(w) = mini(&app) {
@@ -212,6 +221,7 @@ pub fn run() {
             toggle_mini,
             hide_mini,
             set_mini_expanded,
+            set_mini_height,
             set_mini_always_on_top,
             pick_folder,
             set_launch_at_login,

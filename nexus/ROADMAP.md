@@ -19,7 +19,9 @@ Legend: ✅ done and tested · 🟡 implemented, needs verification on the targe
 ## Phase 1 — Frontend foundation
 - ✅ Tauri 2 shell, main window with overlay title bar, sidebar, title bar, command palette (⌘K, ⌘1–6, ⌘N, ⌘,)
 - ✅ Graphite + Silver design tokens, components, Home command centre
-- ✅ Ambient orb: idle / listening (audio-reactive waveform) / thinking / executing; CSS-only, paused when hidden, reduced-motion aware (Three.js deliberately not used — not needed for this look)
+- ✅ Liquid-glass material: translucent panes with rim light and specular edge over a drifting ambient light field, shared pointer-following light, spring-driven sliding selection pills, springy presses, staggered entrances; Appearance settings (Ambient / Desktop vibrancy / Solid, Full / Calm motion); honours Reduce Motion and Reduce Transparency
+- 🟡 GPU cost of backdrop blur on the M5 Pro — check Activity Monitor's GPU History while idle; switch to Motion: Calm or Material: Solid if it's noticeable
+- ✅ Ambient orb as a liquid-glass droplet (morphing counter-rotating caustics, rim-lit shell): idle / listening (audio-reactive) / thinking / executing ripples; CSS-only, paused when hidden, reduced-motion aware (Three.js not needed)
 - ✅ Live (not mock) data for tasks, agents, system widgets; honest empty/offline states
 - ✅ Frontend unit tests (vitest), strict TypeScript
 

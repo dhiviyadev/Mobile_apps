@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { motion } from "framer-motion";
 import { ArrowUp, Bot, Cloud, Loader2, Mic, MicOff, Paperclip, Square, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { cls, bytes } from "@/lib/format";
@@ -28,6 +29,7 @@ export function Composer({ onSend, placeholder, autoFocus, compact, showModes = 
   const [uploading, setUploading] = useState(false);
   const [allowCloud, setAllowCloud] = useState(false);
   const ta = useRef<HTMLTextAreaElement>(null);
+  const pillId = useId();
   const fileInput = useRef<HTMLInputElement>(null);
   const agents = useCore((s) => s.boot?.agents ?? EMPTY);
   const voiceAvailable = useCore((s) => s.boot?.voice.stt_available ?? false);
@@ -53,8 +55,14 @@ export function Composer({ onSend, placeholder, autoFocus, compact, showModes = 
   useEffect(() => {
     const el = ta.current;
     if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, compact ? 120 : 220)}px`;
+    // WebKit can over-report scrollHeight for an empty textarea; an empty field is always one line.
+    const line = parseFloat(getComputedStyle(el).lineHeight) || 21;
+    if (!text) {
+      el.style.height = `${line}px`;
+      return;
+    }
+    el.style.height = `${line}px`;
+    el.style.height = `${Math.max(line, Math.min(el.scrollHeight, compact ? 120 : 220))}px`;
   }, [text, compact]);
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -80,7 +88,7 @@ export function Composer({ onSend, placeholder, autoFocus, compact, showModes = 
 
   return (
     <div
-      className={cls("surface silver-edge glass flex flex-col gap-2", compact ? "p-2" : "p-3")}
+      className={cls("surface silver-edge glass flex flex-col gap-2 transition-shadow duration-300 focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_0_0_4px_rgba(205,214,228,0.07),0_24px_60px_-24px_rgba(0,0,0,0.8)]", compact ? "rounded-[20px] p-2" : "rounded-[24px] p-3")}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
@@ -136,13 +144,21 @@ export function Composer({ onSend, placeholder, autoFocus, compact, showModes = 
             {voiceAvailable ? <Mic size={15} className={voice.phase === "recording" ? "text-danger" : ""} /> : <MicOff size={15} />}
           </IconButton>
           {showModes && (
-            <div className="ml-1 flex items-center gap-1 rounded-[10px] border border-line-soft bg-[#15171b] p-0.5">
+            <div className="glass-inset relative ml-1 flex items-center gap-1 rounded-full p-[3px]">
               {(["chat", "agent"] as const).map((m) => (
                 <button
                   key={m}
                   onClick={() => setMode(m)}
-                  className={cls("h-6 rounded-[7px] px-2 text-[11.5px] font-medium capitalize transition-colors", mode === m ? "bg-elevated text-fg" : "text-muted hover:text-fg-2")}
+                  className={cls("press relative h-6 rounded-full px-2.5 text-[11.5px] font-medium capitalize transition-colors", mode === m ? "text-fg" : "text-muted hover:text-fg-2")}
                 >
+                  {mode === m && (
+                    <motion.span
+                      layoutId={`mode-${pillId}`}
+                      transition={{ type: "spring", stiffness: 520, damping: 36 }}
+                      className="absolute inset-0 rounded-full border border-white/[0.14] bg-white/[0.12] shadow-[inset_0_1px_0_rgba(255,255,255,0.22)]"
+                    />
+                  )}
+                  <span className="relative">
                   {m === "agent" ? (
                     <span className="inline-flex items-center gap-1">
                       <Bot size={12} /> Agent
@@ -150,12 +166,13 @@ export function Composer({ onSend, placeholder, autoFocus, compact, showModes = 
                   ) : (
                     "Chat"
                   )}
+                  </span>
                 </button>
               ))}
             </div>
           )}
           {showModes && mode === "agent" && (
-            <select value={agentId} onChange={(e) => setAgentId(e.target.value)} className="h-7 rounded-[8px] border border-line-soft bg-[#15171b] px-1.5 text-[11.5px] text-fg-2">
+            <select value={agentId} onChange={(e) => setAgentId(e.target.value)} className="glass-inset h-7 rounded-full px-2 text-[11.5px] text-fg-2">
               {agents.filter((a) => a.enabled).map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
@@ -170,7 +187,7 @@ export function Composer({ onSend, placeholder, autoFocus, compact, showModes = 
           )}
         </div>
         {busy ? (
-          <button onClick={onStop} aria-label="Stop" title="Stop generating" className="grid h-8 w-8 place-items-center rounded-[10px] bg-elevated text-fg hover:bg-[#2f333c]">
+          <button onClick={onStop} aria-label="Stop" title="Stop generating" className="press relative grid h-8 w-8 place-items-center rounded-full border border-white/15 bg-white/[0.1] text-fg shadow-[0_0_0_0_rgba(220,228,240,0.4)] hover:bg-white/[0.16] animate-[pulse-ring_1.8s_ease-out_infinite]">
             <Square size={12} fill="currentColor" />
           </button>
         ) : (
@@ -178,7 +195,7 @@ export function Composer({ onSend, placeholder, autoFocus, compact, showModes = 
             onClick={() => submit(text)}
             disabled={!text.trim()}
             aria-label="Send"
-            className="grid h-8 w-8 place-items-center rounded-[10px] bg-accent text-[#14161a] transition-opacity hover:bg-accent-strong disabled:opacity-30"
+            className="btn-liquid press grid h-8 w-8 place-items-center rounded-full disabled:opacity-30 disabled:shadow-none"
           >
             <ArrowUp size={16} strokeWidth={2.4} />
           </button>
