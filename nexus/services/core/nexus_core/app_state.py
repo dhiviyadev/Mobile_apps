@@ -25,6 +25,7 @@ from .models.router import ModelRouter
 from .permissions.approvals import ApprovalService
 from .permissions.audit import AuditLog
 from .permissions.policy import PermissionService
+from .remote.service import DeviceService
 from .security import Keychain, load_or_create_token
 from .settings_store import SettingsStore
 from .system.monitor import SystemMonitor
@@ -47,6 +48,7 @@ class AppState:
         self.audit = AuditLog(self.db, self.bus)
         self.permissions = PermissionService(self.db, self.audit, settings.workspace_dir)
         self.approvals = ApprovalService(self.db, self.bus, self.audit)
+        self.devices = DeviceService(self.db, self.prefs, self.audit)
         self.tasks = TaskManager(self.db, self.bus, max_parallel=int(self.prefs.get("agents.max_parallel") or 1))
         self.ollama = OllamaClient(settings.ollama_url)
         self.router = ModelRouter(self.ollama, self.prefs, self.db)
@@ -76,10 +78,10 @@ class AppState:
             asyncio.create_task(self.monitor.run_sampler(), name="sampler"),
         ]
 
-    async def emergency_stop(self) -> dict[str, Any]:
+    async def emergency_stop(self, actor: str = "user") -> dict[str, Any]:
         denied = self.approvals.halt()
         cancelled = await self.tasks.cancel_all()
-        self.audit.record("user", "emergency.stop", None, "executed", cancelled=cancelled, denied=denied)
+        self.audit.record(actor, "emergency.stop", None, "executed", cancelled=cancelled, denied=denied)
         await self.notifications.notify("Emergency stop", f"Cancelled {cancelled} tasks, denied {denied} pending approvals.", level="warning")
         return {"halted": True, "cancelled_tasks": cancelled, "denied_approvals": denied}
 

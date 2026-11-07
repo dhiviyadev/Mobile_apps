@@ -1,4 +1,4 @@
-import { coreInfo, type CoreInfo } from "./tauri";
+import { coreInfo, DEVICE_TOKEN_KEY, type CoreInfo } from "./tauri";
 
 export class ApiError extends Error {
   constructor(
@@ -17,6 +17,18 @@ export async function connection(force = false): Promise<CoreInfo> {
   if (info && !force) return info;
   if (!infoPromise || force) infoPromise = coreInfo().then((i) => (info = i));
   return infoPromise;
+}
+
+/** Phone app: store the device token received from pairing (or clear it to unpair). */
+export function setDeviceToken(token: string | null): void {
+  try {
+    if (token) localStorage.setItem(DEVICE_TOKEN_KEY, token);
+    else localStorage.removeItem(DEVICE_TOKEN_KEY);
+  } catch {
+    /* ignore */
+  }
+  info = null;
+  infoPromise = null;
 }
 
 export function setToken(token: string): void {

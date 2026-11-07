@@ -7,6 +7,8 @@
 | Everything (core + app) | `./scripts/dev.sh` |
 | Core only | `./scripts/dev.sh --core` or `cd services/core && .venv/bin/python -m nexus_core` |
 | UI in a browser | `./scripts/dev.sh --web` |
+| Phone app (dev) | `./scripts/dev.sh --mobile` → http://127.0.0.1:1421/m/ (proxies /api and /ws) |
+| Phone app (build) | `cd apps/desktop && npm run build:mobile` → `dist-mobile/`, served by the core at `/m` |
 | Backend tests | `cd services/core && .venv/bin/python -m pytest -q` |
 | Frontend typecheck / tests | `cd apps/desktop && npm run typecheck && npm test` |
 | Rust shell check | `cd apps/desktop/src-tauri && cargo check` |

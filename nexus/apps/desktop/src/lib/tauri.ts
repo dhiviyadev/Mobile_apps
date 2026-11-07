@@ -27,7 +27,20 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
   return inv<T>(cmd, args);
 }
 
+export const isMobileApp = import.meta.env.VITE_TARGET === "mobile";
+export const DEVICE_TOKEN_KEY = "nexus.device_token";
+
 export async function coreInfo(): Promise<CoreInfo> {
+  if (isMobileApp) {
+    // Served by the core (through `tailscale serve`): same origin, device token from pairing.
+    let token: string | null = null;
+    try {
+      token = localStorage.getItem(DEVICE_TOKEN_KEY);
+    } catch {
+      /* storage unavailable */
+    }
+    return { baseUrl: window.location.origin, token };
+  }
   const fromShell = await invoke<CoreInfo>("core_info").catch((e: unknown) => ({ baseUrl: "http://127.0.0.1:8765", token: null, error: String(e) }));
   if (fromShell) return fromShell;
   // Browser dev mode: token from ?token=, VITE_NEXUS_TOKEN, or a previously pasted value.

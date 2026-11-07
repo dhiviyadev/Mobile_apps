@@ -98,6 +98,32 @@ mode, so risky tools are refused by Hermes' own policy.
 To point Hermes at the same Ollama models, follow Hermes' own `hermes model` setup — NEXUS doesn't
 change Hermes' provider.
 
+## Using NEXUS from your phone
+
+The phone app is a companion: everything still runs on your Mac. It needs your Mac awake with the
+NEXUS core running (keep the app open, or install the LaunchAgent: `./scripts/launchagent.sh install`).
+
+1. **Tailscale** — install it on the Mac and the phone and sign in to the same account
+   (free for personal use). It encrypts the connection and works away from home with no port
+   forwarding.
+2. **Expose NEXUS to your tailnet** — on the Mac, once: `tailscale serve --bg 8765`.
+   This gives the Mac an HTTPS address like `https://my-mac.tail1234.ts.net` that only your own
+   devices can reach. NEXUS itself keeps listening on 127.0.0.1 only. (HTTPS is also what lets the
+   phone use its microphone and install the app.)
+3. **In NEXUS → Settings → Phone** — confirm the Mac's address (auto-detected from Tailscale), turn
+   on **Allow remote access**, and press **Pair a phone**.
+4. **On the phone** — scan the QR code, or open `https://<your-mac>.ts.net/m/` and type the 8-character
+   code. On iPhone, tap Share → **Add to Home Screen** first and pair from the home-screen app (it keeps
+   its own storage). On Android, use Chrome's **Install app**.
+
+Revoke a phone any time in Settings → Phone; turning remote access off locks out every phone
+instantly. The phone app is built by `setup.sh`; rebuild after updates with
+`cd apps/desktop && npm run build:mobile`.
+
+Not using Tailscale? Any HTTPS reverse proxy *on the Mac* that forwards to `127.0.0.1:8765` works the
+same way (add its hostname in Settings → Phone). NEXUS deliberately does not listen on your network
+directly.
+
 ## Configuration
 
 Static settings are environment variables (see `.env.example`); runtime preferences are edited in
@@ -113,3 +139,4 @@ Static settings are environment variables (see `.env.example`); runtime preferen
 | `NEXUS_HERMES_BIN` | `hermes` on PATH |
 | `NEXUS_WHISPER_MODEL` | path to a ggml model for whisper.cpp |
 | `NEXUS_PIPER_VOICE` | path to a Piper `.onnx` voice |
+| `NEXUS_MOBILE_DIST` | built phone app (default `apps/desktop/dist-mobile`, served at `/m`) |

@@ -7,7 +7,7 @@ import tarfile
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from ..app_state import AppState
@@ -62,8 +62,8 @@ async def system_status(st: AppState = Depends(get_state)) -> dict[str, Any]:
 
 
 @router.post("/system/emergency-stop")
-async def emergency_stop(st: AppState = Depends(get_state)) -> dict[str, Any]:
-    return await st.emergency_stop()
+async def emergency_stop(request: Request, st: AppState = Depends(get_state)) -> dict[str, Any]:
+    return await st.emergency_stop(actor=request.state.actor)
 
 
 @router.post("/system/resume")
@@ -175,9 +175,9 @@ class Decision(BaseModel):
 
 
 @router.post("/approvals/{approval_id}")
-def decide(approval_id: str, body: Decision, st: AppState = Depends(get_state)) -> dict[str, Any]:
+def decide(approval_id: str, body: Decision, request: Request, st: AppState = Depends(get_state)) -> dict[str, Any]:
     try:
-        return st.approvals.decide(approval_id, body.approve)
+        return st.approvals.decide(approval_id, body.approve, actor=request.state.actor)
     except KeyError:
         raise not_found("Approval") from None
 

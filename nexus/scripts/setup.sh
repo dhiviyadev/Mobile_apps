@@ -53,7 +53,7 @@ if ! have ffmpeg; then
 fi
 
 say "Desktop app dependencies"
-(cd "$APP" && npm install --no-fund --no-audit)
+(cd "$APP" && npm install --no-fund --no-audit && npm run build:mobile)
 
 say "Recording launcher paths for the desktop shell ($CONFIG_DIR/launcher.json)"
 mkdir -p "$CONFIG_DIR"

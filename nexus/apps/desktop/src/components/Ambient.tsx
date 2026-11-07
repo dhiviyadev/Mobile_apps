@@ -29,12 +29,12 @@ export function restoreAppearance(): void {
 }
 
 /** Keeps <html> attributes in sync with the core's appearance settings and the orb's activity. */
-function useAppearanceSync(): void {
+function useAppearanceSync(fromCore: boolean): void {
   const appearance = useCore((s) => s.boot?.appearance);
   const activity = useOrbState();
   useEffect(() => {
-    if (appearance) applyAppearance(appearance.material, appearance.motion);
-  }, [appearance]);
+    if (fromCore && appearance) applyAppearance(appearance.material, appearance.motion);
+  }, [appearance, fromCore]);
   useEffect(() => {
     document.documentElement.dataset.activity = activity;
   }, [activity]);
@@ -45,8 +45,9 @@ function useAppearanceSync(): void {
  * --mx/--my (viewport px) at most once per frame, and every glass pane renders
  * its highlight from it with a fixed-attachment gradient. No per-element work.
  */
-function useSpotlight(): void {
+function useSpotlight(enabled: boolean): void {
   useEffect(() => {
+    if (!enabled) return;
     const root = document.documentElement;
     let raf = 0;
     let x = 0;
@@ -70,13 +71,13 @@ function useSpotlight(): void {
       document.removeEventListener("pointerleave", leave);
       cancelAnimationFrame(raf);
     };
-  }, []);
+  }, [enabled]);
 }
 
 /** The ambient light field behind all glass. Not rendered in the floating window (the desktop is its backdrop). */
-export function Ambient({ field = true }: { field?: boolean }) {
-  useAppearanceSync();
-  useSpotlight();
+export function Ambient({ field = true, syncFromCore = true, spotlight = true }: { field?: boolean; syncFromCore?: boolean; spotlight?: boolean }) {
+  useAppearanceSync(syncFromCore);
+  useSpotlight(spotlight);
   if (!field) return null;
   return (
     <div className="ambient" aria-hidden>

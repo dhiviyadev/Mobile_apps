@@ -19,3 +19,4 @@ apps/desktop/src-tauri/binaries/
 *.pem
 .DS_Store
 *.tsbuildinfo
+apps/desktop/dist-mobile/

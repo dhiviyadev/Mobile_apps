@@ -9,6 +9,12 @@ liquid-glass native desktop app, a floating mini assistant, specialist agents (o
 workflow automations and controlled macOS integration — with no cloud dependency.
 
 <p align="center"><img src="docs/screenshots/home.png" width="860" alt="NEXUS Home"></p>
+<p align="center">
+  <img src="docs/screenshots/phone-2-home.png" width="200" alt="Phone home with approval">
+  <img src="docs/screenshots/phone-4-thread.png" width="200" alt="Phone chat">
+  <img src="docs/screenshots/phone-6-sheet.png" width="200" alt="Phone task timeline">
+  <img src="docs/screenshots/phone-8-mac.png" width="200" alt="Phone Mac status">
+</p>
 
 ## Features
 
@@ -21,6 +27,7 @@ workflow automations and controlled macOS integration — with no cloud dependen
 | **Memory** | Six categories with provenance; automatic suggestions are proposals until you approve; credential-like content is flagged; review / pin / archive / delete |
 | **Automations** | Manual, cron schedule and new-file triggers; conditions; multi-step actions (agent task, prompt, write/append file, notify, re-index, approved script); approvals, retries, history, notifications; templates (morning briefing, weekly summary, document classification, invoice extraction…) |
 | **System** | CPU, memory, macOS memory pressure, swap, disk, loaded models with VRAM residency, inference tok/s and TTFT from Ollama's own counters, service health, on-device model benchmark (load time, speed, tool-calling reliability) |
+| **Phone app** | Installable companion for iPhone/Android (Add to Home Screen): chat, run agents, approve or deny actions, review memories, run automations, emergency stop. Connects to your Mac over Tailscale; off until you enable it; per-device revocable keys |
 | **Floating assistant** | Separate always-on-top window, ⌥Space to toggle, ⌥⇧Space push-to-talk, expand/collapse, shares conversations and tasks with the main window |
 | **Voice** | Push-to-talk with live waveform, local transcription (MLX Whisper or whisper.cpp), local speech (macOS `say` or Piper), interrupt playback |
 | **Security** | Loopback-only API with per-install token, DNS-rebinding guard, folder allowlist with separate read/write/execute, no general shell for agents, approvals for destructive actions, emergency stop, Keychain secrets, audit log, cloud off by default |

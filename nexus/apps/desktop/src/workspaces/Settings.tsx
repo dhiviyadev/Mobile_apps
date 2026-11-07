@@ -1,11 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Archive, KeyRound, Volume2 } from "lucide-react";
+import { Archive, Copy, KeyRound, Smartphone, Volume2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { useCore } from "@/stores/core";
 import type { HermesStatus, ModelsResponse, VoiceStatus } from "@/lib/types";
 import { Badge, Button, Card, Input, SectionTitle, Segmented, Select, Toggle } from "@/components/ui";
 import { Orb } from "@/components/Orb";
+import { QRCode } from "@/components/QRCode";
 import { applyAppearance, type Material, type Motion } from "@/components/Ambient";
 import { HermesCard } from "./Agents";
 import { speak } from "@/hooks/useVoice";
@@ -13,11 +14,12 @@ import { invoke, isTauri } from "@/lib/tauri";
 import { bytes, cls, relTime } from "@/lib/format";
 
 type Values = Record<string, unknown>;
-type Section = "general" | "appearance" | "models" | "hermes" | "cloud" | "voice" | "scripts" | "security" | "backup";
+type Section = "general" | "appearance" | "phone" | "models" | "hermes" | "cloud" | "voice" | "scripts" | "security" | "backup";
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: "general", label: "General" },
   { id: "appearance", label: "Appearance" },
+  { id: "phone", label: "Phone" },
   { id: "models", label: "Models" },
   { id: "hermes", label: "Hermes" },
   { id: "cloud", label: "Cloud (optional)" },
@@ -63,6 +65,7 @@ export function Settings() {
         <SectionTitle title={SECTIONS.find((s) => s.id === section)!.label} />
         {section === "general" && <General values={values} set={set} stat={stat} />}
         {section === "appearance" && <Appearance values={values} set={set} />}
+        {section === "phone" && <Phone />}
         {section === "models" && <Models values={values} set={set} />}
         {section === "hermes" && <Hermes />}
         {section === "cloud" && <CloudSettings values={values} set={set} />}
@@ -173,6 +176,121 @@ function Appearance({ values, set }: { values: Values; set: SetFn }) {
         </Row>
       </Card>
     </div>
+  );
+}
+
+interface RemoteStatus {
+  enabled: boolean;
+  hostnames: string[];
+  mobile_app_built: boolean;
+  tailscale: { installed: boolean; dns_name: string | null; online: boolean; serving_nexus: boolean; serve_command: string };
+  devices: { id: string; name: string; created_at: string; last_seen_at: string | null; last_ip: string | null; revoked: number }[];
+}
+
+function Phone() {
+  const [st, setSt] = useState<RemoteStatus | null>(null);
+  const [host, setHost] = useState("");
+  const [code, setCode] = useState<{ code: string; expires_in: number } | null>(null);
+  const [left, setLeft] = useState(0);
+  const [err, setErr] = useState<string | null>(null);
+  const load = () =>
+    void api.get<RemoteStatus>("/api/devices/remote").then((r) => {
+      setSt(r);
+      setHost((h) => h || r.hostnames[0] || r.tailscale.dns_name || "");
+    });
+  useEffect(load, []);
+  useEffect(() => {
+    if (!code) return;
+    setLeft(code.expires_in);
+    const t = setInterval(() => setLeft((l) => (l <= 1 ? (clearInterval(t), setCode(null), 0) : l - 1)), 1000);
+    return () => clearInterval(t);
+  }, [code]);
+
+  const save = async (body: Partial<{ enabled: boolean; hostnames: string[] }>) => {
+    setErr(null);
+    try {
+      setSt(await api.patch<RemoteStatus>("/api/devices/remote", body));
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
+  if (!st) return null;
+  const url = st.hostnames[0] ? `https://${st.hostnames[0]}/m/` : null;
+  const ts = st.tailscale;
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="flex items-start gap-4">
+          <div className="grid h-11 w-11 flex-none place-items-center rounded-full border border-white/15 bg-[radial-gradient(circle_at_35%_25%,rgba(255,255,255,0.22),rgba(255,255,255,0.04)_60%)]">
+            <Smartphone size={18} className="text-accent-strong" />
+          </div>
+          <p className="text-[12.5px] leading-relaxed text-fg-2">
+            Use NEXUS from your phone: chat, run agents, <span className="text-fg">approve or deny actions</span>, review memories and trigger the emergency stop. Everything still runs on this Mac. Your phone connects through
+            <span className="text-fg"> Tailscale</span> (encrypted, works away from home); NEXUS itself stays bound to this Mac only.
+          </p>
+        </div>
+      </Card>
+      <Card title="1 · Connection">
+        <Row label="Tailscale" hint={ts.installed ? (ts.dns_name ? `This Mac is ${ts.dns_name}` : "Installed — sign in to your tailnet") : "Install Tailscale on this Mac and your phone, signed in to the same account."}>
+          <Badge tone={ts.installed && ts.online ? "ok" : "warn"}>{ts.installed ? (ts.online ? "connected" : "offline") : "not installed"}</Badge>
+        </Row>
+        <Row label="Expose NEXUS to your tailnet" hint={<>Run once in Terminal (you decide; NEXUS doesn't change Tailscale). It gives this Mac an HTTPS address only your devices can reach.</>}>
+          <code className="selectable rounded-lg bg-black/30 px-2 py-1 font-mono text-[12px] text-fg-2">{ts.serve_command}</code>
+          <IconCopy text={ts.serve_command} />
+          <Badge tone={ts.serving_nexus ? "ok" : "neutral"}>{ts.serving_nexus ? "serving" : "not detected"}</Badge>
+        </Row>
+        <Row label="Mac's address" hint="The hostname your phone uses, e.g. my-mac.tail1234.ts.net. Requests to any other name are refused.">
+          <Input value={host} onChange={(e) => setHost(e.target.value)} placeholder="my-mac.tail1234.ts.net" className="w-64 font-mono text-[12px]" />
+          <Button size="sm" onClick={() => void save({ hostnames: host ? [host] : [] })}>Save</Button>
+        </Row>
+        <Row label="Allow remote access" hint="Off by default. Turning it off instantly locks out every paired phone.">
+          <Toggle checked={st.enabled} onChange={(v) => void save({ enabled: v })} />
+        </Row>
+        {err && <p className="text-[12px] text-danger">{err}</p>}
+        {!st.mobile_app_built && <p className="mt-2 text-[12px] text-warn">The phone app isn't built yet — run <code className="font-mono">npm run build:mobile</code> in apps/desktop.</p>}
+      </Card>
+      <Card title="2 · Pair a phone">
+        {code && url ? (
+          <div className="flex items-center gap-6">
+            <QRCode value={`${url}#pair=${code.code}`} size={168} />
+            <div>
+              <p className="font-mono text-[34px] font-semibold tracking-[0.18em] text-fg">{code.code}</p>
+              <p className="mt-1 text-[12.5px] text-fg-2">Scan with your phone's camera, or open <span className="font-mono text-fg">{url}</span> and enter the code.</p>
+              <p className="mt-2 text-[12px] text-muted">Single use · expires in {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</p>
+              <p className="mt-3 text-[12px] text-muted">Tip: on iPhone, tap Share → <span className="text-fg-2">Add to Home Screen</span> first, then pair from the home-screen app.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-[12.5px] text-fg-2">{!st.enabled ? "Turn on remote access first." : !url ? "Save your Mac's address first." : "Creates a one-time code valid for 5 minutes."}</p>
+            <Button variant="primary" disabled={!st.enabled || !url} onClick={() => void api.post<{ code: string; expires_in: number }>("/api/devices/pair").then(setCode).catch((e: Error) => setErr(e.message))}>
+              Pair a phone
+            </Button>
+          </div>
+        )}
+      </Card>
+      <Card title="Paired devices">
+        {st.devices.length === 0 && <p className="text-[12.5px] text-muted">No phones paired yet.</p>}
+        {st.devices.map((d) => (
+          <Row key={d.id} label={d.name} hint={`Paired ${relTime(d.created_at)} · last seen ${relTime(d.last_seen_at)}${d.last_ip ? ` from ${d.last_ip}` : ""}`}>
+            {d.revoked ? <Badge tone="danger">revoked</Badge> : <Button size="sm" variant="danger" onClick={() => void api.post(`/api/devices/${d.id}/revoke`).then(load)}>Revoke</Button>}
+            <Button size="sm" variant="ghost" onClick={() => void api.del(`/api/devices/${d.id}`).then(load)}>Remove</Button>
+          </Row>
+        ))}
+        <p className="mt-3 text-[11.5px] leading-snug text-muted">
+          Phones can't change folder permissions, secrets, scripts, agent tools, settings or devices, or open apps on this Mac. Their approvals and stops are recorded in the audit log under the device's name.
+        </p>
+      </Card>
+    </div>
+  );
+}
+
+function IconCopy({ text }: { text: string }) {
+  const [ok, setOk] = useState(false);
+  return (
+    <button aria-label="Copy" className="press grid h-7 w-7 place-items-center rounded-full text-muted hover:bg-white/[0.08] hover:text-fg" onClick={() => { void navigator.clipboard.writeText(text); setOk(true); setTimeout(() => setOk(false), 1200); }}>
+      {ok ? <span className="text-[11px] text-ok">✓</span> : <Copy size={13} />}
+    </button>
   );
 }
 

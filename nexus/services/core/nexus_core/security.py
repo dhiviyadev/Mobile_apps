@@ -48,7 +48,8 @@ def token_matches(expected: str, provided: str | None) -> bool:
     return hmac.compare_digest(expected.encode(), provided.encode())
 
 
-def host_allowed(host_header: str | None) -> bool:
+def host_allowed(host_header: str | None, extra: set[str] | None = None) -> bool:
+    """Loopback names always; `extra` = remote hostnames the user approved (e.g. the Mac's tailnet name)."""
     if not host_header:
         return False
     host = host_header.strip().lower()
@@ -56,7 +57,7 @@ def host_allowed(host_header: str | None) -> bool:
         host = host.split("]", 1)[0] + "]"
     elif ":" in host:
         host = host.rsplit(":", 1)[0]
-    return host in ALLOWED_HOSTS
+    return host in ALLOWED_HOSTS or bool(extra and host in extra)
 
 
 # -- Keychain -------------------------------------------------------------

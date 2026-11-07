@@ -3,6 +3,7 @@
 #   ./scripts/dev.sh          core + Tauri desktop app
 #   ./scripts/dev.sh --web    core + Vite dev server; open http://127.0.0.1:1420/?token=<token>
 #   ./scripts/dev.sh --core   core only
+#   ./scripts/dev.sh --mobile core + phone app dev server on http://127.0.0.1:1421/m/
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export NEXUS_DATA_DIR="${NEXUS_DATA_DIR:-$ROOT/data}"
@@ -23,6 +24,7 @@ echo "API token: $NEXUS_DATA_DIR/secrets/api_token"
 
 case "${1:-}" in
   --core) wait ;;
+  --mobile) (cd "$ROOT/apps/desktop" && npx vite --config vite.mobile.config.ts) ;;
   --web)
     echo "Open: http://127.0.0.1:1420/?token=$(cat "$NEXUS_DATA_DIR/secrets/api_token")"
     (cd "$ROOT/apps/desktop" && npx vite) ;;

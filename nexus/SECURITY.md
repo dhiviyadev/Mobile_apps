@@ -14,6 +14,24 @@ permission-checked tools; anything destructive is a *proposal* until you approve
 * Webview CSP allows connections only to itself and `127.0.0.1:8765`; Markdown rendering never
   injects raw HTML; search highlights use control-character markers, not HTML.
 
+## Remote access (phone app)
+
+* **Off by default.** While off, device tokens are rejected and only loopback Host names are accepted.
+* The core never binds to a network interface. Phones reach it through a reverse proxy running on
+  the Mac — recommended `tailscale serve`, which gives WireGuard encryption, a valid HTTPS
+  certificate, and reachability only from devices in your tailnet.
+* Only hostnames you list (e.g. `my-mac.tail1234.ts.net`) pass the Host check; WebSocket origins must
+  match them.
+* **Pairing:** an 8-character one-time code (≈10¹² combinations, 5-minute expiry, single use, stored
+  hashed, 10 attempts per 5 minutes) is exchanged for a per-device random token. Tokens are stored only
+  as SHA-256 hashes and can be revoked individually.
+* **Restricted role:** a phone cannot change folder permissions, secrets, scripts, settings, agent
+  configuration, model routing or devices, run benchmarks or backups, open apps/files on the Mac, or
+  read the API docs. It *can* chat, run agents, approve/deny, review memories, run/toggle automations,
+  search, view status and trigger the emergency stop. Denied remote calls and every remote approval or
+  stop are written to the audit log under `device:<name>`.
+* The phone app's service worker caches only the app shell; it never caches API responses.
+
 ## File access
 
 * Nothing is readable until you **approve a folder**. The NEXUS workspace (`data/workspace`) is the
@@ -71,6 +89,6 @@ settings change to cloud options and emergency stop is appended to `audit_log` (
 permissions, WebSocket auth, Host-header rejection, unapprovable folders, `..` and symlink escapes,
 separate R/W/X grants, credential-path denial, audited denials, overwrite/delete approval with
 backups, emergency stop blocking chat/agents/files and denying pending approvals, script allowlist,
-cloud disabled by default, and agents unable to use tools outside their profile.
+cloud disabled by default, agents unable to use tools outside their profile, and the remote-access rules (off by default, single-use/rate-limited pairing, hashed tokens, restricted role, host/origin checks, revocation).
 
 Report a vulnerability privately to the repository owner.

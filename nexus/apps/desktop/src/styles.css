@@ -1,4 +1,7 @@
 @import "tailwindcss";
+/* Explicit sources: the phone build uses mobile/ as its Vite root. */
+@source "./";
+@source "../mobile";
 
 /* ── NEXUS design tokens · Liquid Glass on Graphite ──────────────────────
    Surfaces are translucent layers over an ambient light field. Tokens that
@@ -195,6 +198,8 @@ html[data-activity="listening"] .ambient .blob-b {
   z-index: 1;
 }
 
+/* Component layer: utilities (e.g. `fixed`, `absolute`, `rounded-*`) must be able to override the material. */
+@layer components {
 /* ── Glass material ─────────────────────────────────────────────────────
    ::before  = refracted rim (gradient border through a mask)
    ::after   = shared light source that follows the pointer (fixed attachment,
@@ -314,6 +319,7 @@ html[data-activity="listening"] .ambient .blob-b {
   outline: none;
   border-color: rgb(255 255 255 / 0.22);
   box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.35), 0 0 0 3px rgb(205 211 221 / 0.16);
+}
 }
 
 /* ── Material & motion preferences ────────────────────────────────────── */

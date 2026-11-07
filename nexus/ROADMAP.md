@@ -31,6 +31,13 @@ Legend: ✅ done and tested · 🟡 implemented, needs verification on the targe
 - ✅ Shared state through the core event bus (verified: mini → main live update)
 - 🟡 macOS vibrancy/transparency and shortcut conflicts (e.g. with Spotlight/Raycast) on your Mac
 
+## Phone companion app
+- ✅ Installable web app (iPhone/Android) served by the core at `/m`: Home with approvals first, Chat, Tasks (run agents, live timelines in swipe-to-dismiss sheets), Search + memory review, Mac status/automations/emergency stop; liquid-glass UI with spring tab pill
+- ✅ Remote access off by default; Tailscale-served HTTPS; pairing codes (single use, 5 min, rate-limited) → per-device hashed, revocable tokens; restricted remote role; audit trail (11 tests)
+- ✅ Verified end-to-end in an emulated iPhone 15 Pro against the real core: pair → approve an automation from the phone → it ran on the Mac → its timeline shown on the phone
+- 🟡 On a real phone over Tailscale (needs your devices); iOS microphone permission and home-screen install
+- ⏳ Push notifications for pending approvals (Web Push on iOS 16.4+ home-screen apps) · native wrapper via Tauri mobile if you want App Store distribution
+
 ## Phase 3 — Backend foundation
 - ✅ FastAPI core, SQLite (WAL) + migrations, REST + SSE + WebSocket events, task manager, config, rotating logs
 - ✅ Graceful shutdown; restart recovery marks orphaned tasks as interrupted

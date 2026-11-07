@@ -9,13 +9,16 @@
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "dev:mobile": "vite --config vite.mobile.config.ts",
+    "build:mobile": "tsc -b && vite build --config vite.mobile.config.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-global-shortcut": "^2.4.1",
     "framer-motion": "^11.11.17",
     "lucide-react": "^0.460.0",
+    "qrcode-generator": "^1.4.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",

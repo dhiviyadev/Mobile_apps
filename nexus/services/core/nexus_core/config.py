@@ -55,11 +55,14 @@ class Settings:
             o.strip()
             for o in os.environ.get(
                 "NEXUS_CORS_ORIGINS",
-                "tauri://localhost,http://tauri.localhost,https://tauri.localhost,http://localhost:1420,http://127.0.0.1:1420",
+                "tauri://localhost,http://tauri.localhost,https://tauri.localhost,http://localhost:1420,http://127.0.0.1:1420,http://localhost:1421,http://127.0.0.1:1421",
             ).split(",")
             if o.strip()
         ]
     )
+
+    # Built phone app (served at /m). Built by `npm run build:mobile`.
+    mobile_dist: Path = field(default_factory=lambda: Path(os.environ.get("NEXUS_MOBILE_DIST") or Path(__file__).resolve().parents[3] / "apps" / "desktop" / "dist-mobile"))
 
     # Disabled only by tests; never disable in normal operation.
     require_auth: bool = field(default_factory=lambda: _env_bool("NEXUS_REQUIRE_AUTH", True))
