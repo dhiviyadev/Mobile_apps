@@ -290,6 +290,13 @@ let centreSections = 0;
 /** Per layer of the centre chunk: bit z set when its row of 16 cells (all x) holds any block. */
 const centreRows = new Uint16Array(CHUNK_HEIGHT);
 
+/**
+ * What the last meshChunk call worked on (tests, perf logs): layers of the
+ * region, of the light box and of the centre chunk's mesh, and how many of the
+ * centre chunk's 16-high sections held blocks (empty ones are skipped).
+ */
+export const meshStats = { regionLayers: 0, lightLayers: 0, meshLayers: 0, sections: 0 };
+
 /** Mesh extent per axis; y is the centre chunk's highest block + 1 (set per mesh). */
 const DIMS = [CHUNK_SIZE, 0, CHUNK_SIZE];
 /**
@@ -378,6 +385,12 @@ export function meshChunk(region: Uint8Array, opts: MeshOptions = {}): ChunkMesh
   const sky = skyLight;
   const blk = blockLight;
   DIMS[1] = meshTop;
+  meshStats.regionLayers = height;
+  meshStats.lightLayers = lightTop;
+  meshStats.meshLayers = meshTop;
+  let sections = 0;
+  for (let bits = centreSections; bits; bits &= bits - 1) sections++;
+  meshStats.sections = sections;
 
   const get = (x: number, y: number, z: number): number => {
     if (y < 0) return 14; // bedrock below the world: never show bottom faces

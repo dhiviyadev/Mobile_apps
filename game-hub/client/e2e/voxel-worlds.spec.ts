@@ -109,6 +109,52 @@ test.describe('world library (offline)', () => {
     await expect(page.getByTestId('world-card')).toHaveCount(2);
   });
 
+  test('a pillar built far above the old height limit is still there after reopening the world', async ({ page }, info) => {
+    await newVoxelWorld(page, 'sandbox', 'Skyline');
+    await waitForGame(page);
+    // A brick pillar from the ground to y 199 with a ledge at its top, then the player on top of it.
+    const at = await g(page)((v) => {
+      const b = v.player.body;
+      const x = Math.floor(b.x) + 3;
+      const z = Math.floor(b.z);
+      let y = 1;
+      while (v.world.getBlock(x, y, z) !== 0) y++;
+      for (let k = y; k <= 199; k++) v.applyWorldEdit(x, k, z, 11);
+      v.applyWorldEdit(x + 1, 199, z, 11);
+      v.player.teleport(x + 0.5, 200, z + 0.5);
+      return { x, z };
+    });
+    // Place a block by hand on the ledge at y 200: pick stone, face +x and look down at the ledge's top.
+    if (info.project.use.hasTouch) await page.locator('.slot').nth(2).tap();
+    await page.evaluate(() => {
+      const v = (window as unknown as { __voxel: { player: { yaw: number; pitch: number }; hud: { select(i: number): void } } }).__voxel;
+      v.hud.select(2);
+      v.player.yaw = -Math.PI / 2;
+      v.player.pitch = -Math.atan(1.62);
+    });
+    await expect
+      .poll(() => g(page)((v) => ({ t: v.interaction.target && [v.interaction.target.x, v.interaction.target.y, v.interaction.target.z], ground: v.player.body.onGround, y: Math.round(v.player.body.y) })))
+      .toEqual({ t: [at.x + 1, 199, at.z], ground: true, y: 200 });
+    const item = await page.evaluate(() => {
+      const v = (window as unknown as { __voxel: { hud: { selected: number; slotViews: { item: number }[] } } }).__voxel;
+      return v.hud.slotViews[v.hud.selected].item;
+    });
+    await page.evaluate(() => (window as unknown as { __voxel: { input: { tap(a: string): void } } }).__voxel.input.tap('secondary'));
+    const read = (x: number, y: number, z: number) => page.evaluate(([x, y, z]) => (window as unknown as { __voxel: G }).__voxel.world.getBlock(x, y, z), [x, y, z]);
+    await expect.poll(() => read(at.x + 1, 200, at.z)).toBe(item);
+    expect(item).toBeGreaterThan(0);
+
+    await leaveGame(page);
+    await openWorldMenu(page);
+    await page.locator('[data-testid="world-card"]', { hasText: 'Skyline' }).getByTestId('play-world').click();
+    await waitForGame(page);
+    // The player is back on top of the pillar, and every block of it is there.
+    await expect.poll(() => g(page)((v) => Math.round(v.player.body.y))).toBe(200);
+    await expect.poll(() => read(at.x + 1, 200, at.z)).toBe(item);
+    for (const y of [64, 65, 120, 199]) expect(await read(at.x, y, at.z)).toBe(BRICK);
+    expect(await read(at.x, 200, at.z)).toBe(0);
+  });
+
   test('rename and delete from the menu', async ({ page }) => {
     await newVoxelWorld(page, 'sandbox', 'Draft');
     await waitForGame(page);

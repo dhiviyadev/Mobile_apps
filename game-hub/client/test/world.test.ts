@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
-import { Block, blockIndex, CHUNK_SIZE, CHUNK_VOLUME, flowingWater } from '@hub/shared';
+import { Block, blockIndex, CHUNK_HEIGHT, CHUNK_SIZE, flowingWater, TERRAIN_VOLUME } from '@hub/shared';
 import { type ChunkMesh, meshChunk } from '@hub/shared/voxel/mesher';
 import type { WorkerPool } from '../src/games/voxel/world/WorkerPool';
 import { World } from '../src/games/voxel/world/World';
 
 const GROUND = 4;
 
-/** Flat stone up to y = GROUND - 1, air above. */
+/** Flat stone up to y = GROUND - 1, air above (64 layers, like generated chunks). */
 function flatChunk(): Uint8Array {
-  const blocks = new Uint8Array(CHUNK_VOLUME);
+  const blocks = new Uint8Array(TERRAIN_VOLUME);
   for (let y = 0; y < GROUND; y++) for (let z = 0; z < CHUNK_SIZE; z++) for (let x = 0; x < CHUNK_SIZE; x++) blocks[blockIndex(x, y, z)] = Block.Stone;
   return blocks;
 }
@@ -158,6 +158,57 @@ describe('client world', () => {
     world.update(8, 8);
     expect(regionsMeshed()).toBeGreaterThan(after);
     await pool.flush();
+  });
+});
+
+describe('client world at the build height', () => {
+  /** Block arrays the world holds, by chunk key (private state, read for memory checks). */
+  const arrays = (world: World) => (world as unknown as { chunks: Map<string, { blocks: Uint8Array | null }> }).chunks;
+  /** Highest vertex of a chunk's opaque mesh. */
+  const meshTop = (world: World, key: string) => {
+    const mesh = world.group.children.find((m) => m.name === `chunk ${key}`) as THREE.Mesh | undefined;
+    const pos = mesh?.geometry.getAttribute('position');
+    let top = -1;
+    if (pos) for (let i = 0; i < pos.count; i++) top = Math.max(top, pos.getY(i));
+    return top;
+  };
+
+  it('places and breaks blocks at y 255, growing only the chunk built in', async () => {
+    const { world, settle } = makeWorld();
+    await settle();
+    expect(world.getBlock(5, 255, 5)).toBe(Block.Air);
+    world.setBlock(5, 255, 5, Block.Brick);
+    world.setBlock(5, 254, 5, Block.Lamp);
+    world.setBlock(5, CHUNK_HEIGHT, 5, Block.Brick); // past the build height: ignored
+    await settle();
+    expect(world.getBlock(5, 255, 5)).toBe(Block.Brick);
+    expect(world.getBlock(5, CHUNK_HEIGHT, 5)).toBe(Block.Air);
+    expect(world.reader()(5, 255, 5)).toBe(Block.Brick);
+    // Memory follows what is built: the full column in that chunk only.
+    expect(arrays(world).get('0,0')!.blocks!.length).toBe(16 * 16 * CHUNK_HEIGHT);
+    expect(arrays(world).get('1,0')!.blocks!.length).toBe(TERRAIN_VOLUME);
+    expect(meshTop(world, '0,0')).toBe(256);
+    expect(world.lightAt(6, 254, 5) & 15).toBe(14); // lit by the lamp up there
+    expect(world.lightAt(6, 200, 5)).toBe(0xf0);
+    world.setBlock(5, 255, 5, Block.Air);
+    world.setBlock(5, 254, 5, Block.Air);
+    await settle();
+    expect(world.getBlock(5, 255, 5)).toBe(Block.Air);
+    expect(meshTop(world, '0,0')).toBe(GROUND);
+    expect([...world.allEdits()].filter((e) => e[1] >= 254).sort()).toEqual([[5, 254, 5, Block.Air], [5, 255, 5, Block.Air]]);
+  });
+
+  it('puts tall edits back when a chunk is generated again (reopening a saved world)', async () => {
+    const { world, settle } = makeWorld();
+    // A saved world's edits arrive before the terrain (WorldLibrary -> replaceEdits).
+    world.replaceEdits([[3, 230, 3, Block.Brick], [3, 64, 3, Block.Glass], [20, 70, 4, Block.Stone]]);
+    await settle();
+    expect(world.getBlock(3, 230, 3)).toBe(Block.Brick);
+    expect(world.getBlock(3, 64, 3)).toBe(Block.Glass);
+    expect(world.getBlock(20, 70, 4)).toBe(Block.Stone);
+    expect(arrays(world).get('0,0')!.blocks!.length).toBe(16 * 16 * 240); // up to the section holding y 230
+    expect(arrays(world).get('1,0')!.blocks!.length).toBe(16 * 16 * 80);
+    expect(meshTop(world, '0,0')).toBe(231);
   });
 });
 
