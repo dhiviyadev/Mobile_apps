@@ -66,6 +66,13 @@ export function seedFromText(text: string, random: () => number = Math.random): 
   return h >>> 0;
 }
 
+let lastStamp = 0;
+/** Date.now(), but never the same twice in this page, so "last played" always orders worlds. */
+function stamp(): number {
+  lastStamp = Math.max(Date.now(), lastStamp + 1);
+  return lastStamp;
+}
+
 const newId = () => `w${Date.now().toString(36)}${Math.floor(Math.random() * 0xffffff).toString(36)}`;
 
 /** Runs writes one at a time, in order. */
@@ -149,7 +156,7 @@ export class WorldLibrary {
   async create(o: NewWorldOptions): Promise<WorldEntry> {
     const list = await this.list();
     const name = this.uniqueName(cleanWorldName(o.name) || 'New World', list);
-    const now = Date.now();
+    const now = stamp();
     const meta: WorldMeta = { name, createdAt: now, lastPlayed: now, playtimeMs: 0, ownerKey: this.myKey };
     const sections = new Map<string, Uint8Array>([[SECTION_TAGS.meta, encodeWorldMeta(meta)]]);
     if (o.mode === 'survival') sections.set(SECTION_TAGS.survival, encodeSurv((o.keepInventory ? RuleFlags.KeepInventory : 0) | (o.pvp ? RuleFlags.PvP : 0), 1));
@@ -186,7 +193,7 @@ export class WorldLibrary {
     const got = await this.load(id);
     if (!got) return null;
     const meta = worldMeta(got.world);
-    const now = Date.now();
+    const now = stamp();
     const name = this.uniqueName(`${meta.name} copy`, await this.list());
     // A copy is a new world: it does not share the original's online code.
     const copy = withMeta(got.world, { ...meta, name, createdAt: now, lastPlayed: now, playtimeMs: meta.playtimeMs, hostCode: undefined });
@@ -221,7 +228,7 @@ export class WorldLibrary {
     const fromFile = cleanWorldName(fileName.replace(/\.[^.]*$/, ''));
     const base = decodeHasName(world) ? meta.name : fromFile || meta.name;
     const name = this.uniqueName(base, await this.list());
-    const now = Date.now();
+    const now = stamp();
     this.askPersist();
     return this.save(newId(), withMeta(world, { ...meta, name, lastPlayed: now, createdAt: meta.createdAt || now }));
   }
@@ -296,7 +303,7 @@ export function legacyWorld(raw: string, mode: 'sandbox' | 'survival', myKey: st
   const p = save.player as { x?: number; y?: number; z?: number; yaw?: number; pitch?: number } | undefined;
   const ok = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
   const player = p && ok(p.x) && ok(p.y) && ok(p.z) ? { x: p.x, y: p.y, z: p.z, yaw: ok(p.yaw) ? p.yaw : 0, pitch: ok(p.pitch) ? p.pitch : 0 } : null;
-  const now = Date.now();
+  const now = stamp();
   const meta: WorldMeta = { name, createdAt: now, lastPlayed: now, playtimeMs: 0, ownerKey: myKey };
   // A save without `gen` predates the world upgrade: it keeps generator 1.
   const genVersion: GenVersion = isGenVersion(save.gen) ? save.gen : 1;
