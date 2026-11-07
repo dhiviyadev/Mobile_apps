@@ -1,0 +1,20 @@
+# Application data (database, indexed content, workspace, logs, secrets) never goes in git
+/data/
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+# Node / build
+node_modules/
+dist/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/binaries/
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+.DS_Store
