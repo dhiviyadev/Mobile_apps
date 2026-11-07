@@ -9,7 +9,7 @@ from ..db.database import dumps, loads
 from ..util import new_id, now_iso
 from .hermes import HermesUnavailable
 from .native_runtime import run_native
-from .profiles import decode_agent
+from .profiles import BUILTIN_AGENTS, decode_agent
 
 if TYPE_CHECKING:
     from ..app_state import AppState
@@ -22,7 +22,10 @@ class AgentService:
         self.state = state
 
     def list(self) -> list[dict[str, Any]]:
-        agents = [decode_agent(r) for r in self.state.db.query("SELECT * FROM agents ORDER BY builtin DESC, name")]
+        order = {a["id"]: i for i, a in enumerate(BUILTIN_AGENTS)}
+        rows = self.state.db.query("SELECT * FROM agents")
+        rows.sort(key=lambda r: (order.get(r["id"], 99), r["name"]))
+        agents = [decode_agent(r) for r in rows]
         stats = {r["agent_id"]: r for r in self.state.db.query(
             "SELECT agent_id, COUNT(*) AS runs, SUM(status='completed') AS completed, SUM(status='failed') AS failed, "
             "MAX(created_at) AS last_run_at FROM tasks WHERE agent_id IS NOT NULL GROUP BY agent_id")}

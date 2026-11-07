@@ -58,7 +58,7 @@ class SystemMonitor:
             db_ok = True
         except Exception:  # noqa: BLE001
             db_ok = False
-        db_size = st.settings.db_path.stat().st_size if st.settings.db_path.exists() else 0
+        db_size = sum(p.stat().st_size for p in st.settings.db_path.parent.glob(st.settings.db_path.name + "*") if p.is_file())
         return {
             "core": {"status": "ok", "uptime_s": round(time.time() - self._started), "pid": os.getpid(),
                      "rss_bytes": self._proc.memory_info().rss},

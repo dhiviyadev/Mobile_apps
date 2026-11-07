@@ -50,6 +50,7 @@ async def bootstrap(st: AppState = Depends(get_state)) -> dict[str, Any]:
         "folders": st.permissions.list_folders(),
         "memory": {"proposed": len(st.memory.list(status="proposed"))},
         "voice": st.voice.status(),
+        "cloud": st.cloud.status(),
     }
 
 
