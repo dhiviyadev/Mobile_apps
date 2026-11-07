@@ -75,7 +75,6 @@ import {
   asBytes,
   cleanWorldName,
   encodeWorld,
-  type GenVersion,
   type HostReadyMsg,
 } from '@hub/shared';
 import { config } from '../config';
