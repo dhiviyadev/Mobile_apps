@@ -6,6 +6,7 @@ import type { HermesStatus, ModelsResponse, VoiceStatus } from "@/lib/types";
 import { Badge, Button, Card, Input, SectionTitle, Select, Toggle } from "@/components/ui";
 import { HermesCard } from "./Agents";
 import { speak } from "@/hooks/useVoice";
+import { invoke, isTauri } from "@/lib/tauri";
 import { bytes, cls, relTime } from "@/lib/format";
 
 type Values = Record<string, unknown>;
@@ -100,6 +101,7 @@ function General({ values, set, stat }: { values: Values; set: SetFn; stat: Reco
       <Row label="Max agent steps" hint="Tool-calling iterations per native task.">
         <Select value={String(values["agents.max_steps"] ?? 8)} onChange={(v) => void set("agents.max_steps", Number(v))} options={[4, 6, 8, 12, 16].map((n) => ({ value: String(n), label: String(n) }))} />
       </Row>
+      {isTauri && <LaunchAtLogin />}
       <Row label="Data directory" hint="Database, workspace, logs and backups. Kept separate from source code.">
         <span className="font-mono text-[11.5px] text-muted">{String(stat.data_dir ?? "")}</span>
       </Row>
@@ -107,6 +109,20 @@ function General({ values, set, stat }: { values: Values; set: SetFn; stat: Reco
         <span className="text-[12px] text-fg-2">⌥Space floating assistant · ⌥⇧Space push-to-talk · ⌘K commands</span>
       </Row>
     </Card>
+  );
+}
+
+function LaunchAtLogin() {
+  const [on, setOn] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => void invoke<boolean>("launch_at_login_status").then((v) => setOn(Boolean(v))), []);
+  return (
+    <Row label="Launch at login" hint={err ?? "Start NEXUS in the menu bar when you log in."}>
+      <Toggle
+        checked={on}
+        onChange={(v) => void invoke<boolean>("set_launch_at_login", { enabled: v }).then((r) => setOn(Boolean(r))).catch((e: unknown) => setErr(String(e)))}
+      />
+    </Row>
   );
 }
 

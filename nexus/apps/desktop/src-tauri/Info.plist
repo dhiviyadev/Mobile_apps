@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>NEXUS uses the microphone only while you hold push-to-talk, to transcribe your voice locally on this Mac.</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>NEXUS can open applications and show notifications when you approve it.</string>
+  <key>LSUIElement</key>
+  <false/>
+</dict>
+</plist>

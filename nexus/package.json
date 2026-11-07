@@ -1,0 +1,14 @@
+{
+  "name": "nexus",
+  "private": true,
+  "version": "0.1.0",
+  "description": "NEXUS — local-first personal AI operating system for macOS",
+  "scripts": {
+    "audit": "./scripts/audit.sh",
+    "setup": "./scripts/setup.sh",
+    "dev": "./scripts/dev.sh",
+    "dev:web": "./scripts/dev.sh --web",
+    "build": "./scripts/build.sh",
+    "test": "cd services/core && .venv/bin/python -m pytest -q && cd ../../apps/desktop && npm run typecheck && npm test"
+  }
+}
