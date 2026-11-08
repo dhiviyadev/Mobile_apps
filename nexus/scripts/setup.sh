@@ -73,13 +73,16 @@ pip_install() {
   else "$VENV_PY" -m pip install -q "$@"; fi
 }
 (( USE_UV )) || "$VENV_PY" -m pip install -q --upgrade pip
-pip_install -e "$CORE[dev]"
+# PYTHONWARNINGS hides a harmless setuptools notice about editable installs.
+PYTHONWARNINGS=ignore pip_install -e "$CORE[dev]" 2> >(grep -v -e BuildBackendWarning -e "Please be careful" -e '^\s*\*\{10,\}' -e '^\s*!!\s*$' -e 'name as your package' -e 'WheelFile(wheel_path' >&2)
 echo "Using $("$VENV_PY" --version)"
 
 if [[ "$(uname -m)" == "arm64" ]] && ! "$VENV_PY" -c 'import mlx_whisper' 2>/dev/null; then
   echo "Local speech recognition: mlx-whisper runs Whisper on the Apple Silicon GPU (~100 MB + model download on first use)."
   if ask "Install mlx-whisper into the NEXUS venv?"; then
-    pip_install "mlx-whisper>=0.4"
+    echo "Installing mlx-whisper and its dependencies (a few hundred MB) — this usually takes 2–5 minutes…"
+    if (( USE_UV )); then uv pip install --python "$VENV_PY" "mlx-whisper>=0.4"
+    else "$VENV_PY" -m pip install --progress-bar on "mlx-whisper>=0.4"; fi
   fi
 fi
 if ! have ffmpeg; then
