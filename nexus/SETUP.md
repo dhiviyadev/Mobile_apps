@@ -17,7 +17,7 @@ usage (8765, 1420, 11434, 8642, 6333), LaunchAgents and nearby projects. Review 
 
 | Tool | Why | Install if missing |
 |---|---|---|
-| Python ≥ 3.11 | core service | `brew install python@3.12` |
+| Python ≥ 3.11 | core service | `brew install python@3.12` — or let `setup.sh` fetch a private copy via uv |
 | Node ≥ 20 | desktop UI build | `brew install node` |
 | Rust (stable) | Tauri shell | rustup (setup.sh offers it) |
 | Xcode Command Line Tools | Tauri macOS build | `xcode-select --install` |

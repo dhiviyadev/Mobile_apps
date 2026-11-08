@@ -15,9 +15,31 @@ have() { command -v "$1" >/dev/null 2>&1; }
 [[ "$(uname)" == "Darwin" ]] || echo "Warning: NEXUS targets macOS; continuing for development."
 
 say "Checking prerequisites"
-have python3 || { echo "python3 is required (brew install python@3.12)"; exit 1; }
-PYV=$(python3 -c 'import sys; print("%d%02d" % sys.version_info[:2])')
-(( PYV >= 311 )) || { echo "Python 3.11+ required (found $(python3 --version))"; exit 1; }
+# Python 3.11+: use any suitable interpreter already installed (macOS's own python3 is often 3.9).
+py_ok() { "$1" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1; }
+PY=""
+for cand in python3.13 python3.12 python3.11 /opt/homebrew/bin/python3 /usr/local/bin/python3 \
+            /Library/Frameworks/Python.framework/Versions/Current/bin/python3 python3; do
+  if have "$cand" || [[ -x "$cand" ]]; then
+    if py_ok "$cand"; then PY="$(command -v "$cand" || echo "$cand")"; break; fi
+  fi
+done
+USE_UV=0
+have uv && USE_UV=1
+if [[ -z "$PY" ]]; then
+  echo "NEXUS needs Python 3.11 or newer (found: $(python3 --version 2>&1 || echo none))."
+  if (( USE_UV )); then
+    echo "uv is installed; it will download a private Python 3.12 just for NEXUS."
+  elif ask "Install uv (https://astral.sh/uv, a small tool in ~/.local/bin) to fetch a private Python 3.12 for NEXUS? Your system Python is not changed."; then
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+    have uv && USE_UV=1
+  fi
+  if (( ! USE_UV )); then
+    echo "Install Python 3.12 (brew install python@3.12, or https://www.python.org/downloads/macos/), open a new Terminal and re-run this script."
+    exit 1
+  fi
+fi
 have node || { echo "Node.js 20+ is required (brew install node)"; exit 1; }
 if ! have cargo; then
   echo "Rust is required to build the desktop shell (Tauri)."
@@ -32,19 +54,32 @@ fi
 xcode-select -p >/dev/null 2>&1 || echo "Note: Xcode Command Line Tools are needed for Tauri builds (xcode-select --install)."
 
 say "Python environment for the core service ($CORE/.venv)"
-if have uv; then
-  uv venv -q "$CORE/.venv" 2>/dev/null || true
-  uv pip install -q --python "$CORE/.venv/bin/python" -e "$CORE[dev]"
-else
-  python3 -m venv "$CORE/.venv"
-  "$CORE/.venv/bin/pip" install -q --upgrade pip
-  "$CORE/.venv/bin/pip" install -q -e "$CORE[dev]"
+VENV_PY="$CORE/.venv/bin/python"
+# Recreate the venv if it exists but was built with a Python that's too old.
+if [[ -x "$VENV_PY" ]] && ! py_ok "$VENV_PY"; then
+  echo "Existing environment uses $("$VENV_PY" --version 2>&1); rebuilding it with Python 3.11+."
+  rm -rf "$CORE/.venv"
 fi
+if [[ ! -x "$VENV_PY" ]]; then
+  if (( USE_UV )); then
+    uv venv -q --python "${PY:-3.12}" "$CORE/.venv"
+  else
+    "$PY" -m venv "$CORE/.venv"
+  fi
+fi
+# uv-built environments have no pip; install with whichever tool built it.
+pip_install() {
+  if (( USE_UV )); then uv pip install -q --python "$VENV_PY" "$@"
+  else "$VENV_PY" -m pip install -q "$@"; fi
+}
+(( USE_UV )) || "$VENV_PY" -m pip install -q --upgrade pip
+pip_install -e "$CORE[dev]"
+echo "Using $("$VENV_PY" --version)"
 
-if [[ "$(uname -m)" == "arm64" ]] && ! "$CORE/.venv/bin/python" -c 'import mlx_whisper' 2>/dev/null; then
+if [[ "$(uname -m)" == "arm64" ]] && ! "$VENV_PY" -c 'import mlx_whisper' 2>/dev/null; then
   echo "Local speech recognition: mlx-whisper runs Whisper on the Apple Silicon GPU (~100 MB + model download on first use)."
   if ask "Install mlx-whisper into the NEXUS venv?"; then
-    "$CORE/.venv/bin/pip" install -q "mlx-whisper>=0.4" || "$CORE/.venv/bin/python" -m pip install -q "mlx-whisper>=0.4"
+    pip_install "mlx-whisper>=0.4"
   fi
 fi
 if ! have ffmpeg; then
@@ -66,7 +101,7 @@ cat > "$CONFIG_DIR/launcher.json" <<JSON
 JSON
 
 say "Running backend tests"
-(cd "$CORE" && .venv/bin/python -m pytest -q) || echo "Some tests failed — see output above."
+(cd "$CORE" && "$VENV_PY" -m pytest -q) || echo "Some tests failed — see output above."
 
 cat <<EOF
 
