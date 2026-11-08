@@ -3,6 +3,11 @@
 # from this checkout using launcher.json written by setup.sh.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Rust installed by setup.sh lives in ~/.cargo; load it even if this shell started before the install.
+if ! command -v cargo >/dev/null 2>&1 && [[ -f "$HOME/.cargo/env" ]]; then
+  # shellcheck disable=SC1091
+  source "$HOME/.cargo/env"
+fi
 cd "$ROOT/apps/desktop"
 npm run typecheck
 npm test

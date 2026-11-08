@@ -106,6 +106,10 @@ JSON
 say "Running backend tests"
 (cd "$CORE" && "$VENV_PY" -m pytest -q) || echo "Some tests failed — see output above."
 
+if [[ -f "$HOME/.cargo/env" ]] && ! command -v cargo >/dev/null 2>&1; then
+  echo "Note: Rust was just installed. scripts/dev.sh loads it automatically; other new Terminal windows will have it too."
+fi
+
 cat <<EOF
 
 NEXUS is set up.

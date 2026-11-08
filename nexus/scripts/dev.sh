@@ -7,6 +7,11 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export NEXUS_DATA_DIR="${NEXUS_DATA_DIR:-$ROOT/data}"
+# Rust installed by setup.sh lives in ~/.cargo; load it even if this shell started before the install.
+if ! command -v cargo >/dev/null 2>&1 && [[ -f "$HOME/.cargo/env" ]]; then
+  # shellcheck disable=SC1091
+  source "$HOME/.cargo/env"
+fi
 PY="$ROOT/services/core/.venv/bin/python"
 [[ -x "$PY" ]] || { echo "Run ./scripts/setup.sh first."; exit 1; }
 
@@ -28,5 +33,12 @@ case "${1:-}" in
   --web)
     echo "Open: http://127.0.0.1:1420/?token=$(cat "$NEXUS_DATA_DIR/secrets/api_token")"
     (cd "$ROOT/apps/desktop" && npx vite) ;;
-  *) (cd "$ROOT/apps/desktop" && NEXUS_REPO="$ROOT" NEXUS_PYTHON="$PY" npx tauri dev) ;;
+  *)
+    if ! command -v cargo >/dev/null 2>&1; then
+      echo "Rust (cargo) isn't installed, so the desktop app can't be built yet."
+      echo "Install it with: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+      echo "Meanwhile you can use NEXUS in your browser: ./scripts/dev.sh --web"
+      exit 1
+    fi
+    (cd "$ROOT/apps/desktop" && NEXUS_REPO="$ROOT" NEXUS_PYTHON="$PY" npx tauri dev) ;;
 esac
