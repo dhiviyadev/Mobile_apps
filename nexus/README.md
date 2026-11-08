@@ -47,7 +47,8 @@ Then pull a model if you don't have one (see [SETUP.md](SETUP.md#choosing-models
 ollama pull qwen3:14b && ollama pull nomic-embed-text
 ```
 
-Build a standalone `NEXUS.app` + `.dmg`: `./scripts/build.sh`.
+Install it as a normal Mac app (appears in Applications, Launchpad and Spotlight; starts and stops
+the NEXUS core by itself): `./scripts/install-app.sh`. A distributable `.dmg`: `./scripts/build.sh`.
 
 ## Repository layout
 

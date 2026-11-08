@@ -83,6 +83,25 @@ pub fn data_dir(l: &Launcher) -> PathBuf {
     home().join("Library/Application Support/NEXUS")
 }
 
+fn tool_path() -> String {
+    let h = home();
+    let mut dirs: Vec<String> = vec![
+        h.join(".local/bin").to_string_lossy().into_owned(),
+        h.join(".cargo/bin").to_string_lossy().into_owned(),
+        "/opt/homebrew/bin".into(),
+        "/opt/homebrew/sbin".into(),
+        "/usr/local/bin".into(),
+        "/Applications/Tailscale.app/Contents/MacOS".into(),
+    ];
+    if let Ok(existing) = std::env::var("PATH") {
+        dirs.extend(existing.split(':').map(String::from));
+    }
+    dirs.extend(["/usr/bin", "/bin", "/usr/sbin", "/sbin"].map(String::from));
+    let mut seen = std::collections::HashSet::new();
+    dirs.retain(|d| !d.is_empty() && seen.insert(d.clone()));
+    dirs.join(":")
+}
+
 /// Minimal blocking GET /health — avoids pulling an HTTP client into the shell.
 pub fn healthy() -> bool {
     let addr = SocketAddr::from(([127, 0, 0, 1], CORE_PORT));
@@ -115,6 +134,9 @@ pub fn spawn(state: &CoreProcess) -> Result<(), String> {
     let child = Command::new(&python)
         .args(["-m", "nexus_core"])
         .current_dir(repo.join("services/core"))
+        // Apps opened from Finder get a minimal PATH; add the usual tool locations so the core can
+        // find hermes, ffmpeg, whisper-cli, piper and tailscale like it does from Terminal.
+        .env("PATH", tool_path())
         .env("NEXUS_DATA_DIR", &data)
         .env("NEXUS_HOST", "127.0.0.1")
         .env("NEXUS_PORT", CORE_PORT.to_string())

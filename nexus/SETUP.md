@@ -45,6 +45,19 @@ core) and runs the backend test suite. It asks before anything global.
 ./scripts/build.sh        # NEXUS.app + .dmg in apps/desktop/src-tauri/target/…/bundle
 ```
 
+**Install NEXUS as an app** (recommended for daily use):
+
+```bash
+./scripts/install-app.sh
+```
+
+Builds `NEXUS.app` (5–10 minutes the first time), installs it in `/Applications` (or
+`~/Applications` if you can't write there) and opens it. From then on open NEXUS like any other app —
+Applications, Launchpad, Spotlight or the Dock. The app starts the NEXUS core itself (using the
+environment `setup.sh` created) and stops it when you quit; your data in `data/` is shared with
+`dev.sh`. To update: `git pull && ./scripts/install-app.sh`. The app runs from this checkout, so keep
+the `nexus` folder where it is.
+
 On first launch macOS asks for **Microphone** access the first time you use push-to-talk. NEXUS
 does not need Full Disk Access — it only reads folders you approve inside the app.
 

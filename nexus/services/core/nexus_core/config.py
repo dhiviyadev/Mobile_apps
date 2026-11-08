@@ -27,6 +27,18 @@ def _default_data_dir() -> Path:
     return Path.home() / ".local" / "share" / "nexus"
 
 
+def _find_tool(name: str) -> str | None:
+    """PATH first, then the usual install locations (apps launched from Finder get a minimal PATH)."""
+    found = shutil.which(name)
+    if found:
+        return found
+    for d in (Path.home() / ".local" / "bin", Path("/opt/homebrew/bin"), Path("/usr/local/bin"), Path.home() / ".hermes" / "bin"):
+        p = d / name
+        if p.is_file() and os.access(p, os.X_OK):
+            return str(p)
+    return None
+
+
 def _env_bool(name: str, default: bool) -> bool:
     raw = os.environ.get(name)
     if raw is None:
@@ -46,7 +58,7 @@ class Settings:
     # Hermes: NEXUS never writes Hermes configuration. These only tell NEXUS how to reach it.
     hermes_mode: str = field(default_factory=lambda: os.environ.get("NEXUS_HERMES_MODE", "auto"))  # auto|api|cli|off
     hermes_api_url: str = field(default_factory=lambda: os.environ.get("NEXUS_HERMES_API_URL", "http://127.0.0.1:8642"))
-    hermes_bin: str | None = field(default_factory=lambda: os.environ.get("NEXUS_HERMES_BIN") or shutil.which("hermes"))
+    hermes_bin: str | None = field(default_factory=lambda: os.environ.get("NEXUS_HERMES_BIN") or _find_tool("hermes"))
     hermes_home: Path = field(default_factory=lambda: Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes"))
 
     # Allowed browser origins for the desktop webview / dev server.
