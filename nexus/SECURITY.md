@@ -69,6 +69,8 @@ permission-checked tools; anything destructive is a *proposal* until you approve
 
 ## Data & secrets
 
+* Logs never contain tokens: a logging filter redacts `token=…` and `Bearer …` everywhere (including the web server's own WebSocket lines), and `data/logs` is readable only by you.
+
 * Data stays in `data/` (SQLite, workspace, logs, backups) — never in the source tree or git.
 * Cloud API keys and the Hermes key are stored in the **macOS Keychain**; the API only reports
   whether a key exists.

@@ -124,3 +124,18 @@ def test_client_errors_are_logged(client, caplog):
     assert r.status_code == 200
     assert any("TypeError: x is undefined" in rec.getMessage() for rec in caplog.records)
     assert client.post("/api/client-errors", json={"message": "x"}, headers={"Authorization": ""}).status_code == 401
+
+
+def test_tokens_are_redacted_from_logs():
+    import logging
+
+    from nexus_core.__main__ import RedactSecrets
+
+    f = RedactSecrets()
+    rec = logging.LogRecord("uvicorn.error", logging.INFO, __file__, 1, '%s - "WebSocket %s" [accepted]',
+                            ("127.0.0.1:50964", "/ws?token=u912RvqxrYc5PrbvlP5mJ0KjA-8mFagn"), None)
+    f.filter(rec)
+    assert "u912Rvqx" not in rec.getMessage() and "token=***" in rec.getMessage()
+    rec2 = logging.LogRecord("x", logging.INFO, __file__, 1, "Authorization: Bearer abc.def-123", None, None)
+    f.filter(rec2)
+    assert rec2.getMessage() == "Authorization: Bearer ***"
