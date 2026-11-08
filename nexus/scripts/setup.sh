@@ -74,7 +74,7 @@ pip_install() {
 }
 (( USE_UV )) || "$VENV_PY" -m pip install -q --upgrade pip
 # PYTHONWARNINGS hides a harmless setuptools notice about editable installs.
-PYTHONWARNINGS=ignore pip_install -e "$CORE[dev]" 2> >(grep -v -e BuildBackendWarning -e "Please be careful" -e '^\s*\*\{10,\}' -e '^\s*!!\s*$' -e 'name as your package' -e 'WheelFile(wheel_path' >&2)
+PYTHONWARNINGS=ignore pip_install -e "$CORE[dev]" 2> >(grep -v -F -e BuildBackendWarning -e "Please be careful" -e "name as your package" -e "WheelFile(wheel_path" -e "*****" -e "!!" >&2 || true)
 echo "Using $("$VENV_PY" --version)"
 
 if [[ "$(uname -m)" == "arm64" ]] && ! "$VENV_PY" -c 'import mlx_whisper' 2>/dev/null; then
