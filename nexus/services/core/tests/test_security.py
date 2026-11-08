@@ -100,3 +100,17 @@ def test_disallowed_read_via_api_is_403_and_audited(client, tmp_path):
 def test_secrets_never_returned(client):
     r = client.get("/api/secrets").json()
     assert all(isinstance(v, bool) for v in r["secrets"].values())
+
+
+def test_macos_system_path_rules():
+    """macOS resolves /var -> /private/var. User temp folders must stay approvable; system data must not."""
+    from nexus_core.permissions.policy import _UNAPPROVABLE_EXACT, is_system_path
+
+    assert not is_system_path("/private/var/folders/sc/7_sfdhpj7j53vg0nfgv5xrj40000gn/T/project")
+    assert not is_system_path("/Users/me/Documents/REstack")
+    assert not is_system_path("/Volumes/Work/Clients")
+    for p in ["/private/var/db/dslocal", "/private/var/root", "/private/var/log/system.log", "/private/var/vm",
+              "/private/etc/hosts", "/System/Library", "/usr/local/bin", "/var/lib/x"]:
+        assert is_system_path(p), p
+    for p in ["/private/var", "/private/tmp", "/private/var/folders", "/var", "/tmp", "/Users", "/Volumes"]:
+        assert p in _UNAPPROVABLE_EXACT, p

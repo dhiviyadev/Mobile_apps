@@ -60,8 +60,23 @@ _DENIED_HOME_SUBPATHS = [
     "Library/Group Containers",
 ]
 # Folders that cannot be approved as a whole (too broad).
-_UNAPPROVABLE_EXACT = {"/", "/Users", "/home", "/System", "/Library", "/Applications", "/private", "/etc", "/var", "/usr", "/bin", "/sbin", "/opt", "/Volumes"}
-_UNAPPROVABLE_PREFIXES = ["/System", "/usr", "/bin", "/sbin", "/etc", "/private/etc", "/private/var", "/dev", "/proc", "/sys"]
+# Too broad to approve as a whole (subfolders may still be approved). On macOS /var, /tmp and /etc
+# are symlinks into /private, and paths are compared after realpath, so list both spellings.
+_UNAPPROVABLE_EXACT = {"/", "/Users", "/home", "/System", "/Library", "/Applications", "/private", "/etc", "/var", "/tmp",
+                       "/usr", "/bin", "/sbin", "/opt", "/Volumes", "/private/var", "/private/tmp", "/private/etc",
+                       "/private/var/folders"}
+# Never approvable, including anything inside. Deliberately NOT all of /private/var: per-user
+# temporary folders live in /private/var/folders on macOS and are ordinary user files.
+_UNAPPROVABLE_PREFIXES = ["/System", "/usr", "/bin", "/sbin", "/etc", "/dev", "/proc", "/sys", "/private/etc",
+                          "/private/var/db", "/private/var/root", "/private/var/log", "/private/var/vm",
+                          "/private/var/run", "/private/var/audit", "/private/var/protected", "/private/var/backups",
+                          "/private/var/mobile", "/private/var/select", "/private/var/networkd", "/private/var/spool",
+                          "/var/lib", "/var/log", "/var/run", "/var/spool", "/var/backups"]
+
+
+def is_system_path(path: str) -> bool:
+    """True for system locations that can never be approved (path must already be resolved)."""
+    return any(path == pre or path.startswith(pre + "/") for pre in _UNAPPROVABLE_PREFIXES)
 _DENIED_FILENAMES = {".env", ".env.local", ".env.production", "id_rsa", "id_ed25519", "credentials.json", "keychain-db"}
 
 
@@ -104,7 +119,7 @@ class PermissionService:
             raise PermissionDenied("Folder does not exist or is not a directory", str(p))
         if str(p) in _UNAPPROVABLE_EXACT or p == self.home or p == Path(p.anchor):
             raise PermissionDenied("This folder is too broad to approve. Choose a specific project folder.", str(p))
-        if any(str(p) == pre or str(p).startswith(pre + "/") for pre in _UNAPPROVABLE_PREFIXES):
+        if is_system_path(str(p)):
             raise PermissionDenied("System folders cannot be approved.", str(p))
         if p == self.home / "Library" or self._hits_denylist(p):
             raise PermissionDenied("This location holds credentials or private app data and cannot be approved.", str(p))
