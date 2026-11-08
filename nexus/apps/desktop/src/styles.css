@@ -617,3 +617,16 @@ html[data-motion="calm"] .rise { animation: none; }
   0% { box-shadow: 0 0 0 0 rgb(220 228 240 / 0.35); }
   100% { box-shadow: 0 0 0 10px rgb(220 228 240 / 0); }
 }
+
+/* Page entrance (CSS, so it completes even if JavaScript animation timers are throttled). */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(12px) scale(0.993); }
+  to { opacity: 1; transform: none; }
+}
+.page-enter {
+  animation: page-enter 380ms var(--ease-spring) both;
+}
+html[data-motion="calm"] .page-enter { animation-duration: 1ms; }
+@media (prefers-reduced-motion: reduce) {
+  .page-enter, .rise { animation: none !important; }
+}

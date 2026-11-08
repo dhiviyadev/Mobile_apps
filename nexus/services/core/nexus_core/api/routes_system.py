@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+
 import shutil
 import tarfile
 from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..app_state import AppState
 from ..models.ollama import OllamaError
@@ -16,6 +18,7 @@ from ..system.macos_metrics import hardware
 from .deps import get_state, not_found
 
 router = APIRouter(prefix="/api")
+log = logging.getLogger("nexus_core.ui")
 
 
 @router.get("/bootstrap")
@@ -54,6 +57,22 @@ async def bootstrap(st: AppState = Depends(get_state)) -> dict[str, Any]:
         "voice": st.voice.status(),
         "cloud": st.cloud.status(),
     }
+
+
+class ClientError(BaseModel):
+    message: str = Field("", max_length=2000)
+    stack: str = Field("", max_length=4000)
+    context: str = Field("", max_length=2000)
+    url: str = Field("", max_length=500)
+    user_agent: str = Field("", max_length=400)
+
+
+@router.post("/client-errors")
+def client_error(body: ClientError, request: Request) -> dict[str, Any]:
+    """Frontend crashes are written to data/logs/core.log so they can be diagnosed without devtools."""
+    log.error("UI error (%s) %s\n  context: %s\n  url: %s\n  ua: %s\n  stack: %s", request.state.actor, body.message,
+              body.context.replace("\n", " | ")[:1500], body.url, body.user_agent, body.stack.replace("\n", " | ")[:3000])
+    return {"logged": True}
 
 
 @router.get("/system/status")

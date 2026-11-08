@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { KeyRound, Loader2, RefreshCw, X } from "lucide-react";
 import { useCore } from "@/stores/core";
 import { useChat } from "@/stores/chat";
@@ -106,15 +107,9 @@ export function App() {
         <TitleBar title={TITLES[workspace]} />
         <HaltedBanner />
         <div className={workspace === "chat" ? "min-h-0 flex-1" : "min-h-0 flex-1 overflow-y-auto"}>
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={workspace}
-              initial={{ opacity: 0, y: 14, scale: 0.992 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -6, scale: 0.996, transition: { duration: 0.12 } }}
-              transition={{ type: "spring", stiffness: 380, damping: 34, mass: 0.9 }}
-              className="h-full"
-            >
+          {/* Keyed page with a CSS entrance: a new page never waits on the old page's exit animation. */}
+          <div key={workspace} className="page-enter h-full">
+            <ErrorBoundary area={`workspace:${workspace}`}>
               {workspace === "home" && <Home />}
               {workspace === "chat" && <Chat />}
               {workspace === "agents" && <Agents />}
@@ -122,8 +117,8 @@ export function App() {
               {workspace === "automations" && <Automations />}
               {workspace === "system" && <System />}
               {workspace === "settings" && <Settings />}
-            </motion.div>
-          </AnimatePresence>
+            </ErrorBoundary>
+          </div>
         </div>
       </main>
       <TaskDrawer />

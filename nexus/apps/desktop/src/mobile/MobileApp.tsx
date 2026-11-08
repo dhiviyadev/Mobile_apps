@@ -9,6 +9,7 @@ import { Ambient } from "@/components/Ambient";
 import { Orb, useOrbState, usePauseWhenHidden } from "@/components/Orb";
 import { Button, Dot } from "@/components/ui";
 import { cls } from "@/lib/format";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { MChat, MHome, MKnowledge, MMore, MTasks } from "./screens";
 
 export type Tab = "home" | "chat" | "tasks" | "knowledge" | "more";
@@ -99,22 +100,15 @@ export function MobileApp() {
           </div>
         )}
         <main className="relative min-h-0 flex-1">
-          <AnimatePresence mode="popLayout" initial={false}>
-            <motion.div
-              key={tab}
-              initial={{ opacity: 0, y: 10, scale: 0.99 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, transition: { duration: 0.1 } }}
-              transition={SPRING}
-              className="absolute inset-0"
-            >
+          <div key={tab} className="page-enter absolute inset-0">
+            <ErrorBoundary area={`mobile:${tab}`}>
               {tab === "home" && <MHome go={setTab} />}
               {tab === "chat" && <MChat />}
               {tab === "tasks" && <MTasks />}
               {tab === "knowledge" && <MKnowledge />}
               {tab === "more" && <MMore />}
-            </motion.div>
-          </AnimatePresence>
+            </ErrorBoundary>
+          </div>
         </main>
         <TabBar tab={tab} setTab={setTab} />
       </div>

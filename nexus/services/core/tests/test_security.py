@@ -114,3 +114,13 @@ def test_macos_system_path_rules():
         assert is_system_path(p), p
     for p in ["/private/var", "/private/tmp", "/private/var/folders", "/var", "/tmp", "/Users", "/Volumes"]:
         assert p in _UNAPPROVABLE_EXACT, p
+
+
+def test_client_errors_are_logged(client, caplog):
+    import logging
+
+    with caplog.at_level(logging.ERROR, logger="nexus_core.ui"):
+        r = client.post("/api/client-errors", json={"message": "TypeError: x is undefined", "context": "workspace:chat"})
+    assert r.status_code == 200
+    assert any("TypeError: x is undefined" in rec.getMessage() for rec in caplog.records)
+    assert client.post("/api/client-errors", json={"message": "x"}, headers={"Authorization": ""}).status_code == 401
