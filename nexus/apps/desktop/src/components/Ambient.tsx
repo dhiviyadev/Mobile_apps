@@ -8,21 +8,34 @@ export type Motion = "full" | "calm";
 const KEY = "nexus.appearance";
 
 /** Apply appearance attributes to <html>. Called early (before React) from main.tsx to avoid a flash. */
-export function applyAppearance(material: Material, motion: Motion): void {
+/** transparency: 0 (frosted) … 100 (clearest). Maps to the glass tint's alpha. */
+export function applyAppearance(material: Material, motion: Motion, transparency?: number): void {
   const root = document.documentElement;
   root.dataset.material = material;
   root.dataset.motion = motion;
+  let t = transparency;
+  if (t === undefined) {
+    try {
+      t = (JSON.parse(localStorage.getItem(KEY) ?? "null") as { transparency?: number } | null)?.transparency;
+    } catch {
+      t = undefined;
+    }
+  }
+  const tv = Math.max(0, Math.min(100, t ?? DEFAULT_TRANSPARENCY));
+  root.style.setProperty("--glass-alpha", (0.6 - (tv / 100) * 0.52).toFixed(3));
   try {
-    localStorage.setItem(KEY, JSON.stringify({ material, motion }));
+    localStorage.setItem(KEY, JSON.stringify({ material, motion, transparency: tv }));
   } catch {
     /* storage unavailable */
   }
 }
 
+export const DEFAULT_TRANSPARENCY = 73;
+
 export function restoreAppearance(): void {
   try {
-    const v = JSON.parse(localStorage.getItem(KEY) ?? "null") as { material?: Material; motion?: Motion } | null;
-    applyAppearance(v?.material ?? "ambient", v?.motion ?? "full");
+    const v = JSON.parse(localStorage.getItem(KEY) ?? "null") as { material?: Material; motion?: Motion; transparency?: number } | null;
+    applyAppearance(v?.material ?? "ambient", v?.motion ?? "full", v?.transparency);
   } catch {
     applyAppearance("ambient", "full");
   }
@@ -33,7 +46,7 @@ function useAppearanceSync(fromCore: boolean): void {
   const appearance = useCore((s) => s.boot?.appearance);
   const activity = useOrbState();
   useEffect(() => {
-    if (fromCore && appearance) applyAppearance(appearance.material, appearance.motion);
+    if (fromCore && appearance) applyAppearance(appearance.material, appearance.motion, appearance.transparency);
   }, [appearance, fromCore]);
   useEffect(() => {
     document.documentElement.dataset.activity = activity;

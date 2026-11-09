@@ -47,6 +47,9 @@ DEFAULTS: dict[str, Any] = {
     # Appearance (shared by the main and floating windows)
     "appearance.material": "ambient",  # ambient | desktop | solid
     "appearance.motion": "full",  # full | calm
+    "appearance.transparency": 73,  # 0 (frosted) … 100 (clearest glass)
+    # In-app updates (checking only; installing always needs a click)
+    "updates.auto_check": True,
     # Remote access for paired phones (off until the user enables it)
     "remote.enabled": False,
     "remote.hostnames": [],  # e.g. ["my-mac.tail1234.ts.net"]

@@ -17,11 +17,13 @@ interface CoreState {
   taskEvents: Record<string, TaskEvent[]>;
   taskText: Record<string, string>;
   workspace: Workspace;
+  settingsSection: string;
   focusTaskId: string | null;
   paletteOpen: boolean;
   listening: boolean;
   speaking: boolean;
   setWorkspace: (w: Workspace) => void;
+  openSettings: (section: string) => void;
   setPalette: (open: boolean) => void;
   setListening: (v: boolean) => void;
   setSpeaking: (v: boolean) => void;
@@ -48,11 +50,13 @@ export const useCore = create<CoreState>((set, get) => ({
   taskEvents: {},
   taskText: {},
   workspace: "home",
+  settingsSection: "general",
   focusTaskId: null,
   paletteOpen: false,
   listening: false,
   speaking: false,
   setWorkspace: (workspace) => set({ workspace }),
+  openSettings: (settingsSection) => set({ workspace: "settings", settingsSection }),
   setPalette: (paletteOpen) => set({ paletteOpen }),
   setListening: (listening) => set({ listening }),
   setSpeaking: (speaking) => set({ speaking }),
@@ -89,6 +93,7 @@ export const useCore = create<CoreState>((set, get) => ({
     bus.on<Approval>("approval.decided", (e) => set((s) => ({ approvals: s.approvals.filter((a) => a.id !== e.data.id) })));
     bus.on<Notification>("notification.created", (e) => set((s) => ({ notifications: [e.data, ...s.notifications].slice(0, 30) })));
     bus.on<{ halted: boolean }>("system.halted", (e) => set({ halted: e.data.halted }));
+    bus.on("system.update", () => scheduleRefresh(get));
     for (const t of ["automation", "agent", "conversation", "knowledge", "memory", "settings"]) bus.on(t, () => scheduleRefresh(get));
     await get().refresh();
     void bus.connect();

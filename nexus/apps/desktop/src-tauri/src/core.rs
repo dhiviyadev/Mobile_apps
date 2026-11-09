@@ -138,6 +138,7 @@ pub fn spawn(state: &CoreProcess) -> Result<(), String> {
         // find hermes, ffmpeg, whisper-cli, piper and tailscale like it does from Terminal.
         .env("PATH", tool_path())
         .env("NEXUS_DATA_DIR", &data)
+        .env("NEXUS_LAUNCHED_BY_APP", "1")
         .env("NEXUS_HOST", "127.0.0.1")
         .env("NEXUS_PORT", CORE_PORT.to_string())
         .stdin(Stdio::null())

@@ -107,6 +107,7 @@ export interface Approval {
 
 export interface Notification {
   id: string;
+  link?: string | null;
   title: string;
   body: string;
   level: string;
@@ -244,7 +245,7 @@ export interface VoiceStatus {
 
 export interface Bootstrap {
   profile: { name: string };
-  appearance: { material: "ambient" | "desktop" | "solid"; motion: "full" | "calm" };
+  appearance: { material: "ambient" | "desktop" | "solid"; motion: "full" | "calm"; transparency: number };
   hardware: Record<string, unknown>;
   halted: boolean;
   ollama: { online: boolean; installed: number; running: string[]; default_model: string | null };
@@ -259,6 +260,7 @@ export interface Bootstrap {
   folders: Folder[];
   memory: { proposed: number };
   voice: VoiceStatus;
+  update: { available: boolean; behind: number; applying: boolean };
   cloud: { enabled: boolean; provider: string; model: string; has_key: boolean; allow_documents: boolean; keychain_available: boolean };
 }
 

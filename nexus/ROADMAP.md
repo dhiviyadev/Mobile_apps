@@ -31,6 +31,11 @@ Legend: ✅ done and tested · 🟡 implemented, needs verification on the targe
 - ✅ Shared state through the core event bus (verified: mini → main live update)
 - 🟡 macOS vibrancy/transparency and shortcut conflicts (e.g. with Spotlight/Raycast) on your Mac
 
+## Updates & appearance
+- ✅ In-app updates: automatic checks (git fetch, NEXUS-folder commits only), title-bar pill, notification, "What's new", one-click update with live log; detached updater survives the app restarting; refuses local edits; phone can't trigger it (6 tests, incl. real git repos and a full rehearsal of update.sh)
+- ✅ Glass transparency slider (Settings → Appearance), clearer default
+- 🟡 "Update & restart" for the installed app on macOS (rebuild + reopen) — exercised via install-app.sh, needs your Mac
+
 ## Phone companion app
 - ✅ Installable web app (iPhone/Android) served by the core at `/m`: Home with approvals first, Chat, Tasks (run agents, live timelines in swipe-to-dismiss sheets), Search + memory review, Mac status/automations/emergency stop; liquid-glass UI with spring tab pill
 - ✅ Remote access off by default; Tailscale-served HTTPS; pairing codes (single use, 5 min, rate-limited) → per-device hashed, revocable tokens; restricted remote role; audit trail (11 tests)

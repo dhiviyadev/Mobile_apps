@@ -7,14 +7,14 @@ import type { HermesStatus, ModelsResponse, VoiceStatus } from "@/lib/types";
 import { Badge, Button, Card, Input, SectionTitle, Segmented, Select, Toggle } from "@/components/ui";
 import { Orb } from "@/components/Orb";
 import { QRCode } from "@/components/QRCode";
-import { applyAppearance, type Material, type Motion } from "@/components/Ambient";
+import { applyAppearance, DEFAULT_TRANSPARENCY, type Material, type Motion } from "@/components/Ambient";
 import { HermesCard } from "./Agents";
 import { speak } from "@/hooks/useVoice";
 import { invoke, isTauri } from "@/lib/tauri";
 import { bytes, cls, relTime } from "@/lib/format";
 
 type Values = Record<string, unknown>;
-type Section = "general" | "appearance" | "phone" | "models" | "hermes" | "cloud" | "voice" | "scripts" | "security" | "backup";
+type Section = "general" | "appearance" | "phone" | "updates" | "models" | "hermes" | "cloud" | "voice" | "scripts" | "security" | "backup";
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: "general", label: "General" },
@@ -26,11 +26,13 @@ const SECTIONS: { id: Section; label: string }[] = [
   { id: "voice", label: "Voice" },
   { id: "scripts", label: "Scripts & apps" },
   { id: "security", label: "Security & audit" },
+  { id: "updates", label: "Updates" },
   { id: "backup", label: "Backup" },
 ];
 
 export function Settings() {
-  const [section, setSection] = useState<Section>("general");
+  const section = useCore((s) => s.settingsSection) as Section;
+  const setSection = (id: Section) => useCore.getState().openSettings(id);
   const [values, setValues] = useState<Values>({});
   const [stat, setStat] = useState<Record<string, unknown>>({});
   const refresh = useCore((s) => s.refresh);
@@ -66,6 +68,7 @@ export function Settings() {
         {section === "general" && <General values={values} set={set} stat={stat} />}
         {section === "appearance" && <Appearance values={values} set={set} />}
         {section === "phone" && <Phone />}
+        {section === "updates" && <Updates values={values} set={set} />}
         {section === "models" && <Models values={values} set={set} />}
         {section === "hermes" && <Hermes />}
         {section === "cloud" && <CloudSettings values={values} set={set} />}
@@ -130,8 +133,10 @@ function General({ values, set, stat }: { values: Values; set: SetFn; stat: Reco
 function Appearance({ values, set }: { values: Values; set: SetFn }) {
   const material = (values["appearance.material"] as Material) ?? "ambient";
   const motion = (values["appearance.motion"] as Motion) ?? "full";
+  const [transparency, setTransparency] = useState<number>(Number(values["appearance.transparency"] ?? DEFAULT_TRANSPARENCY));
+  useEffect(() => setTransparency(Number(values["appearance.transparency"] ?? DEFAULT_TRANSPARENCY)), [values]);
   const change = (m: Material, mo: Motion) => {
-    applyAppearance(m, mo); // instant locally; the other window follows via the core
+    applyAppearance(m, mo, transparency); // instant locally; the other window follows via the core
     void set("appearance.material", m);
     void set("appearance.motion", mo);
   };
@@ -162,6 +167,26 @@ function Appearance({ values, set }: { values: Values; set: SetFn }) {
               { value: "desktop", label: "Desktop" },
               { value: "solid", label: "Solid" },
             ]}
+          />
+        </Row>
+        <Row label="Transparency" hint="How clear the glass is. Lower is more frosted and easier to read over busy backgrounds.">
+          <span className="w-10 text-right font-mono text-[12px] text-muted">{transparency}%</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={transparency}
+            aria-label="Glass transparency"
+            className="glass-range w-56"
+            disabled={material === "solid"}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              setTransparency(v);
+              applyAppearance(material, motion, v); // live preview while dragging
+            }}
+            onPointerUp={() => void set("appearance.transparency", transparency)}
+            onKeyUp={() => void set("appearance.transparency", transparency)}
           />
         </Row>
         <Row label="Motion" hint="Calm freezes the ambient field and the pointer light, and slows the orb. macOS Reduce Motion and Reduce Transparency are always respected.">
@@ -291,6 +316,126 @@ function IconCopy({ text }: { text: string }) {
     <button aria-label="Copy" className="press grid h-7 w-7 place-items-center rounded-full text-muted hover:bg-white/[0.08] hover:text-fg" onClick={() => { void navigator.clipboard.writeText(text); setOk(true); setTimeout(() => setOk(false), 1200); }}>
       {ok ? <span className="text-[11px] text-ok">✓</span> : <Copy size={13} />}
     </button>
+  );
+}
+
+interface UpdateStatus {
+  supported: boolean | null;
+  error?: string;
+  branch?: string;
+  current?: { sha: string; date: string; subject: string };
+  available?: boolean;
+  behind?: number;
+  commits?: { sha: string; date: string; subject: string }[];
+  dirty_files?: string[];
+  checked_at?: number | null;
+  applying?: boolean;
+  launched_by_app?: boolean;
+}
+
+function Updates({ values, set }: { values: Values; set: SetFn }) {
+  const [st, setSt] = useState<UpdateStatus | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [log, setLog] = useState<{ applying: boolean; result: string | null; lines: string[] } | null>(null);
+
+  const check = async (refresh: boolean) => {
+    setChecking(true);
+    setErr(null);
+    try {
+      setSt(await api.get<UpdateStatus>(`/api/system/updates${refresh ? "?refresh=true" : ""}`));
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setChecking(false);
+    }
+  };
+  useEffect(() => void check(false), []);
+  // While updating, follow the updater's log.
+  useEffect(() => {
+    if (!st?.applying && !log?.applying) return;
+    const t = setInterval(() => void api.get<typeof log>("/api/system/updates/log").then((l) => l && setLog(l)).catch(() => undefined), 1500);
+    return () => clearInterval(t);
+  }, [st?.applying, log?.applying]);
+
+  const apply = async () => {
+    setErr(null);
+    try {
+      await api.post("/api/system/updates/apply");
+      setSt((s) => (s ? { ...s, applying: true } : s));
+      setLog({ applying: true, result: null, lines: ["Starting update…"] });
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
+
+  const busy = Boolean(log?.applying || st?.applying);
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[14px] font-medium text-fg">
+              {st === null ? "Checking…" : !st.supported ? "Updates unavailable" : st.available ? `${st.behind} update${st.behind === 1 ? "" : "s"} available` : "NEXUS is up to date"}
+            </p>
+            {st?.current && (
+              <p className="mt-0.5 truncate text-[12px] text-muted">
+                Installed: <span className="font-mono">{st.current.sha}</span> · {st.current.subject} · {relTime(st.current.date)}
+              </p>
+            )}
+            {st?.checked_at && <p className="text-[11.5px] text-muted">Last checked {relTime(new Date(st.checked_at * 1000).toISOString())}{st.branch ? ` · branch ${st.branch}` : ""}</p>}
+          </div>
+          <div className="flex flex-none gap-2">
+            <Button variant="secondary" disabled={checking || busy} onClick={() => void check(true)}>
+              {checking ? "Checking…" : "Check now"}
+            </Button>
+            <Button variant="primary" disabled={!st?.available || busy || Boolean(st?.dirty_files?.length)} onClick={() => void apply()}>
+              {busy ? "Updating…" : st?.launched_by_app ? "Update & restart" : "Update"}
+            </Button>
+          </div>
+        </div>
+        {(err || st?.error) && <p className="mt-3 text-[12px] text-danger">{err ?? st?.error}</p>}
+        {st?.dirty_files && st.dirty_files.length > 0 && (
+          <p className="mt-3 text-[12px] text-warn">
+            Files in the NEXUS folder were changed locally ({st.dirty_files.slice(0, 4).join(", ")}), so updating is paused to avoid overwriting them.
+          </p>
+        )}
+      </Card>
+
+      {st?.available && st.commits && st.commits.length > 0 && !busy && (
+        <Card title="What's new">
+          <ul className="space-y-2">
+            {st.commits.map((c) => (
+              <li key={c.sha} className="flex items-start gap-3">
+                <span className="mt-1.5 h-1.5 w-1.5 flex-none rounded-full bg-accent shadow-[0_0_8px_rgba(230,236,245,0.7)]" />
+                <span className="min-w-0 flex-1 text-[13px] text-fg">{c.subject}</span>
+                <span className="flex-none text-[11px] text-muted">{relTime(c.date)}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-4 text-[11.5px] leading-snug text-muted">
+            {st.launched_by_app
+              ? "Update & restart downloads the changes, rebuilds NEXUS (a few minutes; you can keep working) and reopens it. Your chats, memories and settings are kept."
+              : "You're running NEXUS from ./scripts/dev.sh: Update downloads the changes and refreshes packages; then restart dev.sh."}
+          </p>
+        </Card>
+      )}
+
+      {log && (
+        <Card title={log.applying ? "Updating…" : log.result === "done" ? "Update finished" : log.result === "failed" ? "Update failed" : "Update"}>
+          <pre className="selectable max-h-[300px] overflow-auto whitespace-pre-wrap rounded-xl bg-black/30 p-3 font-mono text-[11.5px] leading-relaxed text-fg-2">
+            {log.lines.join("\n")}
+          </pre>
+          {log.applying && st?.launched_by_app && <p className="mt-2 text-[12px] text-muted">NEXUS will close and reopen by itself when the new version is ready.</p>}
+        </Card>
+      )}
+
+      <Card>
+        <Row label="Check for updates automatically" hint="Checks your GitHub branch about a minute after NEXUS starts and every 6 hours. Installing always waits for you.">
+          <Toggle checked={Boolean(values["updates.auto_check"] ?? true)} onChange={(v) => void set("updates.auto_check", v)} />
+        </Row>
+      </Card>
+    </div>
   );
 }
 

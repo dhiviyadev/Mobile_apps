@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity, Bell, Bot, BookOpen, Command, Home, MessageSquare, OctagonX, Play, Search, Settings, Sparkles, Workflow,
+  Activity, ArrowUpCircle, Bell, Loader2, Bot, BookOpen, Command, Home, MessageSquare, OctagonX, Play, Search, Settings, Sparkles, Workflow,
 } from "lucide-react";
 import { useCore, activeTasks, EMPTY } from "@/stores/core";
 import { useChat } from "@/stores/chat";
@@ -137,6 +137,8 @@ export function TitleBar({ title }: { title: string }) {
   const resume = useCore((s) => s.resume);
   const setPalette = useCore((s) => s.setPalette);
   const notifications = useCore((s) => s.notifications);
+  const update = useCore((s) => s.boot?.update);
+  const openSettings = useCore((s) => s.openSettings);
   const [notifOpen, setNotifOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const unread = notifications.filter((n) => !n.read).length;
@@ -155,6 +157,21 @@ export function TitleBar({ title }: { title: string }) {
             <Kbd>K</Kbd>
           </span>
         </button>
+        <AnimatePresence>
+          {(update?.available || update?.applying) && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8, x: 8 }}
+              animate={{ opacity: 1, scale: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ type: "spring", stiffness: 480, damping: 30 }}
+              onClick={() => openSettings("updates")}
+              className="press flex h-7 items-center gap-1.5 rounded-full border border-white/20 bg-[linear-gradient(180deg,rgba(255,255,255,0.18),rgba(255,255,255,0.06))] px-3 text-[12px] font-medium text-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_0_16px_rgba(205,214,228,0.18)]"
+            >
+              {update?.applying ? <Loader2 size={13} className="animate-spin" /> : <ArrowUpCircle size={13} className="text-accent-strong" />}
+              {update?.applying ? "Updating…" : `Update available${update && update.behind > 1 ? ` (${update.behind})` : ""}`}
+            </motion.button>
+          )}
+        </AnimatePresence>
         <div className="relative">
           <IconButton label="Notifications" onClick={() => setNotifOpen(!notifOpen)}>
             <Bell size={15} />
@@ -174,7 +191,16 @@ export function TitleBar({ title }: { title: string }) {
                   <p className="p-3 text-[12px] text-muted">No notifications</p>
                 ) : (
                   notifications.slice(0, 8).map((n) => (
-                    <div key={n.id} className="rounded-lg p-2.5 hover:bg-white/[0.03]">
+                    <div
+                      key={n.id}
+                      onClick={() => {
+                        if (n.link?.startsWith("settings:")) {
+                          openSettings(n.link.slice(9));
+                          setNotifOpen(false);
+                        }
+                      }}
+                      className={cls("rounded-lg p-2.5 hover:bg-white/[0.05]", n.link?.startsWith("settings:") && "cursor-pointer")}
+                    >
                       <p className="text-[12.5px] text-fg">{n.title}</p>
                       {n.body && <p className="line-clamp-2 text-[12px] text-fg-2">{n.body}</p>}
                       <p className="mt-0.5 text-[10.5px] text-muted">{relTime(n.created_at)}</p>

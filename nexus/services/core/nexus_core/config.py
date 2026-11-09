@@ -76,6 +76,11 @@ class Settings:
     # Built phone app (served at /m). Built by `npm run build:mobile`.
     mobile_dist: Path = field(default_factory=lambda: Path(os.environ.get("NEXUS_MOBILE_DIST") or Path(__file__).resolve().parents[3] / "apps" / "desktop" / "dist-mobile"))
 
+    # The NEXUS folder (git checkout) — used for in-app updates.
+    nexus_root: Path = field(default_factory=lambda: Path(os.environ.get("NEXUS_ROOT") or Path(__file__).resolve().parents[3]))
+    # Set by the desktop app when it starts the core (updates then rebuild and reopen NEXUS.app).
+    launched_by_app: bool = field(default_factory=lambda: _env_bool("NEXUS_LAUNCHED_BY_APP", False))
+
     # Disabled only by tests; never disable in normal operation.
     require_auth: bool = field(default_factory=lambda: _env_bool("NEXUS_REQUIRE_AUTH", True))
     start_background: bool = field(default_factory=lambda: _env_bool("NEXUS_BACKGROUND", True))

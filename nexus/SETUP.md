@@ -111,6 +111,17 @@ mode, so risky tools are refused by Hermes' own policy.
 To point Hermes at the same Ollama models, follow Hermes' own `hermes model` setup — NEXUS doesn't
 change Hermes' provider.
 
+## Updating NEXUS
+
+NEXUS checks your GitHub branch for new versions about a minute after it starts and every 6 hours
+(turn this off in **Settings → Updates**). When there is one, an **Update available** pill appears in
+the title bar and you get a notification. **Settings → Updates** lists what changed; **Update &
+restart** downloads it, refreshes packages, rebuilds the phone app and — when you use the installed
+app — rebuilds and reopens NEXUS.app (a few minutes; keep working meanwhile). Nothing installs without
+your click, updates are refused if NEXUS's files were edited locally, and a paired phone can't start
+one. From Terminal: `./scripts/update.sh --app` (installed app) or `--dev` (dev.sh). Progress is
+written to `data/logs/update.log`.
+
 ## Using NEXUS from your phone
 
 The phone app is a companion: everything still runs on your Mac. It needs your Mac awake with the

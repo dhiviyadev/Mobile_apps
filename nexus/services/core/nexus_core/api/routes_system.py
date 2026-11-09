@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from ..app_state import AppState
 from ..models.ollama import OllamaError
 from ..system.macos_metrics import hardware
+from ..system.updates import UpdateError
 from .deps import get_state, not_found
 
 router = APIRouter(prefix="/api")
@@ -39,7 +40,8 @@ async def bootstrap(st: AppState = Depends(get_state)) -> dict[str, Any]:
     return {
         "profile": {"name": st.prefs.get("profile.name") or ""},
         "appearance": {"material": st.prefs.get("appearance.material") or "ambient",
-                       "motion": st.prefs.get("appearance.motion") or "full"},
+                       "motion": st.prefs.get("appearance.motion") or "full",
+                       "transparency": st.prefs.get("appearance.transparency")},
         "hardware": hardware(),
         "halted": st.approvals.halted,
         "ollama": {"online": ollama_ok, "installed": len(installed), "running": [m.get("name") for m in running],
@@ -56,6 +58,8 @@ async def bootstrap(st: AppState = Depends(get_state)) -> dict[str, Any]:
         "memory": {"proposed": len(st.memory.list(status="proposed"))},
         "voice": st.voice.status(),
         "cloud": st.cloud.status(),
+        "update": {"available": bool(st.updates.status.get("available")), "behind": st.updates.status.get("behind", 0),
+                   "applying": st.updates.applying},
     }
 
 
@@ -107,6 +111,27 @@ async def backup(st: AppState = Depends(get_state)) -> dict[str, Any]:
     return {"path": str(archive), "bytes": archive.stat().st_size}
 
 
+@router.get("/system/updates")
+async def update_status(refresh: bool = False, st: AppState = Depends(get_state)) -> dict[str, Any]:
+    if refresh or st.updates.status.get("checked_at") is None:
+        return await st.updates.check(fetch=refresh)
+    return {**st.updates.status, "applying": st.updates.applying}
+
+
+@router.post("/system/updates/apply")
+async def apply_update(st: AppState = Depends(get_state)) -> dict[str, Any]:
+    try:
+        return st.updates.apply()
+    except UpdateError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/system/updates/log")
+def update_log(st: AppState = Depends(get_state)) -> dict[str, Any]:
+    lines = st.updates.log_tail()
+    return {"applying": st.updates.applying, "result": st.updates.result, "lines": lines}
+
+
 @router.get("/system/backups")
 def list_backups(st: AppState = Depends(get_state)) -> list[dict[str, Any]]:
     return [{"name": p.name, "path": str(p), "bytes": p.stat().st_size}
@@ -137,6 +162,10 @@ def patch_settings(body: SettingsPatch, st: AppState = Depends(get_state)) -> di
     for k, allowed in enums.items():
         if k in body.values and body.values[k] not in allowed:
             raise HTTPException(400, f"{k} must be one of {sorted(allowed)}")
+    if "appearance.transparency" in body.values:
+        t = body.values["appearance.transparency"]
+        if not isinstance(t, (int, float)) or isinstance(t, bool) or not 0 <= t <= 100:
+            raise HTTPException(400, "appearance.transparency must be a number from 0 to 100")
     try:
         values = st.prefs.update(body.values)
     except KeyError as exc:

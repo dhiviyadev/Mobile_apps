@@ -29,6 +29,7 @@ from .remote.service import DeviceService
 from .security import Keychain, load_or_create_token
 from .settings_store import SettingsStore
 from .system.monitor import SystemMonitor
+from .system.updates import UpdateService
 from .tasks.manager import TaskManager
 from .voice.service import VoiceService
 
@@ -64,6 +65,7 @@ class AppState:
         self.conversations = ConversationService(self)
         self.automations = AutomationService(self)
         self.monitor = SystemMonitor(self)
+        self.updates = UpdateService(self, settings.nexus_root)
         self._background: list[asyncio.Task[Any]] = []
 
         seed_agents(self.db)
@@ -76,6 +78,7 @@ class AppState:
         self._background = [
             asyncio.create_task(self.automations.run_scheduler(), name="scheduler"),
             asyncio.create_task(self.monitor.run_sampler(), name="sampler"),
+            asyncio.create_task(self.updates.run_checker(), name="update-checker"),
         ]
 
     async def emergency_stop(self, actor: str = "user") -> dict[str, Any]:
