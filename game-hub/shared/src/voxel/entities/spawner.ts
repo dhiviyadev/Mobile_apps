@@ -7,18 +7,20 @@
 import { Block, IS_LIQUID, IS_REPLACEABLE, IS_SOLID } from '../blocks';
 import { Team } from '../combat';
 import { CHUNK_HEIGHT, FLIGHT_CEILING, SEA_LEVEL } from '../constants';
+import { Realm, realmAt } from '../realm';
 import { isBossDefeated, StructureType, type StructureInfo } from '../structures/types';
 import type { PlayerTarget } from './api';
 import { insideBox, standY } from './ai/common';
 import { BossController } from './bosses/boss';
 import { BOSS_FOR_STRUCTURE, BOSS_SCRIPTS } from './bosses/scripts';
+import { gloamHostileTable, GLOAM_SKY_LEVEL } from './gloamMobs';
 import { FISH_BIOMES, FRIENDLY_SPAWNS, hostileCaveTable, hostileSurfaceTable, pickWeighted, variantFor, type SpawnEntry } from './defs';
 import { openSky, spawnLight } from './perception';
 import { EntityEventType, MobFlag, MobKind, MobVariant, type Mob } from './types';
 import type { EntityWorld } from './world';
 
 const COUNT_RADIUS = 48;
-const GROUND = new Set<number>([Block.Grass, Block.SnowyGrass, Block.ForestFloor, Block.ParchedGrass, Block.Snow]);
+const GROUND = new Set<number>([Block.Grass, Block.SnowyGrass, Block.ForestFloor, Block.ParchedGrass, Block.Snow, Block.Duskmoss, Block.Gloamsoil, Block.Shardsand]);
 const BAD_FLOOR = new Set<number>([Block.Leaves, Block.Glass, Block.Bedrock]);
 const GUARD_RESPAWN = 300;
 
@@ -32,6 +34,7 @@ const GUARD_KINDS: Partial<Record<StructureType, [MobKind, MobKind, MobVariant]>
   [StructureType.FrostCitadel]: [MobKind.Mudlurch, MobKind.Rattlebow, MobVariant.Frost],
   [StructureType.OvergrownShrine]: [MobKind.Puffcap, MobKind.Cragcrawler, MobVariant.Moss],
   [StructureType.AshenCrypt]: [MobKind.Rattlebow, MobKind.Mudlurch, MobVariant.Ash],
+  [StructureType.EclipseOrrery]: [MobKind.Glintcaster, MobKind.Hushwalker, MobVariant.Default],
 };
 
 export class Spawner {
@@ -87,11 +90,15 @@ export class Spawner {
     this.reviveDormant(p);
     const caps = w.caps;
     const c = this.counts(p.x, p.z);
-    if (w.rules.friendly && c.natural < caps.maxNatural && c.friendly < caps.friendlyPerPlayer && w.daylight > 0.3) this.friendlyAttempt(p, caps.maxNatural - c.natural, caps.friendlyPerPlayer - c.friendly);
+    // The Gloamreach is permanent dusk: creatures graze and hunt there at any hour, hostiles by the dusk light level.
+    const realm = realmAt(w.host.generator.genVersion, p.x);
+    const gloam = realm === Realm.Gloamreach;
+    if (realm === Realm.Veil) return;
+    if (w.rules.friendly && c.natural < caps.maxNatural && c.friendly < caps.friendlyPerPlayer && (w.daylight > 0.3 || gloam)) this.friendlyAttempt(p, caps.maxNatural - c.natural, caps.friendlyPerPlayer - c.friendly);
     if (w.rules.friendly && this.passes % 4 === 0 && c.fish < caps.fishPerPlayer) this.fishAttempt(p, caps.fishPerPlayer - c.fish);
     if (w.rules.hostile && c.natural < caps.maxNatural && c.hostile < caps.hostilePerPlayer) {
       // The surface is tried on every other pass only (calmer nights); caves on every pass.
-      this.hostileAttempt(p, Math.min(caps.maxNatural - c.natural, caps.hostilePerPlayer - c.hostile), caps.flyersPerPlayer - c.flyers, Math.floor(w.tick / 20) % 2 === 0);
+      this.hostileAttempt(p, Math.min(caps.maxNatural - c.natural, caps.hostilePerPlayer - c.hostile), caps.flyersPerPlayer - c.flyers, Math.floor(w.tick / 20) % 2 === 0, gloam);
     }
   }
 
@@ -177,7 +184,7 @@ export class Spawner {
     }
   }
 
-  private hostileAttempt(p: PlayerTarget, left: number, flyersLeft: number, surface: boolean): void {
+  private hostileAttempt(p: PlayerTarget, left: number, flyersLeft: number, surface: boolean, gloam = false): void {
     const w = this.w;
     const col = this.column(p);
     if (!col) return;
@@ -198,9 +205,12 @@ export class Spawner {
       if (IS_SOLID[get(col.x, y, col.z)] || IS_SOLID[get(col.x, y + 1, col.z)] || IS_LIQUID[get(col.x, y, col.z)]) continue;
       if (BAD_FLOOR.has(get(col.x, y - 1, col.z)) || !IS_SOLID[get(col.x, y - 1, col.z)]) continue;
       if (w.players.some((q) => Math.hypot(q.x - col.x, q.y - y, q.z - col.z) < 24)) continue;
-      if (spawnLight(get, col.x, y, col.z, w.skyLevel) > 4) continue;
+      if (spawnLight(get, col.x, y, col.z, gloam ? GLOAM_SKY_LEVEL : w.skyLevel) > 4) continue;
       let table: SpawnEntry[];
-      if (cnd.cave) {
+      if (gloam) {
+        table = gloamHostileTable(biome, cnd.cave);
+        if (flyersLeft <= 0 || cnd.cave) table = table.filter((e) => e.kind !== MobKind.Wispling);
+      } else if (cnd.cave) {
         let duskcap = false;
         const px = col.x + Math.floor((w.rng() - 0.5) * 12);
         const pz = col.z + Math.floor((w.rng() - 0.5) * 12);
@@ -214,12 +224,13 @@ export class Spawner {
       }
       const e = pickWeighted(table, w.rng);
       if (!e) return;
-      const n = this.group(e, e.kind === MobKind.Duskwing ? Math.min(left, flyersLeft) : left);
+      const flyer = e.kind === MobKind.Duskwing || e.kind === MobKind.Wispling;
+      const n = this.group(e, flyer ? Math.min(left, flyersLeft) : left);
       const variant = variantFor(e.kind, biome, y, w.rng);
       for (let i = 0; i < n; i++) {
         const x = col.x + 0.5 + (i ? Math.round((w.rng() - 0.5) * 4) : 0);
         const z = col.z + 0.5 + (i ? Math.round((w.rng() - 0.5) * 4) : 0);
-        const sy = e.kind === MobKind.Duskwing ? y + 4 : standY(w, x, y, z, 2, 1);
+        const sy = flyer ? y + 4 : standY(w, x, y, z, 2, 1);
         if (sy === null) continue;
         w.spawnMob(e.kind, x, sy, z, { variant });
       }

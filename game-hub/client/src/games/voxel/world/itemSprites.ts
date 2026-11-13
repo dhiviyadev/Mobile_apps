@@ -70,6 +70,7 @@ function palette(id: number): { main: RGB; light: RGB; dark: RGB; accent: RGB } 
     case Item.StarfallShovel:
     case Item.StarfallAxe:
     case Item.StarfallSword: return { main: 0x4fe8c0, light: 0xd8fff2, dark: 0x1a7a68, accent: 0x7affd8 };
+    case Item.PrismBow: return { main: 0xb48cff, light: 0xe8d8ff, dark: 0x5a3aa8, accent: 0x9af0ff };
     case Item.EclipseGlaive: return { main: 0x2a2440, light: 0xb48cff, dark: 0x14102a, accent: 0xd8a848 };
     case Item.CobaltCrossbow: return { main: 0x2f6fe0, light: 0x9cc8ff, dark: 0x1a3a8a, accent: GOLD };
     case Item.Crossbow: return { main: 0xd8dde6, light: 0xffffff, dark: 0x8a909c, accent: 0xc8743a };

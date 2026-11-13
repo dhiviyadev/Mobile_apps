@@ -17,6 +17,8 @@ export enum ProjectileKind {
   SeedPod = 6,
   Ember = 7,
   EmberArrow = 8,
+  /** The Glintcaster's bolt of cold light (slows). */
+  GlintBolt = 9,
 }
 
 export enum HazardKind {
@@ -89,6 +91,10 @@ export const PROJECTILE_DEFS: Readonly<Record<ProjectileKind, ProjectileDef>> = 
   [ProjectileKind.SeedPod]: {
     kind: ProjectileKind.SeedPod, gravity: 18, drag: 0, waterDrag: 0, radius: 0.3, maxLife: 3, stickSeconds: 0, pierce: 0, damageKind: DK.Burst, unblockable: true,
     burst: { radius: 2.2, damage: 4, knockback: 4, lift: 3, hazard: { kind: HazardKind.ThornPatch, radius: 1.6, seconds: 5, dps: 1, slow: 0.3 } },
+  },
+  [ProjectileKind.GlintBolt]: {
+    kind: ProjectileKind.GlintBolt, gravity: 0, drag: 0, waterDrag: 0, radius: 0.22, maxLife: 4, stickSeconds: 0, pierce: 0, damageKind: DK.Projectile,
+    effects: [{ kind: StatusKind.Slow, strength: 0.3, seconds: 2 }], glow: true,
   },
   [ProjectileKind.Ember]: {
     kind: ProjectileKind.Ember, gravity: 6, drag: 0, waterDrag: 0, radius: 0.2, maxLife: 4, stickSeconds: 0, pierce: 0, damageKind: DK.Projectile,

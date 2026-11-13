@@ -496,7 +496,7 @@ export class VoxelGame {
     this.updateLighting();
 
     this.fx.update(dt);
-    this.entities?.render(dt, this.camera, this.sky.daylight);
+    this.entities?.render(dt, this.camera, Math.max(this.sky.daylight, this.sky.realmMix * 0.8));
     for (const m of this.modules) m.update?.(dt, input, paused);
     this.syncHotbar(false);
     this.net?.sendState(b.x, b.y, b.z, this.player.yaw, this.player.pitch, (this.player.crouching ? 1 : 0) | (b.inWater ? 2 : 0) | (this.player.sprinting ? 4 : 0));

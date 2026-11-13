@@ -18,7 +18,7 @@ const NIGHT_HORIZON = new THREE.Color(0x1a2342);
 const GLOAM_TOP = new THREE.Color(0x140c34);
 const GLOAM_HORIZON = new THREE.Color(0x5a3f96);
 /** Sky light the realm holds (0 night .. 1 day): dusky but readable. */
-export const GLOAM_DAYLIGHT = 0.42;
+export const GLOAM_DAYLIGHT = 0.62;
 
 /** Must stay inside the camera's far plane (see VoxelGame.applyRenderDistance). */
 export const SKY_RADIUS = 200;

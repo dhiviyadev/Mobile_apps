@@ -27,6 +27,7 @@ const STYLE: Partial<Record<StructureType, { wall: number; floor: number; pillar
   [StructureType.FrostCitadel]: { wall: Block.Cobble, floor: Block.Stone, pillar: Block.Ice, ceiling: Block.Snow, trim: Block.Lamp },
   [StructureType.OvergrownShrine]: { wall: Block.Cobble, floor: Block.Dirt, pillar: Block.Log, ceiling: Block.Leaves, trim: Block.Lamp },
   [StructureType.AshenCrypt]: { wall: Block.Stone, floor: Block.Gravel, pillar: Block.Cobble, ceiling: Block.Stone, trim: Block.Lamp },
+  [StructureType.EclipseOrrery]: { wall: Block.EclipseBrick, floor: Block.OrreryBrass, pillar: Block.EclipseBrick, ceiling: Block.EclipseBrick, trim: Block.Moonlamp },
 };
 
 /** Builds a test arena of `type` centred on (cx, cz) with its floor surface at feet height `floorY`. */

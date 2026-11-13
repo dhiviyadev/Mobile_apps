@@ -9,6 +9,7 @@ import { HazardKind, ProjectileKind } from '../api';
 import { BurstKind, EntityEventType, MobAction, MobKind, MobVariant, TelegraphShape } from '../types';
 import { beginCharge, fan, lob, summonAt, updateCharge } from './attacks';
 import type { BossController, BossScript, Telegraph } from './boss';
+import { eclipseColossus } from './gloamBoss';
 
 const ALL = 7;
 const P23 = 6;
@@ -385,6 +386,7 @@ export const BOSS_SCRIPTS: Readonly<Partial<Record<MobKind, BossScript>>> = {
   [MobKind.RimeWarden]: warden,
   [MobKind.Thornmaw]: thornmaw,
   [MobKind.AshenKnight]: knight,
+  [MobKind.EclipseColossus]: eclipseColossus,
 };
 
 /** Which boss guards a structure type. */
@@ -393,6 +395,7 @@ export const BOSS_FOR_STRUCTURE: Readonly<Partial<Record<StructureType, MobKind>
   [StructureType.FrostCitadel]: MobKind.RimeWarden,
   [StructureType.OvergrownShrine]: MobKind.Thornmaw,
   [StructureType.AshenCrypt]: MobKind.AshenKnight,
+  [StructureType.EclipseOrrery]: MobKind.EclipseColossus,
 };
 
 export function bossTitle(kind: MobKind): string {

@@ -203,6 +203,7 @@ export enum Item {
   PrismShard = 346,
   MistcapStew = 347,
   EclipseGlaive = 348,
+  PrismBow = 349,
 }
 
 /** Fist (and any non-weapon item). */
@@ -224,6 +225,7 @@ export const UNIQUE_COLORS: Readonly<Record<number, readonly [number, number]>> 
   [Item.ThornheartBow]: [0x3f8a3a, 0xc83a2a],
   [Item.AshenAxe]: [0x3a3a40, 0xff6a2a],
   [Item.EclipseGlaive]: [0x2a2440, 0xb48cff],
+  [Item.PrismBow]: [0xb48cff, 0x9af0ff],
 };
 
 const TIER_NAMES = ['', 'Wooden', 'Stone', 'Iron', 'Cobalt', 'Starfall'] as const;
@@ -319,6 +321,9 @@ reg({ id: Item.MistcapStew, key: 'mistcap_stew', name: 'Mistcap Stew', tile: 306
 reg({ id: Item.EclipseGlaive, key: 'eclipse_glaive', name: 'Eclipse Glaive', tile: 307, color: 0xb48cff, kind: ItemKind.Sword, maxStack: 1, durability: 2000, sandbox: true,
   melee: { damage: 11, cooldown: 0.55, reach: 3.4, knockback: 5.4, lift: 3.8, shieldDisable: 0.5, wear: 1 }, effects: [{ kind: 1, strength: 0.4, seconds: 3 }] });
 
+reg({ id: Item.PrismBow, key: 'prism_bow', name: 'Prism Bow', tile: 308, color: 0xb48cff, kind: ItemKind.Bow, maxStack: 1, durability: 1400, sandbox: true,
+  ranged: { type: 'bow', drawTime: 0.7, minCharge: 0.2, speedMin: 14, speedMax: 44, damageMin: 3, damageMax: 11, knockMin: 2, knockMax: 5.5, lift: 2, ammo: [Item.Arrow, Item.EmberArrow], pierce: 2 } });
+
 // Shields.
 reg({ id: Item.WoodenShield, key: 'wooden_shield', name: 'Wooden Shield', color: 0x9a6b3c, kind: ItemKind.Shield, maxStack: 1, durability: 150, shield: { block: 0.7 }, sandbox: true });
 reg({ id: Item.IronShield, key: 'iron_shield', name: 'Iron Shield', color: 0xb8bec8, kind: ItemKind.Shield, maxStack: 1, durability: 336, shield: { block: 0.85 }, sandbox: true });
@@ -358,7 +363,7 @@ export function itemTier(id: ItemId): Tier {
   if (id === Item.WoodenShield) return 1;
   if (id === Item.IronShield || id === Item.Crossbow) return 3;
   if (id >= Item.StarfallPickaxe && id <= Item.StarfallSword) return 5;
-  if (id === Item.CobaltShield || id === Item.CobaltCrossbow || (id >= Item.SunforgedSword && id <= Item.AshenAxe) || id === Item.EclipseGlaive) return 4;
+  if (id === Item.CobaltShield || id === Item.CobaltCrossbow || (id >= Item.SunforgedSword && id <= Item.AshenAxe) || id === Item.EclipseGlaive || id === Item.PrismBow) return 4;
   return 0;
 }
 

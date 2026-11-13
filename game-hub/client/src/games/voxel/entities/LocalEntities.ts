@@ -47,6 +47,7 @@ const BOSS_STRUCTURES: Record<string, StructureType> = {
   'rime-warden': StructureType.FrostCitadel,
   thornmaw: StructureType.OvergrownShrine,
   'ashen-knight': StructureType.AshenCrypt,
+  'eclipse-colossus': StructureType.EclipseOrrery,
 };
 
 export class LocalEntities {

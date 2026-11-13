@@ -100,11 +100,11 @@ export const LOOT_TABLES: Record<LootTableId, LootTable> = {
   [LootTableId.OrreryCommon]: {
     rolls: [3, 5],
     guaranteed: [],
-    entries: [e('starfall_shard', 3, 1, 3), e('prism_shard', 4, 2, 5), e('wisp_dust', 4, 2, 4), e('gold_ingot', 3, 1, 3), e('mistcap_stew', 3, 1, 3), e('block:Moonlamp', 2, 1, 2), e('cobalt_gem', 2, 1, 2), e('block:OrreryBrass', 2, 4, 8)],
+    entries: [e('starfall_shard', 3, 1, 3), e('prism_shard', 4, 2, 5), e('wisp_dust', 4, 2, 4), e('gold_ingot', 3, 1, 3), e('mistcap_stew', 3, 1, 3), e('block:Moonlamp', 2, 1, 2), e('cobalt_gem', 2, 1, 2), e('block:OrreryBrass', 2, 4, 8), e('prism_bow', 1, 1)],
   },
   [LootTableId.OrreryBoss]: {
     rolls: [4, 6],
-    guaranteed: [g(['starfall_pickaxe', 'starfall_sword', 'starfall_axe']), g(['starfall_shard'], 3, 6)],
+    guaranteed: [g(['starfall_pickaxe', 'starfall_sword', 'starfall_axe']), g(['prism_bow', 'starfall_shard'], 1, 1), g(['starfall_shard'], 3, 6)],
     entries: [e('cobalt_gem', 4, 2, 3), e('gold_ingot', 3, 2, 4), e('starfall_ingot', 3, 1, 2), e('prism_shard', 3, 3, 6), e('block:StarfallBlock', 1, 1)],
   },
 };

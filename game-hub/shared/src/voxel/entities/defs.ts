@@ -6,6 +6,7 @@ import type { StatusEffect } from '../combat';
 import { Team } from '../combat';
 import { StatusKind } from '../combat';
 import { Biome } from '../worldgen';
+import { GLOAM_BOSS_DROPS, GLOAM_FRIENDLY_SPAWNS, GLOAM_MOB_DEFS } from './gloamMobs';
 import { ProjectileKind } from './api';
 import { MobCategory, MobKind, MobVariant } from './types';
 
@@ -249,10 +250,11 @@ export const MOB_DEFS: Readonly<Record<MobKind, MobDef>> = {
     fireImmune: true,
     sounds: { idle: 'bossStep', hurt: 'bossHurt', death: 'bossDefeat' },
   },
+  ...GLOAM_MOB_DEFS,
 };
 
 export const ALL_MOB_KINDS: readonly MobKind[] = Object.keys(MOB_DEFS).map(Number) as MobKind[];
-export const BOSS_KINDS: readonly MobKind[] = [MobKind.SunforgedSentinel, MobKind.RimeWarden, MobKind.Thornmaw, MobKind.AshenKnight];
+export const BOSS_KINDS: readonly MobKind[] = [MobKind.SunforgedSentinel, MobKind.RimeWarden, MobKind.Thornmaw, MobKind.AshenKnight, MobKind.EclipseColossus];
 
 export function mobDef(kind: MobKind): MobDef {
   return MOB_DEFS[kind];
@@ -354,6 +356,7 @@ export const FRIENDLY_SPAWNS: Partial<Record<Biome, SpawnEntry[]>> = {
   [Biome.Mountains]: [f(MobKind.Woolback, 40), f(MobKind.Hopling, 20)],
   [Biome.Beach]: [f(MobKind.Cluckit, 15)],
   [Biome.FrozenShore]: [f(MobKind.Cluckit, 15)],
+  ...GLOAM_FRIENDLY_SPAWNS,
 };
 
 export const FISH_BIOMES = new Set<number>([Biome.Ocean, Biome.Beach, Biome.Marshland, Biome.Rainforest, Biome.IcySea, Biome.FrozenShore]);
@@ -408,6 +411,7 @@ export const BOSS_DROPS: Partial<Record<MobKind, BossDrops>> = {
   [MobKind.SunforgedSentinel]: { unique: 'sunforged_sword', fallback: 'cobalt_sword', rest: [{ item: 'gold_ingot', min: 4, max: 8, chance: 1 }, { item: 'cobalt_gem', min: 2, max: 3, chance: 1 }] },
   [MobKind.RimeWarden]: { unique: 'rimebound_crossbow', fallback: 'cobalt_crossbow', rest: [{ item: 'iron_ingot', min: 6, max: 10, chance: 1 }, { item: 'cobalt_gem', min: 2, max: 3, chance: 1 }, { item: 'bolt', min: 16, max: 24, chance: 1 }] },
   [MobKind.Thornmaw]: { unique: 'thornheart_bow', fallback: 'bow', rest: [{ item: 'arrow', min: 24, max: 32, chance: 1 }, { item: 'cobalt_gem', min: 2, max: 3, chance: 1 }, { item: 'block:Melon', min: 2, max: 2, chance: 1 }] },
+  ...GLOAM_BOSS_DROPS,
   [MobKind.AshenKnight]: { unique: 'ashen_axe', fallback: 'cobalt_axe', rest: [{ item: 'ember_shard', min: 2, max: 3, chance: 1 }, { item: 'cobalt_gem', min: 2, max: 3, chance: 1 }] },
 };
 
