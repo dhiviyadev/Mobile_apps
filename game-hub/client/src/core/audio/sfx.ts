@@ -1,6 +1,7 @@
 import { voxelMobSfx } from './sfxVoxelMobs';
 import { voxelSurvivalSfx } from './sfxVoxelSurvival';
 import { voxelWorldSfx } from './sfxVoxelWorld';
+import { gloamSfx } from './sfxGloam';
 
 /**
  * Synthesised sound effects. Each recipe builds a short-lived WebAudio graph
@@ -120,6 +121,7 @@ const defs = {
   ...voxelWorldSfx(KIT),
   ...voxelSurvivalSfx(KIT),
   ...voxelMobSfx(KIT),
+  ...gloamSfx(KIT),
   click: { play: (v) => tone(v, { freq: 1300, freqEnd: 900, dur: 0.05, vol: 0.18 }), length: 0.1 },
   chat: { play: (v) => notes(v, [880, 1175], 0.06, 'sine', 0.12, 0.08), length: 0.2 },
   countdown: { play: (v) => tone(v, { type: 'square', freq: 660, dur: 0.12, vol: 0.12 }), length: 0.2 },

@@ -7,38 +7,41 @@
  * Tile indices match `Tile` in @hub/shared/voxel/blocks.
  */
 import * as THREE from 'three';
-import { ATLAS_COLS, Block, blockDef, BlockShape, SHAPE, SHAPE_BOUNDS } from '@hub/shared';
+import { ATLAS_COLS, ATLAS_ROWS, Block, blockDef, BlockShape, SHAPE, SHAPE_BOUNDS } from '@hub/shared';
 import { paintTile, TILE_PX } from './atlasRecipes';
 import { paintItemTile } from './itemSprites';
 
 export { TILE_PX };
 export const ATLAS_TILES = ATLAS_COLS;
-const SIZE = TILE_PX * ATLAS_TILES;
+export { ATLAS_ROWS };
+const WIDTH = TILE_PX * ATLAS_COLS;
+const HEIGHT = TILE_PX * ATLAS_ROWS;
 
 /**
- * Every tile of the atlas as RGBA pixels (SIZE x SIZE): block painters first,
+ * Every tile of the atlas as RGBA pixels (WIDTH x HEIGHT: 16 x 32 tiles): block painters first,
  * item sprites for the tiles they do not paint. Pure, so tests run it in Node.
  */
 export function paintAtlasPixels(): Uint8ClampedArray {
-  const out = new Uint8ClampedArray(SIZE * SIZE * 4);
+  const out = new Uint8ClampedArray(WIDTH * HEIGHT * 4);
   const tile = new Uint8ClampedArray(TILE_PX * TILE_PX * 4);
-  for (let t = 0; t < ATLAS_TILES * ATLAS_TILES; t++) {
+  for (let t = 0; t < ATLAS_COLS * ATLAS_ROWS; t++) {
     if (!paintTile(t, tile)) {
       tile.fill(0);
       if (!paintItemTile(t, tile)) continue;
     }
     const ox = (t % ATLAS_TILES) * TILE_PX;
     const oy = Math.floor(t / ATLAS_TILES) * TILE_PX;
-    for (let y = 0; y < TILE_PX; y++) out.set(tile.subarray(y * TILE_PX * 4, (y + 1) * TILE_PX * 4), ((oy + y) * SIZE + ox) * 4);
+    for (let y = 0; y < TILE_PX; y++) out.set(tile.subarray(y * TILE_PX * 4, (y + 1) * TILE_PX * 4), ((oy + y) * WIDTH + ox) * 4);
   }
   return out;
 }
 
 export function createAtlasCanvas(): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = SIZE;
+  canvas.width = WIDTH;
+  canvas.height = HEIGHT;
   const ctx = canvas.getContext('2d')!;
-  const img = ctx.createImageData(SIZE, SIZE);
+  const img = ctx.createImageData(WIDTH, HEIGHT);
   img.data.set(paintAtlasPixels());
   ctx.putImageData(img, 0, 0);
   return canvas;

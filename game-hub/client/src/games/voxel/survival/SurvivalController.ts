@@ -128,6 +128,16 @@ export class SurvivalController implements VoxelModule {
   get health(): number {
     return this.hp;
   }
+
+  /** Offline: takes items from the local inventory (false when the player has fewer). Sandbox: always true. */
+  takeLocalItem(item: number, n = 1): boolean {
+    if (this.creative) return true;
+    return this.backend?.takeItem?.(item, n) ?? false;
+  }
+
+  get isDead(): boolean {
+    return this.dead;
+  }
   private food = 20;
   private vflags = 0;
   private slowMul = 1;

@@ -169,3 +169,36 @@
     gap: 8px;
   }
 }
+
+/* ---- Lattice Rings: the veil you stand in, and the flash when you arrive (package D) ---- */
+.gloam-veil {
+  --gloam-charge: 0;
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  opacity: calc(var(--gloam-charge) * 0.92);
+  background: radial-gradient(circle at 50% 50%, rgba(20, 8, 60, 0) 0%, rgba(90, 50, 190, 0.55) 55%, rgba(200, 170, 255, 0.85) 100%);
+  transition: opacity 0.25s ease;
+}
+.gloam-veil.hidden { display: none; }
+.gloam-veil-swirl {
+  position: absolute;
+  inset: -30%;
+  background: conic-gradient(from 0deg, rgba(180, 140, 255, 0), rgba(180, 140, 255, 0.55), rgba(90, 240, 255, 0), rgba(216, 106, 255, 0.5), rgba(180, 140, 255, 0));
+  border-radius: 50%;
+  mix-blend-mode: screen;
+  animation: gloam-spin 2.2s linear infinite;
+  filter: blur(6px);
+}
+.gloam-veil.flash {
+  opacity: 1;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.95), rgba(200, 170, 255, 0.9));
+  animation: gloam-flash 0.7s ease-out forwards;
+}
+.gloam-veil.flash .gloam-veil-swirl { display: none; }
+@keyframes gloam-spin { to { transform: rotate(360deg); } }
+@keyframes gloam-flash { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .gloam-veil-swirl { animation: none; }
+}

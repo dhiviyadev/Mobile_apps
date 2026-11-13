@@ -9,7 +9,7 @@
  */
 import * as THREE from 'three';
 import { Tile } from '@hub/shared';
-import { ATLAS_TILES } from './atlas';
+import { ATLAS_ROWS, ATLAS_TILES } from './atlas';
 
 export interface VoxelUniforms {
   [name: string]: THREE.IUniform;
@@ -23,6 +23,9 @@ export interface VoxelUniforms {
   uTime: { value: number };
   /** Atlas col/row of the lava tile: its texture scrolls slowly. */
   uLavaTile: { value: THREE.Vector2 };
+  /** Atlas col/row of the Veil (swirls) and Gloam Mist (drifts). */
+  uVeilTile: { value: THREE.Vector2 };
+  uMistTile: { value: THREE.Vector2 };
 }
 
 export function createVoxelUniforms(atlas: THREE.Texture): VoxelUniforms {
@@ -35,6 +38,8 @@ export function createVoxelUniforms(atlas: THREE.Texture): VoxelUniforms {
     uFogVertical: { value: 1 },
     uTime: { value: 0 },
     uLavaTile: { value: new THREE.Vector2(Tile.Lava % ATLAS_TILES, Math.floor(Tile.Lava / ATLAS_TILES)) },
+    uVeilTile: { value: new THREE.Vector2(Tile.Veil % ATLAS_TILES, Math.floor(Tile.Veil / ATLAS_TILES)) },
+    uMistTile: { value: new THREE.Vector2(Tile.GloamMist % ATLAS_TILES, Math.floor(Tile.GloamMist / ATLAS_TILES)) },
   };
 }
 
@@ -96,7 +101,7 @@ const FRAG_COMMON = /* glsl */ `
   varying float vFogDist;
   vec4 atlasSample(vec2 uv) {
     vec2 f = clamp(fract(uv), 0.001, 0.999);
-    return texture2D(uAtlas, (vTile + vec2(f.x, 1.0 - f.y)) / ${ATLAS_TILES.toFixed(1)});
+    return texture2D(uAtlas, (vTile + vec2(f.x, 1.0 - f.y)) / vec2(${ATLAS_TILES.toFixed(1)}, ${ATLAS_ROWS.toFixed(1)}));
   }
   vec3 applyFog(vec3 c) {
     return mix(c, uFogColor, smoothstep(uFogNear, uFogFar, vFogDist));
@@ -110,10 +115,18 @@ export function createOpaqueMaterial(u: VoxelUniforms): THREE.ShaderMaterial {
     fragmentShader: /* glsl */ `
       ${FRAG_COMMON}
       uniform vec2 uLavaTile;
+      uniform vec2 uVeilTile;
+      uniform vec2 uMistTile;
       void main() {
         vec2 uv = vUv;
         // Lava creeps (one compare per fragment).
         if (abs(vTile.x - uLavaTile.x) + abs(vTile.y - uLavaTile.y) < 0.5) uv += vec2(uTime * 0.03, uTime * 0.02);
+        // The Veil swirls around the middle of its face; Gloam Mist drifts.
+        if (abs(vTile.x - uVeilTile.x) + abs(vTile.y - uVeilTile.y) < 0.5) {
+          vec2 p = fract(vUv) - 0.5;
+          float a = uTime * 0.8 + length(p) * 5.0;
+          uv = vec2(cos(a) * p.x - sin(a) * p.y, sin(a) * p.x + cos(a) * p.y) + 0.5;
+        } else if (abs(vTile.x - uMistTile.x) + abs(vTile.y - uMistTile.y) < 0.5) uv += vec2(uTime * 0.02, uTime * 0.012);
         vec4 c = atlasSample(uv);
         if (c.a < 0.5) discard;
         gl_FragColor = vec4(applyFog(c.rgb * vLight), 1.0);

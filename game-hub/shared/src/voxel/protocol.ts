@@ -84,6 +84,12 @@ export const VoxelMsg = {
   TeleportOp: 'tp',
   /** S→C JSON TeleportEvent */
   TeleportEvent: 'te',
+
+  // ---- Rift Gates (package D; voxel/portal.ts) ----
+  /** C→S JSON PortalOp: light the gate a stone belongs to, cancel a crossing */
+  PortalOp: 'po',
+  /** S→C JSON PortalEvent: charging, cancelled, arrived, outline of missing stones, notices */
+  PortalEvent: 'pe',
 } as const;
 
 /** VoxelMsg.HostReady: ok with the room code the world runs under, or why the upload was refused. */

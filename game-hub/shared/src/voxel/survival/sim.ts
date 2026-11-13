@@ -472,6 +472,15 @@ export class SurvivalSim implements PlayerHooks {
     return this.events.splice(0);
   }
 
+  /** Takes `n` of an item from a player's inventory (false, nothing taken, when they have fewer). Survival only. */
+  takeItem(id: string, item: ItemId, n = 1): boolean {
+    const p = this.players.get(id);
+    if (!p || this.rules.creative || p.inv.count(item) < n) return false;
+    p.inv.take(item, n);
+    this.host.dirty?.();
+    return true;
+  }
+
   playerByEid(eid: number): SurvivalPlayer | undefined {
     return this.byEid.get(eid);
   }

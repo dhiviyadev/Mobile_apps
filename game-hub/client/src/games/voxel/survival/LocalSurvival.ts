@@ -222,6 +222,12 @@ export class LocalSurvival implements SurvivalBackend {
     this.flush();
   }
 
+  takeItem(item: number, n: number): boolean {
+    const ok = this.sim.takeItem(ID, item, n);
+    this.flush();
+    return ok;
+  }
+
   takeEvents(): ClientEvent[] {
     return this.events.splice(0);
   }

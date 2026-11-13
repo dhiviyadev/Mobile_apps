@@ -36,7 +36,7 @@ describe('room codes', () => {
 
 describe('protocol version', () => {
   it('accepts only this build, and tells old and new pages apart', () => {
-    expect(PROTOCOL_VERSION).toBe(3);
+    expect(PROTOCOL_VERSION).toBe(4);
     expect(protocolError(PROTOCOL_VERSION)).toBeNull();
     // Older, missing (a page from before versioning) or malformed.
     for (const old of [undefined, 1, 2, '3', 1.5, null]) {

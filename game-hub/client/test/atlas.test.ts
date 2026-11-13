@@ -21,7 +21,7 @@ describe('block atlas', () => {
     for (let s = 0; s < 8; s++) used.add(Tile.Crack0 + s);
     const missing = [...used].filter((t) => !paintTile(t, tile()));
     expect(missing).toEqual([]);
-    for (const t of used) expect(t).toBeLessThan(256);
+    for (const t of used) expect(t).toBeLessThan(512);
     expect(used.has(Tile.BedrollTop) && used.has(Tile.BedrollSide)).toBe(true);
     expect(paintTile(Tile.ItemSprites, tile())).toBe(false);
   });
