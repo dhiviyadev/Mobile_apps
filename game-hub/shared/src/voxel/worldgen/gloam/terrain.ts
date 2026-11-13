@@ -61,6 +61,9 @@ export class GloamTerrain {
   private readonly nKeel: SimplexNoise;
   private readonly nFloor: SimplexNoise;
   private readonly nRough: SimplexNoise;
+  private readonly nCaveA: SimplexNoise;
+  private readonly nCaveB: SimplexNoise;
+  private readonly nRoom: SimplexNoise;
   private readonly cache = new Map<number, GloamColumn>();
 
   constructor(readonly seed: number) {
@@ -73,6 +76,9 @@ export class GloamTerrain {
     this.nKeel = new SimplexNoise(s ^ 0x5f607182);
     this.nFloor = new SimplexNoise(s ^ 0x93a4b5c6);
     this.nRough = new SimplexNoise(s ^ 0xd7e8f90a);
+    this.nCaveA = new SimplexNoise(s ^ 0x2b3c4d5e);
+    this.nCaveB = new SimplexNoise(s ^ 0x6f708192);
+    this.nRoom = new SimplexNoise(s ^ 0xa3b4c5d6);
   }
 
   /** Climate fields of a column: f1 splits the tame biomes, f2 the extremes (needles one way, mist the other). */
@@ -147,6 +153,18 @@ export class GloamTerrain {
     return { biome, floor, mist, aBot, aTop, bBot, bTop, spire, top: Math.min(TERRAIN_HEIGHT - 2, top) };
   }
 
+  /**
+   * True where a cave is cut: winding tubes (two noise sheets crossing) and the odd round grotto.
+   * Cut into the murk floor and into the thick middle of shelves; tubes open on a shelf's keel,
+   * and into the valleys where the floor is thin, so they can be found from outside.
+   */
+  carved(x: number, y: number, z: number): boolean {
+    const a = this.nCaveA.noise3(x / 24, y / 13, z / 24);
+    const b = this.nCaveB.noise3(x / 24 + 40, y / 13, z / 24);
+    if (a * a + b * b < 0.02) return true;
+    return this.nRoom.noise3(x / 34, y / 15, z / 34) > 0.64;
+  }
+
   /** Top block, filler and filler depth of a surface in a biome. */
   private surface(biome: Biome, x: number, z: number, floorSurface: boolean): [number, number, number] {
     const patch = this.nRough.noise2(x / 18 + 9, z / 18) > 0.1;
@@ -191,7 +209,15 @@ export class GloamTerrain {
     // Floor.
     out[blockIndex(lx, 0, lz)] = Block.Bedrock;
     const [ft, ff, fd] = this.surface(c.biome, wx, wz, true);
+    // Cave mouths: where the ground is rough enough, caves may reach the open floor.
+    const mouth = this.nRough.noise2(wx / 55 + 3, wz / 55 - 9) > 0.5;
+    const caveTopF = mouth ? c.floor : c.floor - 3;
+    const caveCells: number[] = [];
     for (let y = 1; y <= c.floor; y++) {
+      if (y >= 3 && y <= caveTopF && c.spire === 0 && this.carved(wx, y, wz)) {
+        caveCells.push(y);
+        continue;
+      }
       const depth = c.floor - y;
       put(y, depth === 0 ? ft : depth <= fd ? ff : this.ore(wx, y, wz, c.biome) ? Block.StarfallOre : Block.Murkstone);
     }
@@ -201,7 +227,12 @@ export class GloamTerrain {
       if (top < 0) return;
       const [st, sf, sd] = this.surface(c.biome, wx, wz, false);
       const solid = c.biome === Biome.SpireFields ? Block.Gloamstone : Block.Gloamstone;
+      const thick = top - bot >= 8;
       for (let y = Math.max(1, bot); y <= top; y++) {
+        if (thick && y >= bot + 1 && y <= top - 3 && c.spire === 0 && this.carved(wx, y, wz)) {
+          caveCells.push(y);
+          continue;
+        }
         const depth = top - y;
         put(y, depth === 0 ? st : depth <= sd ? sf : this.ore(wx, y, wz, c.biome) ? Block.StarfallOre : solid);
       }
@@ -214,6 +245,13 @@ export class GloamTerrain {
     };
     layer(c.aBot, c.aTop);
     layer(c.bBot, c.bTop);
+    // Light in the caves: crystal on the floors, vines from the roofs.
+    for (const y of caveCells) {
+      const r = hashFloat(wx, y * 31 + wz, this.seed, 0xca7e);
+      if (r < 0.06 && out[blockIndex(lx, y - 1, lz)] !== Block.Air && out[blockIndex(lx, y - 1, lz)] !== Block.GloamMist) put(y, Block.GlimmerCluster);
+      else if (r > 0.95 && y + 1 < TERRAIN_HEIGHT && out[blockIndex(lx, y + 1, lz)] !== Block.Air) put(y, Block.Lumenvine);
+      else if (r > 0.9 && r <= 0.93 && y >= 3 && out[blockIndex(lx, y - 1, lz)] !== Block.Air) put(y - 1, Block.PrismCrystal);
+    }
     // Needle.
     if (c.spire > 0) {
       for (let y = c.floor + 1; y <= c.spire; y++) put(y, y > c.spire - 1 && y > 40 ? Block.Spirestone : Block.Spirestone);

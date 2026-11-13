@@ -2,6 +2,7 @@
 export * from './api';
 export * from './types';
 export * from './defs';
+export * from './gloamMobs';
 export * from './body';
 export * from './perception';
 export * from './spatial';

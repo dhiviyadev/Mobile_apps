@@ -192,20 +192,23 @@ export function findLitGateNear(get: BlockRead, x: number, z: number, radius: nu
 }
 
 /**
- * A standing spot in front of a lit gate: a cell one step off the plane on either side
- * at the bottom of the middle, feet and head free, solid below. Null when neither side works.
+ * A standing spot in front of a lit gate: feet level with the ring's bottom row, one to three steps
+ * off the plane on either side, in line with the middle (or beside it), feet and head free, solid
+ * below. Never inside the veil. Null when nothing works.
  */
 export function gateArrival(get: BlockRead, f: GateFrame, preferSide = 1): { x: number; y: number; z: number; yaw: number } | null {
-  const free = (b: number) => !IS_SOLID[b] && !IS_LIQUID[b];
-  for (const side of [preferSide, -preferSide]) {
-    for (const dist of [1, 2]) {
-      const [bx, by, bz] = at(f, 2, 1);
-      const x = f.axis === 0 ? bx : bx + side * dist;
-      const z = f.axis === 0 ? bz + side * dist : bz;
-      if (free(get(x, by, z)) && free(get(x, by + 1, z)) && IS_SOLID[get(x, by - 1, z)]) {
-        // Face the gate: yaw 0 looks toward -z in this game (forward = (-sin yaw, -cos yaw)).
-        const yaw = f.axis === 0 ? (side > 0 ? 0 : Math.PI) : side > 0 ? Math.PI / 2 : -Math.PI / 2;
-        return { x: x + 0.5, y: by, z: z + 0.5, yaw };
+  const free = (b: number) => !IS_SOLID[b] && !IS_LIQUID[b] && b !== Block.Veil;
+  for (const dist of [1, 2, 3]) {
+    for (const side of [preferSide, -preferSide]) {
+      for (const u of [2, 1, 3]) {
+        const [bx, by, bz] = at(f, u, 0);
+        const x = f.axis === 0 ? bx : bx + side * dist;
+        const z = f.axis === 0 ? bz + side * dist : bz;
+        if (free(get(x, by, z)) && free(get(x, by + 1, z)) && IS_SOLID[get(x, by - 1, z)] && !IS_LIQUID[get(x, by - 1, z)]) {
+          // Face the gate: yaw 0 looks toward -z in this game (forward = (-sin yaw, -cos yaw)).
+          const yaw = f.axis === 0 ? (side > 0 ? 0 : Math.PI) : side > 0 ? Math.PI / 2 : -Math.PI / 2;
+          return { x: x + 0.5, y: by, z: z + 0.5, yaw };
+        }
       }
     }
   }
@@ -497,9 +500,10 @@ export class PortalCore {
     }
     let spot = gateArrival(h.read, frame);
     if (!spot) {
+      // Nothing in front of the gate: any safe spot near it that is not the veil itself.
       const c = gateCenter(frame);
-      const s = safeSpotNear(h.read, c.x, c.y, c.z);
-      spot = s ? { ...s, yaw: 0 } : null;
+      const s = safeSpotNear(h.read, c.x, c.y - 1, c.z, true);
+      spot = s && h.read(Math.floor(s.x), Math.floor(s.y), Math.floor(s.z)) !== Block.Veil ? { ...s, yaw: 0 } : null;
     }
     if (!spot) {
       h.send(id, { kind: 'cancelled' });
