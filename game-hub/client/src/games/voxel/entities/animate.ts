@@ -198,7 +198,7 @@ export function animate(model: CompiledModel, s: AnimState, out: Pose): void {
         out.pos[r + 2] = a === MobAction.Draw ? 0.12 * p : 0;
         break;
       case 'weapon':
-        if (attacking && s.kind === MobKind.AshenKnight) out.rot[r] = -0.6 * (1 - p);
+        if (attacking && (s.kind === MobKind.AshenKnight || s.kind === MobKind.AnvilheartColossus)) out.rot[r] = -0.6 * (1 - p);
         break;
       case 'spin':
         out.rot[r] = t * 9;
@@ -208,12 +208,12 @@ export function animate(model: CompiledModel, s: AnimState, out: Pose): void {
         break;
     }
   }
-  if (s.phase2 && s.kind === MobKind.AshenKnight) out.emissiveBoost = Math.max(out.emissiveBoost, 0.6);
+  if (s.phase2 && (s.kind === MobKind.AshenKnight || s.kind === MobKind.AnvilheartColossus || s.kind === MobKind.BrineclawMatriarch)) out.emissiveBoost = Math.max(out.emissiveBoost, 0.6);
 
   // ---- root motion ----
   if (biped) out.rootY = Math.abs(sin) * 0.05 * k;
   if (s.kind === MobKind.Hopling && !s.onGround) out.rootPitch = 0.25;
-  if (s.kind === MobKind.Duskwing || s.kind === MobKind.RimeWarden) out.rootY = Math.sin(t * 2.2) * 0.08;
+  if (s.kind === MobKind.Duskwing || s.kind === MobKind.RimeWarden || s.kind === MobKind.Stormtalon) out.rootY = Math.sin(t * 2.2) * 0.08;
   if (s.kind === MobKind.Glimmerfin) out.rootRoll = Math.sin(t * 3) * 0.08;
   if (a === MobAction.Stunned) {
     out.rootPitch = 0.3;

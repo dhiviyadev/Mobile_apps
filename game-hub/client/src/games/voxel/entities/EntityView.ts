@@ -80,6 +80,14 @@ const ROAR: Partial<Record<MobKind, SfxName>> = {
   [MobKind.AnvilheartColossus]: 'ruinAnvilRoar',
 };
 
+/** Attack sounds of the generator-4 ruin bosses by action (package S). */
+const RUIN_BOSS_SOUND: Partial<Record<MobKind, Partial<Record<MobAction, SfxName>>>> = {
+  [MobKind.BrineclawMatriarch]: { [MobAction.Slam]: 'ruinSurge', [MobAction.Cast]: 'ruinRiptide' },
+  [MobKind.Stormtalon]: { [MobAction.Slam]: 'ruinGust', [MobAction.Cast]: 'ruinThunder', [MobAction.Charge]: 'ruinDive' },
+  [MobKind.BramblehornElder]: { [MobAction.Slam]: 'ruinStomp', [MobAction.Cast]: 'ruinRoot' },
+  [MobKind.AnvilheartColossus]: { [MobAction.Slam]: 'ruinHammer', [MobAction.Cast]: 'ruinFlame' },
+};
+
 interface Sample {
   t: number;
   s: MobSnap;
@@ -365,6 +373,7 @@ export class EntityView implements VoxelModule {
         const boss = def.category === MobCategory.Boss;
         let s: string | undefined;
         if (boss) s = e.action === MobAction.Slam ? 'bossSlam' : e.action === MobAction.Charge ? 'bossCharge' : e.action === MobAction.Summon ? 'bossSummon' : e.action === MobAction.Attack ? (v.kind === MobKind.Thornmaw ? 'vineLash' : 'cleave') : e.action === MobAction.Cast ? (v.kind === MobKind.RimeWarden ? 'shardWhoosh' : v.kind === MobKind.AshenKnight ? 'emberWhoosh' : v.kind === MobKind.Thornmaw ? 'seedPop' : 'bossSummon') : e.action === MobAction.Burrow ? 'ruptureCrack' : undefined;
+        if (boss) s = RUIN_BOSS_SOUND[v.kind]?.[e.action] ?? s;
         else if (e.action === MobAction.Draw) s = 'mobBowDraw';
         else if (e.action === MobAction.Inflate) s = 'puffInflate';
         else s = def.sounds.attack;

@@ -55,7 +55,7 @@ describe('block registry (world area)', () => {
       const d = blockDef(id);
       expect([id, d.solid ? 1 : 0, d.transparent ? 1 : 0, d.liquid ? 1 : 0, d.emissive ? 1 : 0]).toEqual([want, solid, transparent, liquid, emissive]);
     }
-    expect(BLOCK_COUNT).toBe(128);
+    expect(BLOCK_COUNT).toBe(144);
   });
 
   it('references only tiles of the 16x16 atlas', () => {

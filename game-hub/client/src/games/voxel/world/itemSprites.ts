@@ -66,6 +66,10 @@ function palette(id: number): { main: RGB; light: RGB; dark: RGB; accent: RGB } 
     case Item.RimeboundCrossbow: return { main: 0xbfe8ff, light: 0xffffff, dark: 0x5a9ad8, accent: 0x5a9ad8 };
     case Item.ThornheartBow: return { main: 0x3f8a3a, light: 0x6ac860, dark: 0x24501f, accent: 0xc83a2a };
     case Item.AshenAxe: return { main: 0x3a3a40, light: 0x6a6a72, dark: 0x1e1e22, accent: 0xff6a2a };
+    case Item.CoralfangBlade: return { main: 0xe8e2d0, light: 0xffffff, dark: 0x2a8a98, accent: 0x2ab8c8 };
+    case Item.GaleshotBow: return { main: 0xdff4ff, light: 0xffffff, dark: 0x5a8ab8, accent: 0x6ad8ff };
+    case Item.RootsplitterAxe: return { main: 0x8a5a2a, light: 0xc8905a, dark: 0x4a2e14, accent: 0x7ae86a };
+    case Item.ForgeheartHammer: return { main: 0x4a4a52, light: 0x8a8a96, dark: 0x24242a, accent: 0xff7a2a };
     case Item.CobaltCrossbow: return { main: 0x2f6fe0, light: 0x9cc8ff, dark: 0x1a3a8a, accent: GOLD };
     case Item.Crossbow: return { main: 0xd8dde6, light: 0xffffff, dark: 0x8a909c, accent: 0xc8743a };
   }
@@ -83,6 +87,11 @@ function sword(c: Canvas16, id: number): void {
   line(c.px, 2, 13, 4, 11, HANDLE_DARK, 2);
   c.px(1, 14, p.accent);
   if (id === Item.SunforgedSword) for (const [x, y] of [[8, 6], [10, 4], [12, 3]]) c.px(x, y, p.accent);
+  if (id === Item.CoralfangBlade) {
+    // A serrated coral edge and a teal glint.
+    for (const [x, y] of [[8, 8], [10, 6], [12, 4], [7, 9]]) c.px(x, y, p.accent);
+    for (const [x, y] of [[9, 9], [11, 7], [13, 5]]) c.px(x, y, p.dark);
+  }
 }
 
 function axe(c: Canvas16, id: number): void {
@@ -92,7 +101,19 @@ function axe(c: Canvas16, id: number): void {
   for (let y = 3; y <= 6; y++) c.px(12, y, p.light);
   for (let y = 2; y <= 7; y++) c.px(13, y, y > 2 && y < 7 ? p.light : p.main);
   for (let y = 3; y <= 5; y++) c.px(6, y, p.dark);
-  if (id === Item.AshenAxe) for (const [x, y] of [[13, 3], [13, 5], [12, 6]]) c.px(x, y, p.accent);
+  if (id === Item.AshenAxe || id === Item.RootsplitterAxe) for (const [x, y] of [[13, 3], [13, 5], [12, 6]]) c.px(x, y, p.accent);
+  if (id === Item.RootsplitterAxe) for (const [x, y] of [[8, 3], [9, 6], [5, 12]]) c.px(x, y, p.accent);
+}
+
+/** A forge hammer: a heavy two-tone head on a haft, with a glowing face. */
+function hammer(c: Canvas16, id: number): void {
+  const p = palette(id);
+  line(c.px, 3, 14, 10, 7, (i) => (i % 2 ? HANDLE : HANDLE_DARK));
+  for (let y = 1; y <= 7; y++) for (let x = 7; x <= 14; x++) c.px(x, y, y <= 2 || x === 7 ? p.light : y >= 6 || x === 14 ? p.dark : p.main);
+  for (let y = 3; y <= 5; y++) c.px(14, y, p.accent);
+  for (const [x, y] of [[9, 4], [11, 3], [12, 5]]) c.px(x, y, p.accent);
+  c.px(8, 8, p.dark);
+  c.px(9, 8, p.dark);
 }
 
 function pickaxe(c: Canvas16, id: number): void {
@@ -138,7 +159,7 @@ function shield(c: Canvas16, id: number): void {
 }
 
 function bow(c: Canvas16, id: number): void {
-  const p = id === Item.ThornheartBow ? palette(id) : { main: HANDLE, dark: HANDLE_DARK, accent: HANDLE_DARK, light: 0xb07a50 };
+  const p = id === Item.ThornheartBow || id === Item.GaleshotBow ? palette(id) : { main: HANDLE, dark: HANDLE_DARK, accent: HANDLE_DARK, light: 0xb07a50 };
   for (let y = 0; y < 16; y++) for (let x = 4; x < 16; x++) {
     const d = Math.abs(Math.hypot(x + 6, y - 7.5) - 15.5);
     if (d < 1.0) c.px(x, y, y < 2 || y > 13 ? p.dark : p.main);
@@ -149,6 +170,7 @@ function bow(c: Canvas16, id: number): void {
     c.px(11, y, HANDLE_DARK);
   }
   if (id === Item.ThornheartBow) for (const [x, y] of [[9, 3], [9, 12], [8, 1]]) c.px(x, y, p.accent);
+  if (id === Item.GaleshotBow) for (const [x, y] of [[8, 2], [7, 4], [8, 11], [7, 13], [12, 7]]) c.px(x, y, p.accent);
 }
 
 function crossbow(c: Canvas16, id: number): void {
@@ -371,6 +393,7 @@ function paintItem(c: Canvas16, id: number): void {
   if (def.ranged) return def.ranged.type === 'bow' ? bow(c, id) : crossbow(c, id);
   if (id === Item.SunforgedSword) return sword(c, id);
   if (id === Item.AshenAxe) return axe(c, id);
+  if (id === Item.ForgeheartHammer) return hammer(c, id);
   if (def.tool?.kind === 'pick') return pickaxe(c, id);
   if (def.tool?.kind === 'shovel') return shovel(c, id);
   if (def.tool?.kind === 'axe') return axe(c, id);
