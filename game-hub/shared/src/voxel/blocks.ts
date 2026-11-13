@@ -1,7 +1,8 @@
 /**
  * Block registry. Ids are bytes stored in chunk arrays, sent over the network
  * and kept in saved worlds, so never renumber an existing block: append only.
- * 0..29 original, 30..126 world upgrade, 127 survival (Bedroll). Next free: 128.
+ * 0..29 original, 30..126 world upgrade, 127 survival (Bedroll), 128..143 ruins (package S).
+ * Next free: 144 (144..191 belong to package D, the dimension).
  *
  * Texture tiles reference the procedural atlas generated on the client
  * (client/src/games/voxel/world/atlas.ts). Tile = row * ATLAS_COLS + col.
@@ -144,6 +145,23 @@ export enum Block {
   BossAltarDormant = 126,
   // ---- survival (design-voxel-survival §4.5) --------------------------------------
   Bedroll = 127,
+  // ---- ruins (package S: set-2 boss structures, 128..143) --------------------------
+  SunRune = 128,
+  GildedBricks = 129,
+  FrostRune = 130,
+  FrostCrystal = 131,
+  VerdantRune = 132,
+  GlowMoss = 133,
+  EmberRune = 134,
+  CinderBricks = 135,
+  WhitewashBricks = 136,
+  BeaconLens = 137,
+  CloudstoneBricks = 138,
+  GaleRune = 139,
+  Heartwood = 140,
+  GlowcapBlock = 141,
+  SlagBricks = 142,
+  ForgeVent = 143,
 }
 
 /** How a block is meshed, ray-tested and drawn as an icon. */
@@ -267,8 +285,8 @@ const def = (id: Block, name: string, tiles: [number, number, number], color: nu
 
 /**
  * Atlas tile indices. 0..22 are the original tiles (never moved); 23..132 are
- * painted by the world area (and 131..132 per the survival design); item
- * sprites use 160..239; the crack overlay uses 240..247.
+ * painted by the world area (and 131..132 per the survival design); 133..148
+ * are the ruins blocks (package S); item sprites use 160..239; the crack overlay uses 240..247.
  */
 export const Tile = {
   GrassTop: 0,
@@ -394,6 +412,23 @@ export const Tile = {
   AltarDormantSide: 130,
   BedrollTop: 131,
   BedrollSide: 132,
+  // ruins (package S): one tile per block, 133..148
+  SunRune: 133,
+  GildedBricks: 134,
+  FrostRune: 135,
+  FrostCrystal: 136,
+  VerdantRune: 137,
+  GlowMoss: 138,
+  EmberRune: 139,
+  CinderBricks: 140,
+  WhitewashBricks: 141,
+  BeaconLens: 142,
+  CloudstoneBricks: 143,
+  GaleRune: 144,
+  Heartwood: 145,
+  GlowcapBlock: 146,
+  SlagBricks: 147,
+  ForgeVent: 148,
   /** First item sprite tile (survival registry: 160..239). */
   ItemSprites: 160,
   /** 8 break stages, 240..247. */
@@ -577,12 +612,29 @@ for (const d of [
     shape: BlockShape.Box, box: [0, 0, 0, 16, 5, 16], transparent: true, collisionTop: 0.3125, support: Support.Below,
     hardness: 0.2, sound: 'cloth', category: 'utility', placeable: true,
   }),
+  // ---- ruins (package S) -------------------------------------------------------------
+  def(Block.SunRune, 'Sun Rune', same(T.SunRune), 0xf2b03a, { hardness: 1.5, ...STONE1, minTier: 2, light: 11, category: 'light' }),
+  def(Block.GildedBricks, 'Gilded Sandstone', same(T.GildedBricks), 0xe0c070, { hardness: 1.0, ...STONE1 }),
+  def(Block.FrostRune, 'Frost Rune', same(T.FrostRune), 0x7ad8ff, { hardness: 1.5, ...STONE1, minTier: 2, light: 11, category: 'light' }),
+  def(Block.FrostCrystal, 'Frost Crystal', same(T.FrostCrystal), 0x9adcff, { ...STAINED, light: 10, lightCost: 0, category: 'light' }),
+  def(Block.VerdantRune, 'Verdant Rune', same(T.VerdantRune), 0x7ae86a, { hardness: 1.5, ...STONE1, minTier: 2, light: 10, category: 'light' }),
+  def(Block.GlowMoss, 'Glowmoss', same(T.GlowMoss), 0x5ac86a, { hardness: 0.3, tool: 'shovel', sound: 'grass', placeable: true, light: 8, category: 'natural' }),
+  def(Block.EmberRune, 'Ember Rune', same(T.EmberRune), 0xff7a2a, { hardness: 1.5, ...STONE1, minTier: 2, light: 11, category: 'light' }),
+  def(Block.CinderBricks, 'Cinder Bricks', same(T.CinderBricks), 0x3a2a2a, { hardness: 1.2, ...STONE1, minTier: 2, light: 3 }),
+  def(Block.WhitewashBricks, 'Whitewash Bricks', same(T.WhitewashBricks), 0xe8e8e4, { hardness: 0.8, ...STONE1 }),
+  def(Block.BeaconLens, 'Beacon Lens', same(T.BeaconLens), 0xfff0b0, { hardness: 0.6, tool: 'pick', sound: 'glass', placeable: true, emissive: true, light: 15, category: 'light' }),
+  def(Block.CloudstoneBricks, 'Cloudstone Bricks', same(T.CloudstoneBricks), 0xb8c8dc, { hardness: 1.0, ...STONE1 }),
+  def(Block.GaleRune, 'Gale Rune', same(T.GaleRune), 0x9af0ff, { hardness: 1.5, ...STONE1, minTier: 2, light: 11, category: 'light' }),
+  def(Block.Heartwood, 'Heartwood', same(T.Heartwood), 0xd88a3a, { hardness: 0.6, ...WOOD }),
+  def(Block.GlowcapBlock, 'Glowcap Block', same(T.GlowcapBlock), 0x8a6aff, { hardness: 0.3, tool: 'axe', sound: 'plant', placeable: true, light: 10, category: 'light' }),
+  def(Block.SlagBricks, 'Slag Bricks', same(T.SlagBricks), 0x5a2a22, { hardness: 1.3, ...STONE1, minTier: 2 }),
+  def(Block.ForgeVent, 'Forge Vent', same(T.ForgeVent), 0xff6a1a, { hardness: 1.5, ...STONE1, minTier: 2, emissive: true, light: 13, category: 'light' }),
 ]) {
   DEFS[d.id] = d;
 }
 
 export const BLOCKS: readonly BlockDef[] = DEFS;
-/** One past the highest defined id (128). */
+/** One past the highest defined id (144). */
 export const BLOCK_COUNT = DEFS.length;
 
 export function blockDef(id: number): BlockDef {
@@ -686,6 +738,9 @@ export const CREATIVE_BLOCKS: readonly Block[] = [
   // lights and utility
   Block.Lamp, Block.Torch, Block.Lantern, Block.Duskcap, Block.SealedRune, Block.Bookshelf, Block.Workbench, Block.Furnace, Block.Chest,
   Block.Bedroll, Block.LadderNZ,
+  // ruins (package S)
+  Block.SunRune, Block.GildedBricks, Block.FrostRune, Block.FrostCrystal, Block.VerdantRune, Block.GlowMoss, Block.EmberRune, Block.CinderBricks,
+  Block.WhitewashBricks, Block.BeaconLens, Block.CloudstoneBricks, Block.GaleRune, Block.Heartwood, Block.GlowcapBlock, Block.SlagBricks, Block.ForgeVent,
 ];
 
 /** Picker category per id ('hidden' for undefined ids). */

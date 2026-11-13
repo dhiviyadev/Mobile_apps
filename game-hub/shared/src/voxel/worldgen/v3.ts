@@ -18,7 +18,7 @@ import { hash4, hashFloat } from '../../util/rng';
 import { Block } from '../blocks';
 import { blockIndex } from '../chunk';
 import { CHUNK_SIZE, ENDLESS_LIMIT, SEA_LEVEL, TERRAIN_HEIGHT, TERRAIN_VOLUME } from '../constants';
-import { LazyStructures, type PlacedStructure } from '../structures/place';
+import { LazyStructures, type LazyOptions, type PlacedStructure } from '../structures/place';
 import type { StructureInfo } from '../structures/types';
 import { Biome, CLIMATE_TABLE, hClass, tClass } from './biomes';
 import { type ColumnV2, LAVA_LEVEL, TerrainGeneratorV2, type TreeV2 } from './v2';
@@ -107,7 +107,12 @@ export class TerrainGeneratorV3 extends TerrainGeneratorV2 {
     this.nRoomDetail = new SimplexNoise(s ^ 0xcbbb9d5d);
     this.nRavine = new SimplexNoise(s ^ 0x629a292a);
     this.nMouth = new SimplexNoise(s ^ 0x9159015a);
-    this.lazy = new LazyStructures(this, this.seed, ENDLESS_LIMIT);
+    this.lazy = new LazyStructures(this, this.seed, ENDLESS_LIMIT, 128, this.structureOptions());
+  }
+
+  /** How structures are placed: generator 3 = set 1 (frozen); generator 4 overrides this (structureSet 2). */
+  protected structureOptions(): LazyOptions {
+    return {};
   }
 
   // ---- climate and terrain (3x larger) -------------------------------------------------------

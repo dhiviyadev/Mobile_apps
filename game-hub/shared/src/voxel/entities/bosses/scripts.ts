@@ -388,7 +388,7 @@ export const BOSS_SCRIPTS: Readonly<Partial<Record<MobKind, BossScript>>> = {
 };
 
 /** Which boss guards a structure type. */
-export const BOSS_FOR_STRUCTURE: Readonly<Record<StructureType, MobKind>> = {
+export const BOSS_FOR_STRUCTURE: Readonly<Partial<Record<StructureType, MobKind>>> = {
   [StructureType.SunscorchTemple]: MobKind.SunforgedSentinel,
   [StructureType.FrostCitadel]: MobKind.RimeWarden,
   [StructureType.OvergrownShrine]: MobKind.Thornmaw,

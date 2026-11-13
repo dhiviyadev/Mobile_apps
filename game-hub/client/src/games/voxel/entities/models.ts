@@ -464,6 +464,145 @@ const KNIGHT: ModelDef = {
   `),
 };
 
+// ---- package S bosses (ruins) ---------------------------------------------------------------
+
+const BRINECLAW: ModelDef = {
+  palette: hex({ shell: 'c8604a', dark: '7a3028', coral: 'f2e0c8', claw: 'e87a5a', eye: '9affea', belly: 'e8c8a0', glow: '5ae8d8' }),
+  stride: 2.2,
+  shadow: 1.6,
+  parts: [
+    ...parts(`
+      body    -     1.80 0.80 1.60   0 0.55 0       b shell torso
+      carap   body  1.50 0.30 1.20   0 0.80 0.05    b dark detail
+      belly   body  1.50 0.10 1.30   0 -0.05 0      b belly detail
+      head    body  0.80 0.50 0.50   0 0.30 -0.78   b shell head
+      eyeL    head  0.14 0.14 0.06  -0.22 0.30 -0.28 c eye emissive detail
+      eyeR    head  0.14 0.14 0.06   0.22 0.30 -0.28 c eye emissive detail
+      stalkL  head  0.08 0.34 0.08  -0.22 0.25 -0.10  b dark detail
+      stalkR  head  0.08 0.34 0.08   0.22 0.25 -0.10  b dark detail
+      armL    body  0.40 0.40 1.30  -0.85 0.25 -0.65  f shell armL
+      armR    body  0.40 0.40 1.30   0.85 0.25 -0.65  f shell armR
+      clawL   armL  0.95 0.55 0.90   0 0 -1.15       f claw
+      clawR   armR  0.95 0.55 0.90   0 0 -1.15       f claw
+      pincL   clawL 0.30 0.30 0.70  -0.25 0.0 -0.85  f coral detail
+      pincR   clawR 0.30 0.30 0.70   0.25 0.0 -0.85  f coral detail
+      legL1   body  0.22 0.55 0.22  -0.95 0.05 -0.35  t dark legA
+      legR1   body  0.22 0.55 0.22   0.95 0.05 -0.35  t dark legB
+      legL2   body  0.22 0.55 0.22  -0.95 0.05 0.25   t dark legB
+      legR2   body  0.22 0.55 0.22   0.95 0.05 0.25   t dark legA
+      legL3   body  0.22 0.55 0.22  -0.95 0.05 0.60   t dark legA
+      legR3   body  0.22 0.55 0.22   0.95 0.05 0.60   t dark legB
+    `),
+    ...[-0.5, 0, 0.5].map((x, i): PartDef => ({ id: `spike${i}`, parent: 'carap', size: [0.16, 0.32 + (i === 1 ? 0.12 : 0), 0.16], at: [x, 0.1, 0.1], anchor: 'b', color: 'coral', detail: true })),
+    ...[-0.3, 0.3].map((x, i): PartDef => ({ id: `lamp${i}`, parent: 'carap', size: [0.22, 0.22, 0.22], at: [x, 0.5, 0.35], anchor: 'c', color: 'glow', emissive: true, detail: true })),
+    ...ring(3, (i) => ({ id: `orbit${i}`, size: [0.18, 0.18, 0.18], at: [0, 2.2, 0], anchor: 'c', color: 'glow', role: 'orbit', emissive: true, index: i })),
+  ],
+};
+
+const STORMTALON: ModelDef = {
+  palette: hex({ feather: 'e8f2ff', dark: '4a5a78', gold: 'f2c63a', beak: 'f2b03a', eye: '6af0ff', glow: '9af4ff' }),
+  stride: 0,
+  shadow: 1.4,
+  parts: [
+    ...parts(`
+      body   -     0.90 0.80 1.70   0 1.10 0         b feather torso
+      chest  body  0.80 0.40 0.70   0 0.15 -0.55     f dark detail
+      neck   body  0.45 0.55 0.45   0 0.50 -0.75     b feather neck
+      head   neck  0.60 0.50 0.60   0 0.45 -0.12     b feather head
+      beak   head  0.30 0.25 0.55   0 -0.05 -0.55    f beak
+      eyeL   head  0.12 0.10 0.04  -0.20 0.12 -0.31  c eye emissive
+      eyeR   head  0.12 0.10 0.04   0.20 0.12 -0.31  c eye emissive
+      crest  head  0.12 0.55 0.40   0 0.45 0.05      b gold detail
+      wingL  body  2.20 0.10 1.40  -0.35 0.35 0.05   l feather wingL alpha 0.97
+      wingR  body  2.20 0.10 1.40   0.35 0.35 0.05   r feather wingR alpha 0.97
+      tipL   wingL 1.00 0.08 1.10  -2.20 0 0.05      l dark detail
+      tipR   wingR 1.00 0.08 1.10   2.20 0 0.05      r dark detail
+      tail   body  0.70 0.08 1.30   0 0.05 0.85      k dark tail
+      legL   body  0.18 0.60 0.18  -0.28 -0.05 -0.1  t beak legA
+      legR   body  0.18 0.60 0.18   0.28 -0.05 -0.1  t beak legB
+      clawL  legL  0.30 0.10 0.40   0 -0.60 -0.1     f dark detail
+      clawR  legR  0.30 0.10 0.40   0 -0.60 -0.1     f dark detail
+    `),
+    ...ring(4, (i) => ({ id: `orbit${i}`, size: [0.16, 0.16, 0.16], at: [0, 1.7, 0], anchor: 'c', color: 'glow', role: 'orbit', emissive: true, index: i })),
+  ],
+};
+
+const BRAMBLEHORN: ModelDef = {
+  palette: hex({ bark: '6a4a2a', dark: '3e2a18', moss: '4a7a3a', leaf: '6ab04a', horn: 'b89a68', eye: 'ffc040', thorn: 'c8a860', glow: 'ffd878' }),
+  stride: 1.4,
+  shadow: 1.6,
+  biped: true,
+  parts: [
+    ...parts(`
+      legL   -      0.60 1.10 0.60  -0.45 1.30 0     t bark legA
+      legR   -      0.60 1.10 0.60   0.45 1.30 0     t bark legB
+      footL  legL   0.75 0.22 0.90   0 -1.10 -0.08   t dark
+      footR  legR   0.75 0.22 0.90   0 -1.10 -0.08   t dark
+      hips   -      1.50 0.50 0.90   0 1.30 0        b dark
+      torso  hips   1.70 1.40 1.10   0 0.45 0        b bark torso
+      mossB  torso  1.40 0.20 0.90   0 1.38 0        b moss detail
+      hollow torso  0.60 0.70 0.06   0 0.55 -0.56    f dark detail
+      heart  hollow 0.25 0.25 0.05   0 0 -0.04       f glow emissive
+      head   torso  0.90 0.80 0.80   0 1.40 -0.10    b bark head
+      eyeL   head   0.16 0.10 0.04  -0.22 0.45 -0.41 c eye emissive
+      eyeR   head   0.16 0.10 0.04   0.22 0.45 -0.41 c eye emissive
+      snout  head   0.45 0.30 0.35   0 0.20 -0.55    f dark
+      uArmL  torso  0.50 1.30 0.50  -1.15 1.20 0     t bark armL
+      uArmR  torso  0.50 1.30 0.50   1.15 1.20 0     t bark armR
+      fistL  uArmL  0.70 0.60 0.70   0 -1.30 0       t dark
+      fistR  uArmR  0.70 0.60 0.70   0 -1.30 0       t dark
+      thL    fistL  0.10 0.30 0.10  -0.20 -0.60 -0.25 c thorn detail
+      thR    fistR  0.10 0.30 0.10   0.20 -0.60 -0.25 c thorn detail
+      cape   torso  1.50 1.30 0.08   0 1.25 0.58     t moss cape
+    `),
+    ...[-1, 1].flatMap((s) => [
+      { id: `horn${s}a`, parent: 'head', size: [0.14, 0.7, 0.14], at: [s * 0.30, 0.78, 0], anchor: 'b', color: 'horn', rot: [0, 0, -s * 20] } as PartDef,
+      { id: `horn${s}b`, parent: `horn${s}a`, size: [0.12, 0.6, 0.12], at: [0, 0.65, 0], anchor: 'b', color: 'horn', rot: [0, 0, s * 35] } as PartDef,
+      { id: `horn${s}c`, parent: `horn${s}b`, size: [0.1, 0.45, 0.1], at: [0, 0.55, 0], anchor: 'b', color: 'thorn', detail: true, rot: [0, 0, -s * 25] } as PartDef,
+    ]),
+    ...ring(5, (i) => ({ id: `leaf${i}`, parent: 'mossB', size: [0.3, 0.06, 0.45], at: [-0.55 + i * 0.28, 0.1, 0.05], anchor: 'b', color: 'leaf', detail: true })),
+  ],
+};
+
+const ANVILHEART: ModelDef = {
+  palette: hex({ iron: '4a4a52', dark: '2a2a30', slag: '7a3a2a', glow: 'ff8a2a', hot: 'ffd070', plate: '62626c' }),
+  stride: 1.2,
+  shadow: 1.8,
+  biped: true,
+  parts: [
+    ...parts(`
+      legL   -      0.75 1.20 0.75  -0.55 1.40 0     t iron legA
+      legR   -      0.75 1.20 0.75   0.55 1.40 0     t iron legB
+      footL  legL   0.90 0.25 1.05   0 -1.20 -0.10   t dark
+      footR  legR   0.90 0.25 1.05   0 -1.20 -0.10   t dark
+      hips   -      1.60 0.50 1.00   0 1.40 0        b dark
+      torso  hips   1.90 1.50 1.20   0 0.45 0        b iron torso
+      core   torso  0.80 0.80 0.08   0 0.55 -0.62    f glow emissive
+      coreH  core   0.35 0.35 0.05   0 0 -0.05       f hot emissive
+      grill  torso  1.20 0.14 0.06   0 0.20 -0.62    f dark detail
+      plateL torso  0.80 0.60 0.10  -0.55 1.00 -0.62 f plate detail
+      plateR torso  0.80 0.60 0.10   0.55 1.00 -0.62 f plate detail
+      head   torso  0.80 0.60 0.80   0 1.55 -0.05    b dark head
+      visor  head   0.60 0.12 0.04   0 0.35 -0.42    c glow emissive
+      horn   head   1.20 0.14 0.30   0 0.60 0        b plate detail
+      stackL torso  0.30 0.80 0.30  -0.60 1.50 0.40  b dark detail
+      stackR torso  0.30 0.80 0.30   0.60 1.50 0.40  b dark detail
+      fireL  stackL 0.20 0.12 0.20   0 0.80 0        b glow emissive detail
+      fireR  stackR 0.20 0.12 0.20   0 0.80 0        b glow emissive detail
+      uArmL  torso  0.70 1.40 0.70  -1.35 1.30 0     t iron armL
+      uArmR  torso  0.70 1.40 0.70   1.35 1.30 0     t iron armR
+      padL   uArmL  0.90 0.30 0.90   0 0.10 0        t plate detail
+      padR   uArmR  0.90 0.30 0.90   0 0.10 0        t plate detail
+      fistL  uArmL  0.85 0.75 0.85   0 -1.40 0       t dark
+      fistR  uArmR  0.85 0.75 0.85   0 -1.40 0       t dark
+      haft   fistR  0.18 1.40 0.18   0 -0.30 -0.35   c dark weapon rot(70,0,0)
+      hamHd  haft   1.30 0.80 0.80   0 0.75 0        c iron
+      hamGl  hamHd  1.00 0.10 0.82   0 0 0           c glow emissive detail
+    `),
+    ...ring(4, (i) => ({ id: `orbit${i}`, size: [0.2, 0.2, 0.2], at: [0, 2.9, 0], anchor: 'c', color: 'hot', role: 'orbit', emissive: true, index: i })),
+  ],
+};
+
 function ring(n: number, make: (i: number) => PartDef): PartDef[] {
   return Array.from({ length: n }, (_, i) => make(i));
 }
@@ -529,6 +668,10 @@ export const MOB_MODELS: Record<MobKind, ModelDef> = {
   [MobKind.RimeWarden]: WARDEN,
   [MobKind.Thornmaw]: THORNMAW,
   [MobKind.AshenKnight]: KNIGHT,
+  [MobKind.BrineclawMatriarch]: BRINECLAW,
+  [MobKind.Stormtalon]: STORMTALON,
+  [MobKind.BramblehornElder]: BRAMBLEHORN,
+  [MobKind.AnvilheartColossus]: ANVILHEART,
 };
 
 const DEG = Math.PI / 180;

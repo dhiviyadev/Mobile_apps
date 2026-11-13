@@ -249,10 +249,35 @@ export const MOB_DEFS: Readonly<Record<MobKind, MobDef>> = {
     fireImmune: true,
     sounds: { idle: 'bossStep', hurt: 'bossHurt', death: 'bossDefeat' },
   },
+  // ---- package S bosses (generator-4 ruins) ----
+  [MobKind.BrineclawMatriarch]: {
+    ...BOSS_BASE, kind: MobKind.BrineclawMatriarch, key: 'brineclaw-matriarch', name: 'Brineclaw Matriarch',
+    maxHealth: 360, armor: 4, knockbackResist: 0.9, halfWidth: 0.9, height: 2.6, eyeHeight: 2.2, wanderSpeed: 2.5, runSpeed: 2.5,
+    fireImmune: false,
+    sounds: { idle: 'ruinClack', hurt: 'bossHurt', death: 'bossDefeat' },
+  },
+  [MobKind.Stormtalon]: {
+    ...BOSS_BASE, kind: MobKind.Stormtalon, key: 'stormtalon', name: 'Stormtalon',
+    maxHealth: 300, armor: 3, knockbackResist: 1, halfWidth: 0.8, height: 2.4, eyeHeight: 2.0, wanderSpeed: 3.2, runSpeed: 3.2,
+    fly: true, fallImmune: true, fireImmune: false,
+    sounds: { idle: 'ruinGust', hurt: 'bossHurt', death: 'bossDefeat' },
+  },
+  [MobKind.BramblehornElder]: {
+    ...BOSS_BASE, kind: MobKind.BramblehornElder, key: 'bramblehorn-elder', name: 'Bramblehorn Elder',
+    maxHealth: 400, armor: 4, knockbackResist: 0.95, halfWidth: 1.0, height: 3.4, eyeHeight: 3.0, wanderSpeed: 2.2, runSpeed: 2.2,
+    fireImmune: false,
+    sounds: { idle: 'bossStep', hurt: 'bossHurt', death: 'bossDefeat' },
+  },
+  [MobKind.AnvilheartColossus]: {
+    ...BOSS_BASE, kind: MobKind.AnvilheartColossus, key: 'anvilheart-colossus', name: 'Anvilheart Colossus',
+    maxHealth: 420, armor: 7, knockbackResist: 1, halfWidth: 1.0, height: 3.6, eyeHeight: 3.2, wanderSpeed: 2.0, runSpeed: 2.0,
+    fireImmune: true,
+    sounds: { idle: 'bossStep', hurt: 'bossHurt', death: 'bossDefeat' },
+  },
 };
 
 export const ALL_MOB_KINDS: readonly MobKind[] = Object.keys(MOB_DEFS).map(Number) as MobKind[];
-export const BOSS_KINDS: readonly MobKind[] = [MobKind.SunforgedSentinel, MobKind.RimeWarden, MobKind.Thornmaw, MobKind.AshenKnight];
+export const BOSS_KINDS: readonly MobKind[] = [MobKind.SunforgedSentinel, MobKind.RimeWarden, MobKind.Thornmaw, MobKind.AshenKnight, MobKind.BrineclawMatriarch, MobKind.Stormtalon, MobKind.BramblehornElder, MobKind.AnvilheartColossus];
 
 export function mobDef(kind: MobKind): MobDef {
   return MOB_DEFS[kind];
@@ -408,6 +433,10 @@ export const BOSS_DROPS: Partial<Record<MobKind, BossDrops>> = {
   [MobKind.SunforgedSentinel]: { unique: 'sunforged_sword', fallback: 'cobalt_sword', rest: [{ item: 'gold_ingot', min: 4, max: 8, chance: 1 }, { item: 'cobalt_gem', min: 2, max: 3, chance: 1 }] },
   [MobKind.RimeWarden]: { unique: 'rimebound_crossbow', fallback: 'cobalt_crossbow', rest: [{ item: 'iron_ingot', min: 6, max: 10, chance: 1 }, { item: 'cobalt_gem', min: 2, max: 3, chance: 1 }, { item: 'bolt', min: 16, max: 24, chance: 1 }] },
   [MobKind.Thornmaw]: { unique: 'thornheart_bow', fallback: 'bow', rest: [{ item: 'arrow', min: 24, max: 32, chance: 1 }, { item: 'cobalt_gem', min: 2, max: 3, chance: 1 }, { item: 'block:Melon', min: 2, max: 2, chance: 1 }] },
+  [MobKind.BrineclawMatriarch]: { unique: 'coralfang_blade', fallback: 'cobalt_sword', rest: [{ item: 'gold_ingot', min: 4, max: 8, chance: 1 }, { item: 'cobalt_gem', min: 2, max: 4, chance: 1 }, { item: 'cooked_fish', min: 4, max: 8, chance: 1 }] },
+  [MobKind.Stormtalon]: { unique: 'galeshot_bow', fallback: 'bow', rest: [{ item: 'feather', min: 8, max: 16, chance: 1 }, { item: 'cobalt_gem', min: 2, max: 4, chance: 1 }, { item: 'arrow', min: 24, max: 32, chance: 1 }] },
+  [MobKind.BramblehornElder]: { unique: 'rootsplitter_axe', fallback: 'cobalt_axe', rest: [{ item: 'apple', min: 4, max: 8, chance: 1 }, { item: 'cobalt_gem', min: 2, max: 4, chance: 1 }, { item: 'block:Heartwood', min: 8, max: 16, chance: 1 }] },
+  [MobKind.AnvilheartColossus]: { unique: 'forgeheart_hammer', fallback: 'cobalt_axe', rest: [{ item: 'ember_shard', min: 3, max: 5, chance: 1 }, { item: 'cobalt_gem', min: 2, max: 4, chance: 1 }, { item: 'iron_ingot', min: 6, max: 10, chance: 1 }] },
   [MobKind.AshenKnight]: { unique: 'ashen_axe', fallback: 'cobalt_axe', rest: [{ item: 'ember_shard', min: 2, max: 3, chance: 1 }, { item: 'cobalt_gem', min: 2, max: 3, chance: 1 }] },
 };
 

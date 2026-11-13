@@ -30,6 +30,11 @@ export enum MobKind {
   RimeWarden = 33,
   Thornmaw = 34,
   AshenKnight = 35,
+  // package S (generator-4 ruins): 36..43
+  BrineclawMatriarch = 36,
+  Stormtalon = 37,
+  BramblehornElder = 38,
+  AnvilheartColossus = 39,
 }
 
 /** Biome and structure recolours (4 bits on the wire). */

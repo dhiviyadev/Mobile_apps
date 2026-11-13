@@ -632,6 +632,129 @@ Object.assign(PAINTERS, {
 [0xe9ecec, 0xb3312c, 0xe07a1f, 0xe8c52a, 0x4f8f2f, 0x2f5fb3, 0x7b3fb0, 0x26262b].forEach((c, i) => (PAINTERS[Tile.ClothWhite + i] = cloth(c)));
 [0xd2423c, 0x3c6ed2, 0x4caf50, 0xe0a030].forEach((c, i) => (PAINTERS[Tile.GlassRed + i] = stainedGlass(c)));
 
+// ---- ruins blocks (package S, tiles 133..148) ---------------------------------------------------
+
+/** 7x7 glyphs of the rune blocks: sun, snowflake, leaf, flame, wind. */
+const RUNE_GLYPHS: readonly (readonly string[])[] = [
+  ['...#...', '#..#..#', '.#####.', '#######', '.#####.', '#..#..#', '...#...'],
+  ['#..#..#', '.#.#.#.', '..###..', '#######', '..###..', '.#.#.#.', '#..#..#'],
+  ['...#...', '..###..', '.#.#.#.', '#..#..#', '.#.#.#.', '..###..', '...#...'],
+  ['...#...', '..##...', '.###.#.', '.#####.', '#######', '.#####.', '..###..'],
+  ['.......', '.####..', '.....#.', '#####.#', '.....#.', '.####..', '.......'],
+];
+/** Brick wall with a glowing glyph carved into each of its four bricks: the rune blocks. */
+const glowRune = (base: number, mortar: number, glow: number, shape: number): Drawer => (px, r) => {
+  px.fill((x, y, rr) => jitter(x % 8 === 7 || y % 8 === 7 ? hex(mortar) : hex(base), rr, 0.1), r);
+  const c = hex(glow);
+  const halo = mix(hex(base), c, 0.3);
+  const glyph = RUNE_GLYPHS[shape];
+  for (let by = 0; by < 2; by++) {
+    for (let bx = 0; bx < 2; bx++) {
+      const ox = bx * 8;
+      const oy = by * 8;
+      for (let y = -1; y < 8; y++) {
+        for (let x = -1; x < 8; x++) {
+          const on = glyph[y]?.[x] === '#';
+          const near = !on && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => glyph[y + dy]?.[x + dx] === '#');
+          const X = ox + x;
+          const Y = oy + y;
+          if (X < 0 || Y < 0 || X > 15 || Y > 15) continue;
+          if (on) px.set(X, Y, jitter(c, r, 0.08));
+          else if (near && r() < 0.7) px.set(X, Y, jitter(halo, r, 0.1));
+        }
+      }
+    }
+  }
+};
+
+Object.assign(DRAWERS, {
+  [Tile.SunRune]: glowRune(0xc8a45a, 0x8a6a30, 0xfff0a0, 0),
+  [Tile.GildedBricks]: (px, r) => {
+    px.fill(bricksPainter(0xe4cc8a, 0xb89a58), r);
+    for (let x = 0; x < 16; x++) {
+      px.set(x, 3, jitter(hex(0xf6d460), r, 0.06));
+      px.set(x, 11, jitter(hex(0xf6d460), r, 0.06));
+    }
+    for (const [x, y] of [[2, 7], [10, 7], [6, 15], [14, 15]]) px.set(x, y, hex(0xfff0a0));
+  },
+  [Tile.FrostRune]: glowRune(0x6a8aa8, 0x3a5070, 0xd8f8ff, 1),
+  [Tile.FrostCrystal]: (px, r) => {
+    px.fill((x, y, rr) => {
+      const edge = x === 0 || y === 0 || x === 15 || y === 15;
+      const facet = (x + y) % 8 === 0 || Math.abs(x - y) % 8 === 0;
+      if (edge) return [...hex(0x6ac0f0), 255] as RGBA;
+      if (facet) return [...hex(0xe8fbff), 235] as RGBA;
+      return rr() < 0.55 ? ([...mix(hex(0x8ad4ff), hex(0xd8f4ff), (x + y) / 30), 150] as RGBA) : ([...hex(0xb0e4ff), 110] as RGBA);
+    }, r);
+  },
+  [Tile.VerdantRune]: glowRune(0x4a6a3a, 0x2a4020, 0xc8ff90, 2),
+  [Tile.GlowMoss]: (px, r) => {
+    px.fill(speckle(0x2f7a42, 0x1f5a30, 0.2, 0.15), r);
+    for (let i = 0; i < 26; i++) {
+      const x = Math.floor(r() * 16);
+      const y = Math.floor(r() * 16);
+      px.set(x, y, r() < 0.5 ? hex(0x9affc0) : hex(0x5ae0a0));
+    }
+  },
+  [Tile.EmberRune]: glowRune(0x3a2a2a, 0x1e1414, 0xffa040, 3),
+  [Tile.CinderBricks]: (px, r) => {
+    px.fill(bricksPainter(0x34282a, 0x1c1414), r);
+    for (let i = 0; i < 10; i++) {
+      const x = Math.floor(r() * 15);
+      const y = Math.floor(r() * 15);
+      px.set(x, y, hex(r() < 0.5 ? 0xff6a2a : 0xd04418));
+      if (r() < 0.6) px.set(x + 1, y, hex(0x9a2c12));
+    }
+  },
+  [Tile.WhitewashBricks]: (px, r) => {
+    px.fill(bricksPainter(0xeeeee8, 0xc4c8cc), r);
+    for (let i = 0; i < 6; i++) px.set(Math.floor(r() * 16), Math.floor(r() * 16), hex(0xd2d6da));
+  },
+  [Tile.BeaconLens]: (px, r) => {
+    px.fill((x, y, rr) => {
+      const d = Math.hypot(x - 7.5, y - 7.5);
+      const ring = Math.abs(d - 6.2) < 0.9 || Math.abs(d - 3.4) < 0.6;
+      const core = d < 2;
+      if (x === 0 || y === 0 || x === 15 || y === 15) return hex(0xb08a3a);
+      if (core) return hex(0xffffff);
+      return jitter(ring ? hex(0xffe27a) : hex(0xfff2b8), rr, 0.05);
+    }, r);
+  },
+  [Tile.CloudstoneBricks]: (px, r) => {
+    px.fill(bricksPainter(0xc4d2e4, 0x93a4bb), r);
+    for (let i = 0; i < 8; i++) px.set(Math.floor(r() * 16), Math.floor(r() * 16), hex(0xf0f6ff));
+  },
+  [Tile.GaleRune]: glowRune(0x7a8aa4, 0x4e5c74, 0xc8fbff, 4),
+  [Tile.Heartwood]: (px, r) => {
+    px.fill((x, y, rr) => {
+      const seam = y % 4 === 3;
+      const ring = Math.sin(x * 0.8 + Math.sin(y * 0.6) * 2) > 0.55;
+      return jitter(seam ? hex(0x7a4416) : ring ? hex(0xf0a850) : hex(0xd88a3a), rr, 0.08);
+    }, r);
+  },
+  [Tile.GlowcapBlock]: (px, r) => {
+    px.fill((x, y, rr) => jitter(((x * 3 + y * 5) % 11) < 2 ? hex(0xc8b8ff) : hex(0x6a4ad0), rr, 0.12), r);
+    for (let i = 0; i < 8; i++) {
+      const x = 1 + Math.floor(r() * 14);
+      const y = 1 + Math.floor(r() * 14);
+      px.set(x, y, hex(0xeaffff));
+      px.set(x + 1, y, hex(0x9affea));
+    }
+  },
+  [Tile.SlagBricks]: (px, r) => {
+    px.fill(bricksPainter(0x6a3028, 0x2a1412), r);
+    for (let i = 0; i < 14; i++) px.set(Math.floor(r() * 16), Math.floor(r() * 16), jitter(hex(0x8a4034), r, 0.2));
+  },
+  [Tile.ForgeVent]: (px, r) => {
+    px.fill((x, y, rr) => {
+      if (x === 0 || y === 0 || x === 15 || y === 15) return hex(0x2a2224);
+      const slat = y % 4 === 1 || y % 4 === 2;
+      return jitter(slat ? hex(0xff9a2a) : hex(0x3a2a28), rr, slat ? 0.1 : 0.15);
+    }, r);
+    for (let x = 3; x < 13; x++) px.set(x, 7, hex(0xffe08a));
+  },
+} satisfies Partial<Record<number, Drawer>>);
+
 /** Tiles drawn as sprites (transparent background): what the atlas test checks for both alpha kinds. */
 export const SPRITE_TILES: readonly number[] = [
   Tile.TallGrass, Tile.Fern, Tile.DryGrass, Tile.DeadBush, Tile.Sunpetal, Tile.Rosette, Tile.Bluebell, Tile.Frostbloom,

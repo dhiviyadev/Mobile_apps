@@ -64,12 +64,20 @@ const BOSS_COLORS: Partial<Record<MobKind, number>> = {
   [MobKind.RimeWarden]: 0x8ae0ff,
   [MobKind.Thornmaw]: 0xc83a6a,
   [MobKind.AshenKnight]: 0xff6a2a,
+  [MobKind.BrineclawMatriarch]: 0x5ae8d8,
+  [MobKind.Stormtalon]: 0x9af4ff,
+  [MobKind.BramblehornElder]: 0xffc040,
+  [MobKind.AnvilheartColossus]: 0xff8a2a,
 };
 const ROAR: Partial<Record<MobKind, SfxName>> = {
   [MobKind.SunforgedSentinel]: 'sentinelRoar',
   [MobKind.RimeWarden]: 'wardenRoar',
   [MobKind.Thornmaw]: 'thornmawRoar',
   [MobKind.AshenKnight]: 'knightRoar',
+  [MobKind.BrineclawMatriarch]: 'ruinBrineRoar',
+  [MobKind.Stormtalon]: 'ruinStormRoar',
+  [MobKind.BramblehornElder]: 'ruinElderRoar',
+  [MobKind.AnvilheartColossus]: 'ruinAnvilRoar',
 };
 
 interface Sample {

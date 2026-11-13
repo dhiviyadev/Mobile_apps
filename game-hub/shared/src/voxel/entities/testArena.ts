@@ -22,11 +22,15 @@ const HEIGHT = 8;
  * Original blocks (ids 0..29) only, so the arena renders with any atlas; the
  * altar and the crypt's lava braziers are the only newer blocks.
  */
-const STYLE: Record<StructureType, { wall: number; floor: number; pillar: number; ceiling: number; trim: number }> = {
+const STYLE: Partial<Record<StructureType, { wall: number; floor: number; pillar: number; ceiling: number; trim: number }>> = {
   [StructureType.SunscorchTemple]: { wall: Block.Brick, floor: Block.Sand, pillar: Block.Planks, ceiling: Block.Brick, trim: Block.Lamp },
   [StructureType.FrostCitadel]: { wall: Block.Cobble, floor: Block.Stone, pillar: Block.Ice, ceiling: Block.Snow, trim: Block.Lamp },
   [StructureType.OvergrownShrine]: { wall: Block.Cobble, floor: Block.Dirt, pillar: Block.Log, ceiling: Block.Leaves, trim: Block.Lamp },
   [StructureType.AshenCrypt]: { wall: Block.Stone, floor: Block.Gravel, pillar: Block.Cobble, ceiling: Block.Stone, trim: Block.Lamp },
+  [StructureType.SaltwornLighthouse]: { wall: Block.Brick, floor: Block.Sand, pillar: Block.Glass, ceiling: Block.Brick, trim: Block.Lamp },
+  [StructureType.StormcrownAerie]: { wall: Block.Cobble, floor: Block.Snow, pillar: Block.Ice, ceiling: Block.Cobble, trim: Block.Lamp },
+  [StructureType.HollowheartGrove]: { wall: Block.Log, floor: Block.Dirt, pillar: Block.Log, ceiling: Block.Leaves, trim: Block.Lamp },
+  [StructureType.CinderdeepForge]: { wall: Block.Stone, floor: Block.Gravel, pillar: Block.Brick, ceiling: Block.Stone, trim: Block.Lamp },
 };
 
 /** Builds a test arena of `type` centred on (cx, cz) with its floor surface at feet height `floorY`. */
@@ -34,7 +38,7 @@ export function buildTestArena(type: StructureType, cx: number, floorY: number, 
   cx = Math.floor(cx);
   cz = Math.floor(cz);
   const F = Math.max(3, Math.min(52, Math.floor(floorY)));
-  const s = STYLE[type];
+  const s = STYLE[type] ?? STYLE[StructureType.AshenCrypt]!;
   const cells = new Map<string, [number, number, number, number]>();
   const set = (x: number, y: number, z: number, b: number) => cells.set(`${x},${y},${z}`, [x, y, z, b]);
   const x0 = cx - HALF;
@@ -82,7 +86,7 @@ export function buildTestArena(type: StructureType, cx: number, floorY: number, 
   const info: StructureInfo = {
     id,
     type,
-    name: STRUCTURE_NAMES[type],
+    name: STRUCTURE_NAMES[type] ?? 'Ruin',
     biome: Biome.Plains,
     anchor: { x: cx, z: cz },
     bounds: { x0: x0 - 1, y0: F - 2, z0: z0 - 1, x1: x1 + 1, y1: F + HEIGHT + 1, z1: z1 + 3 },

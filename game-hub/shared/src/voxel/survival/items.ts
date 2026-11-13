@@ -190,6 +190,11 @@ export enum Item {
   ThornheartBow = 318,
   AshenAxe = 319,
   Satchel = 320,
+  // package S: boss uniques of the generator-4 ruins, 321..336
+  CoralfangBlade = 321,
+  GaleshotBow = 322,
+  RootsplitterAxe = 323,
+  ForgeheartHammer = 324,
 }
 
 /** Fist (and any non-weapon item). */
@@ -209,6 +214,10 @@ export const UNIQUE_COLORS: Readonly<Record<number, readonly [number, number]>> 
   [Item.RimeboundCrossbow]: [0xbfe8ff, 0x5a9ad8],
   [Item.ThornheartBow]: [0x3f8a3a, 0xc83a2a],
   [Item.AshenAxe]: [0x3a3a40, 0xff6a2a],
+  [Item.CoralfangBlade]: [0xe8e2d0, 0x2ab8c8],
+  [Item.GaleshotBow]: [0xdff4ff, 0x6ad8ff],
+  [Item.RootsplitterAxe]: [0x8a5a2a, 0x7ae86a],
+  [Item.ForgeheartHammer]: [0x4a4a52, 0xff7a2a],
 };
 
 const TIER_NAMES = ['', 'Wooden', 'Stone', 'Iron', 'Cobalt'] as const;
@@ -305,6 +314,16 @@ reg({ id: Item.ThornheartBow, key: 'thornheart_bow', name: 'Thornheart Bow', til
 reg({ id: Item.AshenAxe, key: 'ashen_axe', name: 'Ashen Axe', tile: 224, color: 0x3a3a40, kind: ItemKind.Tool, maxStack: 1, durability: 1500, sandbox: true,
   tool: { kind: 'axe', tier: 4, speed: 8 }, melee: { damage: 10, cooldown: 0.95, reach: 3.0, knockback: 6.2, lift: 4.2, shieldDisable: 2.5, wear: 1 } });
 
+// Package S uniques. Effects: StatusKind Slow 1, Burn 2.
+reg({ id: Item.CoralfangBlade, key: 'coralfang_blade', name: 'Coralfang Blade', color: 0xe8e2d0, kind: ItemKind.Sword, maxStack: 1, durability: 1500, sandbox: true,
+  melee: { damage: 8, cooldown: 0.5, reach: 3.4, knockback: 4.5, lift: 3.4, shieldDisable: 0, wear: 1 }, effects: [{ kind: 1, strength: 0.4, seconds: 2.5 }] });
+reg({ id: Item.GaleshotBow, key: 'galeshot_bow', name: 'Galeshot Bow', color: 0xdff4ff, kind: ItemKind.Bow, maxStack: 1, durability: 1300, sandbox: true,
+  ranged: { type: 'bow', drawTime: 0.6, minCharge: 0.2, speedMin: 18, speedMax: 52, damageMin: 3, damageMax: 11, knockMin: 2, knockMax: 6, lift: 2, ammo: BOW_AMMO, pierce: 2 } });
+reg({ id: Item.RootsplitterAxe, key: 'rootsplitter_axe', name: 'Rootsplitter Axe', color: 0x8a5a2a, kind: ItemKind.Tool, maxStack: 1, durability: 1600, sandbox: true,
+  tool: { kind: 'axe', tier: 4, speed: 9 }, melee: { damage: 10, cooldown: 0.9, reach: 3.1, knockback: 6.4, lift: 4.2, shieldDisable: 2.5, wear: 1 } });
+reg({ id: Item.ForgeheartHammer, key: 'forgeheart_hammer', name: 'Forgeheart Hammer', color: 0x4a4a52, kind: ItemKind.Tool, maxStack: 1, durability: 1800, sandbox: true,
+  tool: { kind: 'pick', tier: 4, speed: 10 }, melee: { damage: 11, cooldown: 1.0, reach: 3.0, knockback: 7.0, lift: 4.6, shieldDisable: 3, wear: 1 }, effects: [{ kind: 2, strength: 1, seconds: 3 }] });
+
 reg({ id: Item.Satchel, key: 'satchel', name: 'Lost Satchel', tile: 220, color: 0x8a6a3a, kind: ItemKind.Special, maxStack: 1, special: true });
 
 /** Melee stats of what is held (fist for non-weapons). */
@@ -317,7 +336,7 @@ export function itemTier(id: ItemId): Tier {
   if (id >= Item.WoodenPickaxe && id <= Item.CobaltSword) return (((id - Item.WoodenPickaxe) % 4) + 1) as Tier;
   if (id === Item.WoodenShield) return 1;
   if (id === Item.IronShield || id === Item.Crossbow) return 3;
-  if (id === Item.CobaltShield || id === Item.CobaltCrossbow || (id >= Item.SunforgedSword && id <= Item.AshenAxe)) return 4;
+  if (id === Item.CobaltShield || id === Item.CobaltCrossbow || (id >= Item.SunforgedSword && id <= Item.AshenAxe) || (id >= Item.CoralfangBlade && id <= Item.ForgeheartHammer)) return 4;
   return 0;
 }
 

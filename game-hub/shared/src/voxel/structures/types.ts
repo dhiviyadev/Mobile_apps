@@ -13,13 +13,23 @@ export enum StructureType {
   FrostCitadel = 2,
   OvergrownShrine = 3,
   AshenCrypt = 4,
+  // ---- set 2 (generator 4, package S "More ruins and bosses"): 5..8 ----
+  SaltwornLighthouse = 5,
+  StormcrownAerie = 6,
+  HollowheartGrove = 7,
+  CinderdeepForge = 8,
+  // 9..12: portal sites (package D)
 }
 
-export const STRUCTURE_NAMES: Record<StructureType, string> = {
+export const STRUCTURE_NAMES: Partial<Record<StructureType, string>> = {
   [StructureType.SunscorchTemple]: 'Sunscorch Temple',
   [StructureType.FrostCitadel]: 'Frost Citadel',
   [StructureType.OvergrownShrine]: 'Overgrown Shrine',
   [StructureType.AshenCrypt]: 'Ashen Crypt',
+  [StructureType.SaltwornLighthouse]: 'Saltworn Lighthouse',
+  [StructureType.StormcrownAerie]: 'Stormcrown Aerie',
+  [StructureType.HollowheartGrove]: 'Hollowheart Grove',
+  [StructureType.CinderdeepForge]: 'Cinderdeep Forge',
 };
 
 export interface Vec3i {

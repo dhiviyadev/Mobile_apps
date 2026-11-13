@@ -47,6 +47,10 @@ const BOSS_STRUCTURES: Record<string, StructureType> = {
   'rime-warden': StructureType.FrostCitadel,
   thornmaw: StructureType.OvergrownShrine,
   'ashen-knight': StructureType.AshenCrypt,
+  'brineclaw-matriarch': StructureType.SaltwornLighthouse,
+  stormtalon: StructureType.StormcrownAerie,
+  'bramblehorn-elder': StructureType.HollowheartGrove,
+  'anvilheart-colossus': StructureType.CinderdeepForge,
 };
 
 export class LocalEntities {

@@ -15,6 +15,15 @@ export enum LootTableId {
   ShrineBoss = 6,
   CryptCommon = 7,
   CryptBoss = 8,
+  // package S (generator 4): 9..16
+  LighthouseCommon = 9,
+  LighthouseBoss = 10,
+  AerieCommon = 11,
+  AerieBoss = 12,
+  GroveCommon = 13,
+  GroveBoss = 14,
+  ForgeCommon = 15,
+  ForgeBoss = 16,
 }
 
 export interface LootEntry {
@@ -32,7 +41,7 @@ export interface LootTable {
 const e = (item: string, weight: number, min: number, max = min): LootEntry => ({ item, weight, count: [min, max] });
 const g = (oneOf: string[], min = 1, max = min) => ({ oneOf, count: [min, max] as [number, number] });
 
-export const LOOT_TABLES: Record<LootTableId, LootTable> = {
+export const LOOT_TABLES: Partial<Record<LootTableId, LootTable>> = {
   [LootTableId.TempleCommon]: {
     rolls: [3, 5],
     guaranteed: [],
@@ -73,12 +82,52 @@ export const LOOT_TABLES: Record<LootTableId, LootTable> = {
     guaranteed: [g(['cobalt_axe', 'cobalt_sword', 'cobalt_shield']), g(['ember_shard'], 1, 2)],
     entries: [e('cobalt_gem', 4, 2, 3), e('gold_ingot', 3, 2, 4), e('iron_ingot', 3, 3, 6)],
   },
+  [LootTableId.LighthouseCommon]: {
+    rolls: [3, 5],
+    guaranteed: [],
+    entries: [e('raw_fish', 4, 2, 4), e('cooked_fish', 4, 1, 3), e('iron_ingot', 4, 2, 4), e('arrow', 4, 6, 12), e('block:Lantern', 3, 1, 2), e('block:WhitewashBricks', 3, 8, 16), e('bow', 1, 1), e('cobalt_gem', 1, 1)],
+  },
+  [LootTableId.LighthouseBoss]: {
+    rolls: [4, 6],
+    guaranteed: [g(['cobalt_sword', 'cobalt_shield', 'cobalt_crossbow']), g(['cooked_fish'], 4, 8)],
+    entries: [e('cobalt_gem', 4, 2, 3), e('gold_ingot', 3, 2, 5), e('block:BeaconLens', 2, 1, 2)],
+  },
+  [LootTableId.AerieCommon]: {
+    rolls: [3, 5],
+    guaranteed: [],
+    entries: [e('feather', 5, 4, 10), e('arrow', 5, 6, 14), e('iron_ingot', 4, 2, 4), e('bow', 2, 1), e('block:CloudstoneBricks', 3, 8, 16), e('cooked_meat', 3, 1, 3), e('cobalt_gem', 1, 1)],
+  },
+  [LootTableId.AerieBoss]: {
+    rolls: [4, 6],
+    guaranteed: [g(['cobalt_crossbow', 'cobalt_sword', 'cobalt_axe']), g(['feather'], 8, 16)],
+    entries: [e('cobalt_gem', 4, 2, 3), e('gold_ingot', 3, 2, 5), e('block:GaleRune', 2, 2, 4)],
+  },
+  [LootTableId.GroveCommon]: {
+    rolls: [3, 5],
+    guaranteed: [],
+    entries: [e('apple', 5, 2, 5), e('block:Heartwood', 3, 8, 16), e('arrow', 4, 6, 12), e('copper_ingot', 3, 2, 5), e('bread', 3, 1, 3), e('block:GlowcapBlock', 2, 2, 4), e('cobalt_gem', 1, 1)],
+  },
+  [LootTableId.GroveBoss]: {
+    rolls: [4, 6],
+    guaranteed: [g(['cobalt_axe', 'cobalt_shield', 'cobalt_sword']), g(['apple'], 4, 8)],
+    entries: [e('cobalt_gem', 4, 2, 3), e('gold_ingot', 3, 2, 4), e('block:VerdantRune', 2, 2, 4)],
+  },
+  [LootTableId.ForgeCommon]: {
+    rolls: [3, 5],
+    guaranteed: [],
+    entries: [e('coal', 5, 4, 10), e('iron_ingot', 5, 2, 5), e('ember_shard', 3, 1, 2), e('iron_axe', 1, 1), e('iron_sword', 1, 1), e('block:SlagBricks', 3, 8, 16), e('cooked_meat', 3, 1, 3), e('cobalt_gem', 1, 1)],
+  },
+  [LootTableId.ForgeBoss]: {
+    rolls: [4, 6],
+    guaranteed: [g(['cobalt_axe', 'cobalt_sword', 'cobalt_shield']), g(['ember_shard'], 2, 4)],
+    entries: [e('cobalt_gem', 4, 2, 3), e('gold_ingot', 3, 2, 5), e('iron_ingot', 3, 4, 8)],
+  },
 };
 
 /** Every item key the loot tables can produce (tests: all must resolve in the survival registry). */
 export function lootKeys(): string[] {
   const keys = new Set<string>();
-  for (const t of Object.values(LOOT_TABLES)) {
+  for (const t of Object.values(LOOT_TABLES) as LootTable[]) {
     for (const gr of t.guaranteed) for (const k of gr.oneOf) keys.add(k);
     for (const en of t.entries) keys.add(en.item);
   }

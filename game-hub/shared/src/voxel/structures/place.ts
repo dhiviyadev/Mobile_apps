@@ -9,7 +9,7 @@
  * per region, rolled when a region is first needed, landmarks so ruins can be
  * seen from afar, and one structure guaranteed near spawn.
  */
-import { hash4, mulberry32 } from '../../util/rng';
+import { hash4, hashFloat, mulberry32 } from '../../util/rng';
 import { SEA_LEVEL } from '../constants';
 import { Biome } from '../worldgen/biomes';
 import { citadel } from './citadel';
@@ -18,6 +18,7 @@ import { buildLandmark, cryptGateFits, landmarkBox, unionBox } from './landmarks
 import { shrine } from './shrine';
 import { temple } from './temple';
 import type { Built, Template } from './template';
+import { SET2_TEMPLATES, set2Floor, set2Region, set2Type, V4_RULES } from './set2';
 import { STRUCTURE_NAMES, type StructureInfo, StructureType } from './types';
 
 /** What placement needs from a generator. */
@@ -32,6 +33,19 @@ export interface PlacedStructure {
   floor: number;
   /** Generator 3: a landmark spire / crypt gatehouse is built too (landmarks.ts). */
   landmark?: boolean;
+  /** Template set: 1 (generators 2 and 3, frozen) or 2 (generator 4: reworked ruins and four new bosses, set2.ts). Default 1. */
+  set?: StructureSet;
+}
+
+/** Which family of structure templates a world uses (generator 4 = 2). */
+export type StructureSet = 1 | 2;
+
+/** How a LazyStructures world is configured (the generator picks; generator 3 = {}). */
+export interface LazyOptions {
+  /** Template set (default 1: generator 3's ruins, byte-identical). */
+  structureSet?: StructureSet;
+  /** Anchors stay west of this x (generator 4: the overworld ends before the veil wall). */
+  maxX?: number;
 }
 
 /** How structures are spread over a world. */
@@ -60,7 +74,7 @@ export const SPAWN_GUARANTEE = 250;
 
 const MIN_COUNT = 6;
 
-export const TEMPLATES: Record<StructureType, Template> = {
+export const TEMPLATES: Partial<Record<StructureType, Template>> = {
   [StructureType.SunscorchTemple]: temple,
   [StructureType.FrostCitadel]: citadel,
   [StructureType.OvergrownShrine]: shrine,
@@ -68,12 +82,17 @@ export const TEMPLATES: Record<StructureType, Template> = {
 };
 
 /** Footprint size, height spread allowed, lowest height and highest floor per type. */
-const SITE: Record<StructureType, { size: number; spread: number; minAbove: number; maxF: number }> = {
+const SITE: Partial<Record<StructureType, { size: number; spread: number; minAbove: number; maxF: number }>> = {
   [StructureType.SunscorchTemple]: { size: 35, spread: 8, minAbove: SEA_LEVEL + 2, maxF: 46 },
   [StructureType.FrostCitadel]: { size: 35, spread: 10, minAbove: SEA_LEVEL + 2, maxF: 49 },
   [StructureType.OvergrownShrine]: { size: 33, spread: 8, minAbove: SEA_LEVEL, maxF: 45 },
   [StructureType.AshenCrypt]: { size: 9, spread: 4, minAbove: SEA_LEVEL + 2, maxF: 48 },
 };
+
+/** The template of a type in a set. */
+function templateOf(set: StructureSet, type: StructureType): Template {
+  return (set === 2 ? SET2_TEMPLATES[type] : TEMPLATES[type])!;
+}
 
 function typeFor(biome: Biome): StructureType | null {
   switch (biome) {
@@ -109,8 +128,9 @@ function samples(gen: SiteSource, cx: number, cz: number, size: number): number[
 }
 
 /** The floor F if the site suits the type, else null. */
-function siteFloor(gen: SiteSource, type: StructureType, ax: number, az: number, relaxed = false): number | null {
-  const site = SITE[type];
+function siteFloor(gen: SiteSource, type: StructureType, ax: number, az: number, relaxed = false, set: StructureSet = 1): number | null {
+  if (set === 2) return set2Floor(gen, type, ax, az, relaxed);
+  const site = SITE[type]!;
   const c = type === StructureType.AshenCrypt ? cryptShaft(ax, az) : { x: ax, z: az };
   const hs = samples(gen, c.x, c.z, site.size);
   if (hs[8] - hs[0] > site.spread * (relaxed ? 2 : 1) || hs[0] < site.minAbove) return null;
@@ -121,16 +141,17 @@ function siteFloor(gen: SiteSource, type: StructureType, ax: number, az: number,
   return F;
 }
 
-function describe(seed: number, rx: number, rz: number, type: StructureType, ax: number, az: number, F: number, biome: Biome, landmark = false): PlacedStructure {
+function describe(seed: number, rx: number, rz: number, type: StructureType, ax: number, az: number, F: number, biome: Biome, landmark = false, set: StructureSet = 1): PlacedStructure {
   const id = ((rx & 0xff) << 8) | (rz & 0xff);
-  const l = TEMPLATES[type].layout(ax, az, F);
+  const l = templateOf(set, type).layout(ax, az, F);
   return {
     floor: F,
     ...(landmark ? { landmark } : {}),
+    ...(set === 2 ? { set } : {}),
     info: {
       id,
       type,
-      name: STRUCTURE_NAMES[type],
+      name: STRUCTURE_NAMES[type] ?? 'Ruin',
       biome,
       anchor: { x: ax, z: az },
       bounds: landmark ? unionBox(l.bounds, landmarkBox({ type, anchor: { x: ax, z: az }, bounds: l.bounds, floor: F })) : l.bounds,
@@ -162,6 +183,7 @@ function rollRegion(
   rules = V2_RULES,
   maxFromSpawn = Infinity,
   relaxed = false,
+  set: StructureSet = 1,
 ): PlacedStructure | null {
   const rng = mulberry32(hash4(rx, rz, seed, salt));
   if (strict && rng() >= rules.chance) return null;
@@ -173,13 +195,20 @@ function rollRegion(
     const d = Math.hypot(ax - spawn.x, az - spawn.z);
     if (d < rules.minFromSpawn || d > maxFromSpawn) continue;
     const biome = gen.column(ax, az).biome;
-    const type = typeFor(biome);
+    const type = set === 2 ? set2Type(biome, hashFloat(ax, az, seed, 0x5e72)) : typeFor(biome);
     if (type === null) continue;
     if (strict && type === StructureType.AshenCrypt && crypRoll >= 0.75) continue;
-    const F = siteFloor(gen, type, ax, az, relaxed);
+    const F = siteFloor(gen, type, ax, az, relaxed, set);
     if (F === null) continue;
-    if (rules.landmarks && type === StructureType.AshenCrypt && !cryptGateFits((x, z) => gen.column(x, z), ax, az, F)) continue;
-    return describe(seed, rx, rz, type, ax, az, F, biome, rules.landmarks);
+    // Landmarks: generator 3 gives every ruin a spire or gatehouse; generator 4's ruins carry their own, so only the crypt keeps its gatehouse.
+    const landmark = rules.landmarks && (set === 1 || type === StructureType.AshenCrypt);
+    if (landmark && type === StructureType.AshenCrypt && !cryptGateFits((x, z) => gen.column(x, z), ax, az, F)) continue;
+    return describe(seed, rx, rz, type, ax, az, F, biome, landmark, set);
+  }
+  // Generator 4: regions on a coast that no ordinary anchor suited get a lighthouse probe (coasts are thin, a random anchor seldom lands on one).
+  if (set === 2 && strict) {
+    const c = set2Region(gen, rng, rx, rz, rules, spawn, maxFromSpawn, relaxed);
+    if (c) return describe(seed, rx, rz, c.type, c.ax, c.az, c.F, c.biome, false, set);
   }
   return null;
 }
@@ -220,15 +249,22 @@ export class LazyStructures {
   private spawnGroup: Map<number, PlacedStructure | null> | null = null;
   private readonly cache = new Map<number, PlacedStructure | null>();
   private readonly maxRegion: number;
-  private readonly rules = V3_RULES;
+  /** Highest region x (anchors stay west of options.maxX). */
+  private readonly maxRegionX: number;
+  private readonly rules: PlacementRules;
+  private readonly set: StructureSet;
 
   constructor(
     private readonly gen: SiteSource,
     private readonly seed: number,
     limit: number,
     edgeMargin = 128,
+    options: LazyOptions = {},
   ) {
+    this.set = options.structureSet ?? 1;
+    this.rules = this.set === 2 ? V4_RULES : V3_RULES;
     this.maxRegion = Math.floor((limit - edgeMargin) / this.rules.region) - 1;
+    this.maxRegionX = options.maxX === undefined ? this.maxRegion : Math.min(this.maxRegion, Math.floor((options.maxX - edgeMargin) / this.rules.region) - 1);
   }
 
   private static key(rx: number, rz: number): number {
@@ -262,7 +298,7 @@ export class LazyStructures {
       if (near) break;
       for (const { rx, rz } of regions) {
         if (!this.inWorld(rx, rz)) continue;
-        const p = rollRegion(this.gen, this.seed, spawn, rx, rz, 0x57c9, 24, false, this.rules, SPAWN_GUARANTEE, relaxed);
+        const p = rollRegion(this.gen, this.seed, spawn, rx, rz, 0x57c9, 24, false, this.rules, SPAWN_GUARANTEE, relaxed, this.set);
         if (p) {
           group.set(LazyStructures.key(rx, rz), p);
           near = true;
@@ -274,12 +310,12 @@ export class LazyStructures {
   }
 
   private inWorld(rx: number, rz: number): boolean {
-    return rx >= -this.maxRegion - 1 && rx <= this.maxRegion && rz >= -this.maxRegion - 1 && rz <= this.maxRegion;
+    return rx >= -this.maxRegion - 1 && rx <= this.maxRegionX && rz >= -this.maxRegion - 1 && rz <= this.maxRegion;
   }
 
   private roll(rx: number, rz: number): PlacedStructure | null {
     if (!this.inWorld(rx, rz)) return null;
-    return rollRegion(this.gen, this.seed, this.gen.findSpawn(), rx, rz, 0x57c7, 4, true, this.rules);
+    return rollRegion(this.gen, this.seed, this.gen.findSpawn(), rx, rz, 0x57c7, 4, true, this.rules, Infinity, false, this.set);
   }
 
   /** The structure of region (rx, rz), or null. */
@@ -318,9 +354,9 @@ export class LazyStructures {
 /** Builds the blocks of a placed structure (decoration seeded per structure). */
 export function buildStructure(p: PlacedStructure, seed: number): Built {
   const rng = mulberry32(hash4(seed, p.info.id, p.info.type, 0x5eed));
-  const built = TEMPLATES[p.info.type].build(p.info.anchor.x, p.info.anchor.z, p.floor, rng);
+  const built = templateOf(p.set ?? 1, p.info.type).build(p.info.anchor.x, p.info.anchor.z, p.floor, rng);
   if (p.landmark) {
-    const l = TEMPLATES[p.info.type].layout(p.info.anchor.x, p.info.anchor.z, p.floor);
+    const l = templateOf(p.set ?? 1, p.info.type).layout(p.info.anchor.x, p.info.anchor.z, p.floor);
     const site = { type: p.info.type, anchor: p.info.anchor, bounds: l.bounds, floor: p.floor };
     built.volumes.push(...buildLandmark(site, mulberry32(hash4(seed, p.info.id, p.info.type, 0x1a4d))));
   }

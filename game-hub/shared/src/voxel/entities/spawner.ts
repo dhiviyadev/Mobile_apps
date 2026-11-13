@@ -27,11 +27,15 @@ interface GuardState {
   respawnAt: Map<number, number>;
 }
 
-const GUARD_KINDS: Record<StructureType, [MobKind, MobKind, MobVariant]> = {
+const GUARD_KINDS: Partial<Record<StructureType, [MobKind, MobKind, MobVariant]>> = {
   [StructureType.SunscorchTemple]: [MobKind.Rattlebow, MobKind.Mudlurch, MobVariant.Sand],
   [StructureType.FrostCitadel]: [MobKind.Mudlurch, MobKind.Rattlebow, MobVariant.Frost],
   [StructureType.OvergrownShrine]: [MobKind.Puffcap, MobKind.Cragcrawler, MobVariant.Moss],
   [StructureType.AshenCrypt]: [MobKind.Rattlebow, MobKind.Mudlurch, MobVariant.Ash],
+  [StructureType.SaltwornLighthouse]: [MobKind.Mudlurch, MobKind.Rattlebow, MobVariant.Frost],
+  [StructureType.StormcrownAerie]: [MobKind.Rattlebow, MobKind.Duskwing, MobVariant.Frost],
+  [StructureType.HollowheartGrove]: [MobKind.Puffcap, MobKind.Cragcrawler, MobVariant.Moss],
+  [StructureType.CinderdeepForge]: [MobKind.Mudlurch, MobKind.Rattlebow, MobVariant.Ash],
 };
 
 export class Spawner {
@@ -322,8 +326,8 @@ export class Spawner {
   spawnBoss(s: StructureInfo): Mob | null {
     const w = this.w;
     const kind = BOSS_FOR_STRUCTURE[s.type];
-    const script = BOSS_SCRIPTS[kind];
-    if (!script) return null;
+    const script = kind === undefined ? undefined : BOSS_SCRIPTS[kind];
+    if (kind === undefined || !script) return null;
     const sp = s.bossSpawn;
     const m = w.spawnMob(kind, sp.x, sp.y + script.hover, sp.z, { flags: MobFlag.Boss, yaw: 0 });
     if (!m) return null;
@@ -342,7 +346,9 @@ export class Spawner {
       if (!w.players.some((p) => p.alive && Math.hypot(p.x - s.entrance.x, p.z - s.entrance.z) < 40)) continue;
       let st = this.guards.get(s.id);
       if (!st) this.guards.set(s.id, (st = { live: new Map(), respawnAt: new Map() }));
-      const [even, odd, variant] = GUARD_KINDS[s.type];
+      const guard = GUARD_KINDS[s.type];
+      if (!guard) continue;
+      const [even, odd, variant] = guard;
       for (let i = 0; i < s.guardSpawns.length; i++) {
         const id = st.live.get(i);
         if (id && w.mobs.get(id)?.alive) continue;
