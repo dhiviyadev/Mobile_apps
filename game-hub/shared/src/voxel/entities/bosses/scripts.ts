@@ -9,6 +9,7 @@ import { HazardKind, ProjectileKind } from '../api';
 import { BurstKind, EntityEventType, MobAction, MobKind, MobVariant, TelegraphShape } from '../types';
 import { beginCharge, fan, lob, summonAt, updateCharge } from './attacks';
 import type { BossController, BossScript, Telegraph } from './boss';
+import { RUIN_BOSS_SCRIPTS } from './ruinScripts';
 
 const ALL = 7;
 const P23 = 6;
@@ -385,6 +386,7 @@ export const BOSS_SCRIPTS: Readonly<Partial<Record<MobKind, BossScript>>> = {
   [MobKind.RimeWarden]: warden,
   [MobKind.Thornmaw]: thornmaw,
   [MobKind.AshenKnight]: knight,
+  ...RUIN_BOSS_SCRIPTS,
 };
 
 /** Which boss guards a structure type. */
@@ -393,6 +395,10 @@ export const BOSS_FOR_STRUCTURE: Readonly<Partial<Record<StructureType, MobKind>
   [StructureType.FrostCitadel]: MobKind.RimeWarden,
   [StructureType.OvergrownShrine]: MobKind.Thornmaw,
   [StructureType.AshenCrypt]: MobKind.AshenKnight,
+  [StructureType.SaltwornLighthouse]: MobKind.BrineclawMatriarch,
+  [StructureType.StormcrownAerie]: MobKind.Stormtalon,
+  [StructureType.HollowheartGrove]: MobKind.BramblehornElder,
+  [StructureType.CinderdeepForge]: MobKind.AnvilheartColossus,
 };
 
 export function bossTitle(kind: MobKind): string {

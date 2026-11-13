@@ -205,14 +205,14 @@ export const citadel2: Template = {
     }
     // Ceiling: crystals in a lattice, icicles hanging in clusters.
     for (let z = A0; z <= A1; z += 4) for (let x = A0; x <= A1; x += 4) {
-      p.set(x, 11, z, FC);
-      p.set(x, 10, z, FC);
+      p.furnish(x, 11, z, FC);
+      p.furnish(x, 10, z, FC);
     }
     for (let i = 0; i < 40; i++) {
       const x = A0 + Math.floor(rng() * (A1 - A0 + 1));
       const z = A0 + Math.floor(rng() * (A1 - A0 + 1));
       const len = 1 + Math.floor(rng() * 3);
-      for (let k = 0; k < len; k++) p.set(x, 11 - k, z, k === len - 1 ? FC : PI);
+      for (let k = 0; k < len; k++) p.furnish(x, 11 - k, z, k === len - 1 ? FC : PI);
     }
     // Floor lanterns around the hall and the altar.
     for (let i = A0 + 2; i <= A1 - 2; i += 4) {
@@ -244,7 +244,7 @@ export const citadel2: Template = {
       p.set(x, 8, z, FC);
       p.set(x, 7, z - 1, FC);
     };
-    for (const [x, z] of [[14, 36], [26, 36], [12, 28], [28, 28], [6, 20], [34, 20]]) sentinel(x, z);
+    for (const [x, z] of [[14, 36], [26, 36], [6, 12], [34, 12], [6, 20], [34, 20]]) sentinel(x, z);
     for (let i = 0; i < 18; i++) {
       const a = rng() * Math.PI * 2;
       const rr = 21 + rng() * 6;

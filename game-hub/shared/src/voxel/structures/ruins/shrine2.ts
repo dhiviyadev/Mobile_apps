@@ -152,7 +152,7 @@ export const shrine2: Template = {
     for (const [x, z] of [[14, 14], [26, 14], [14, 26], [26, 26], [20, 15], [20, 25], [15, 20], [25, 20]]) {
       for (let ly = 3; ly <= 10; ly++) p.furnish(x, ly, z, ly === 3 || ly === 10 ? SBR : ly === 6 ? VR : MS);
     }
-    for (const dz of [-6, 0, 6]) for (let x = A0; x <= A1; x++) p.set(x, 10, C + dz, Block.MahoganyLog);
+    for (const dz of [-6, 0, 6]) for (let x = A0; x <= A1; x++) p.set(x, 11, C + dz, Block.MahoganyLog);
     for (let z = A0; z <= A1; z++) for (let x = A0; x <= A1; x++) {
       if (p.get(x, 10, z) !== Block.Air) continue;
       const inPool = POOLS.some(([px, pz]) => x >= px && x <= px + 2 && z >= pz && z <= pz + 2);

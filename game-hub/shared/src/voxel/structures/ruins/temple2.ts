@@ -19,11 +19,11 @@ const SZ = 57;
 const CX = 22;
 const CZ = 34;
 const TIERS = [17, 14, 11, 8, 5];
-/** Hall interior (inclusive local): 21 x 21, ly 2..9. */
+/** Hall interior (inclusive local): 21 wide x 16 deep, ly 2..9; the grand stair passes over its south end. */
 const H0 = 12;
 const H1 = 32;
 const HZ0 = CZ - 10;
-const HZ1 = CZ + 10;
+const HZ1 = CZ + 5;
 
 const origin = (ax: number, az: number, F: number) => ({ ox: ax - CX, oy: F - 1, oz: az - CZ });
 
@@ -121,6 +121,23 @@ export const temple2: Template = {
       }
     }
 
+    // ---- the cleft stair up the south face ---------------------------------------------------
+    const surf = (z: number) => 1 + (CZ + 18 - z);
+    for (let z = CZ + 18; z >= CZ + 3; z--) {
+      const s = surf(z);
+      for (let x = CX - 2; x <= CX + 2; x++) {
+        for (let ly = 2; ly <= SY - 1; ly++) {
+          if (ly <= s) p.set(x, ly, z, ly === s ? (x === CX ? Block.Marble : Block.Sandstone) : SB);
+          else if (ly <= s + 4 || v.get(x, ly, z) !== Block.Air) p.set(x, ly, z, Block.Air);
+        }
+      }
+      // Gilded cheeks and lanterns up the stair.
+      for (const sx of [-3, 3]) {
+        const cell = v.get(CX + sx, s, z);
+        if (cell !== Block.Air) p.set(CX + sx, s, z, Block.GildedBricks);
+        if (z % 3 === 0 && v.get(CX + sx, s + 1, z) === Block.Air) p.set(CX + sx, s + 1, z, Block.Lantern);
+      }
+    }
     // ---- boss hall ---------------------------------------------------------------------------
     p.fill(H0 - 1, 1, HZ0 - 1, H1 + 1, 1, HZ1 + 1, SB);
     p.fill(H0, 2, HZ0, H1, 9, HZ1, Block.Air);
@@ -155,13 +172,14 @@ export const temple2: Template = {
     for (let z = HZ0; z <= HZ1; z += 4) for (let x = H0; x <= H1; x += 4) p.set(x, 10, z, Block.Lamp);
     // Colonnade.
     for (const sx of [-8, 8]) {
-      for (const dz of [-8, -4, 0, 4, 8]) {
+      for (const dz of [-8, -4, 0, 4]) {
         const x = CX + sx;
         const z = CZ + dz;
         p.fill(x, 2, z, x, 9, z, Block.MarblePillar);
         for (let ly = 2; ly <= 9; ly++) p.furnish(x, ly, z, ly === 2 ? Block.GildedBricks : ly === 9 ? Block.GildedBricks : ly === 6 ? Block.SunRune : Block.MarblePillar);
         // A lantern at the foot of every column, on the hall side.
         p.furnish(x + (sx < 0 ? 1 : -1), 2, z, Block.Lantern);
+        if (dz === 4) p.furnish(x, 2, z + 1, Block.Lantern);
       }
     }
     // Sun idols flanking the altar and lit floor lanterns along the south and north walls.
@@ -173,6 +191,7 @@ export const temple2: Template = {
     }
     for (const dx of [-8, -4, 4, 8]) p.furnish(CX + dx, 2, HZ1, Block.Lantern);
     for (const dx of [-10, -6, 6, 10]) p.furnish(CX + dx, 2, HZ0, Block.Lantern);
+    for (const dx of [-10, 10]) p.furnish(CX + dx, 2, HZ1, Block.Lantern);
     // Altar and chest at the south end, a gilded mural behind them.
     p.furnish(CX, 2, HZ1 - 1, Block.BossAltar);
     p.furnish(CX, 2, HZ1, Block.Chest);
@@ -220,23 +239,6 @@ export const temple2: Template = {
       p.set(west ? 9 : 35, 2, CZ + 3, Block.Lantern);
     }
 
-    // ---- the cleft stair up the south face ---------------------------------------------------
-    const surf = (z: number) => 1 + (CZ + 18 - z);
-    for (let z = CZ + 18; z >= CZ + 3; z--) {
-      const s = surf(z);
-      for (let x = CX - 2; x <= CX + 2; x++) {
-        for (let ly = 2; ly <= SY - 1; ly++) {
-          if (ly <= s) p.set(x, ly, z, ly === s ? (x === CX ? Block.Marble : Block.Sandstone) : SB);
-          else if (ly <= s + 4 || v.get(x, ly, z) !== Block.Air) p.set(x, ly, z, Block.Air);
-        }
-      }
-      // Gilded cheeks and lanterns up the stair.
-      for (const sx of [-3, 3]) {
-        const cell = v.get(CX + sx, s, z);
-        if (cell !== Block.Air) p.set(CX + sx, s, z, Block.GildedBricks);
-        if (z % 3 === 0 && v.get(CX + sx, s + 1, z) === Block.Air) p.set(CX + sx, s + 1, z, Block.Lantern);
-      }
-    }
     // ---- sun pavilion crowning the pyramid ----------------------------------------------------
     p.fill(CX - 4, 16, CZ - 4, CX + 4, 16, CZ + 4, Block.GildedBricks);
     p.fill(CX - 3, 16, CZ - 3, CX + 3, 16, CZ + 3, Block.Marble);

@@ -21,7 +21,7 @@ import type { Template } from './template';
 import { StructureType } from './types';
 
 /** Generator 4: a little denser than generator 3 (region 160, 8 types). Landmarks are only used for the crypt's gatehouse. */
-export const V4_RULES: PlacementRules = { region: 160, margin: 30, chance: 0.9, minFromSpawn: 64, landmarks: true };
+export const V4_RULES: PlacementRules = { region: 160, margin: 32, chance: 0.9, minFromSpawn: 64, landmarks: true };
 
 export const SET2_TEMPLATES: Partial<Record<StructureType, Template>> = {
   [StructureType.SunscorchTemple]: temple2,
@@ -36,13 +36,13 @@ export const SET2_TEMPLATES: Partial<Record<StructureType, Template>> = {
 
 /** Footprint side, height spread allowed, lowest height and highest floor per type (the lighthouse has its own rule). */
 export const SET2_SITE: Partial<Record<StructureType, { size: number; spread: number; minAbove: number; maxF: number }>> = {
-  [StructureType.SunscorchTemple]: { size: 45, spread: 7, minAbove: SEA_LEVEL + 2, maxF: 38 },
-  [StructureType.FrostCitadel]: { size: 41, spread: 9, minAbove: SEA_LEVEL + 2, maxF: 38 },
-  [StructureType.OvergrownShrine]: { size: 41, spread: 8, minAbove: SEA_LEVEL, maxF: 38 },
-  [StructureType.AshenCrypt]: { size: 9, spread: 4, minAbove: SEA_LEVEL + 2, maxF: 48 },
-  [StructureType.StormcrownAerie]: { size: 33, spread: 12, minAbove: SEA_LEVEL + 12, maxF: 46 },
-  [StructureType.HollowheartGrove]: { size: 41, spread: 6, minAbove: SEA_LEVEL + 1, maxF: 40 },
-  [StructureType.CinderdeepForge]: { size: 41, spread: 9, minAbove: SEA_LEVEL + 2, maxF: 40 },
+  [StructureType.SunscorchTemple]: { size: 45, spread: 9, minAbove: SEA_LEVEL + 2, maxF: 38 },
+  [StructureType.FrostCitadel]: { size: 41, spread: 10, minAbove: SEA_LEVEL + 2, maxF: 38 },
+  [StructureType.OvergrownShrine]: { size: 41, spread: 8, minAbove: SEA_LEVEL, maxF: 37 },
+  [StructureType.AshenCrypt]: { size: 9, spread: 4, minAbove: SEA_LEVEL + 2, maxF: 44 },
+  [StructureType.StormcrownAerie]: { size: 33, spread: 12, minAbove: SEA_LEVEL + 12, maxF: 47 },
+  [StructureType.HollowheartGrove]: { size: 41, spread: 6, minAbove: SEA_LEVEL + 1, maxF: 36 },
+  [StructureType.CinderdeepForge]: { size: 41, spread: 11, minAbove: SEA_LEVEL + 2, maxF: 40 },
 };
 
 /** Floor height of the lighthouse (its rocky island is built up to it). */
@@ -74,12 +74,12 @@ export function set2Type(biome: Biome, u: number): StructureType | null {
     case Biome.Pinewood:
       return u < 0.5 ? StructureType.HollowheartGrove : StructureType.AshenCrypt;
     case Biome.Plains:
-      return StructureType.AshenCrypt;
+      return u < 0.55 ? StructureType.AshenCrypt : null;
     case Biome.Beach:
     case Biome.FrozenShore:
     case Biome.Ocean:
     case Biome.IcySea:
-      return StructureType.SaltwornLighthouse;
+      return u < 0.3 ? StructureType.SaltwornLighthouse : null;
     default:
       return null;
   }
@@ -116,7 +116,9 @@ export function set2Floor(gen: SiteSource, type: StructureType, ax: number, az: 
   const c = type === StructureType.AshenCrypt ? cryptShaft(ax, az) : { x: ax, z: az };
   const hs = samples(gen, c.x, c.z, site.size);
   if (hs[8] - hs[0] > site.spread * (relaxed ? 2 : 1) || hs[0] < site.minAbove) return null;
-  const F = type === StructureType.AshenCrypt ? gen.column(c.x, c.z).height : hs[4];
+  let F = type === StructureType.AshenCrypt ? gen.column(c.x, c.z).height : hs[4];
+  // A summit is levelled: the aerie's platform cuts into a peak taller than it can reach.
+  if (type === StructureType.StormcrownAerie) F = Math.min(F, site.maxF);
   if (F > site.maxF) return null;
   // The catacomb (y 8..19) must stay under ground everywhere over it.
   if (type === StructureType.AshenCrypt && samples(gen, ax, az, 37)[0] < 23) return null;
@@ -137,6 +139,7 @@ export function set2Region(
   maxFromSpawn: number,
   relaxed: boolean,
 ): { type: StructureType; ax: number; az: number; F: number; biome: Biome } | null {
+  if (rng() >= 0.25) return null;
   const span = rules.region - rules.margin * 2;
   for (let i = 0; i < 10; i++) {
     const ax = rx * rules.region + rules.margin + Math.floor(rng() * span);

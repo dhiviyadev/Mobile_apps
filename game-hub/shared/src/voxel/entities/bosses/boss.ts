@@ -522,7 +522,8 @@ export class BossController {
   private hover(): void {
     const m = this.mob;
     if (!m.def.fly) return;
-    const want = this.floorY + this.script.hover + (this.underground ? -4 : 0);
+    // A stunned flyer (Stormtalon after a dive into a wall) drops to the floor.
+    const want = this.floorY + (this.stunned > 0 ? 0 : this.script.hover) + (this.underground ? -4 : 0);
     m.intent.vy = Math.max(-4, Math.min(4, (want - m.y) * 4));
   }
 

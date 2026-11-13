@@ -197,7 +197,7 @@ function rollRegion(
     const biome = gen.column(ax, az).biome;
     const type = set === 2 ? set2Type(biome, hashFloat(ax, az, seed, 0x5e72)) : typeFor(biome);
     if (type === null) continue;
-    if (strict && type === StructureType.AshenCrypt && crypRoll >= 0.75) continue;
+    if (strict && type === StructureType.AshenCrypt && crypRoll >= (set === 2 ? 0.5 : 0.75)) continue;
     const F = siteFloor(gen, type, ax, az, relaxed, set);
     if (F === null) continue;
     // Landmarks: generator 3 gives every ruin a spire or gatehouse; generator 4's ruins carry their own, so only the crypt keeps its gatehouse.
