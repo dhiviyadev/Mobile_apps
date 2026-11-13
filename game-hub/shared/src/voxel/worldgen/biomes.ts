@@ -28,8 +28,16 @@ export enum Biome {
   GlacierPeaks = 15,
   IcySea = 16,
   FrozenShore = 17,
+  // ---- the Gloamreach (generator 4, package D): 18..23 ----
+  LumenShelves = 18,
+  PrismThicket = 19,
+  HushHollows = 20,
+  MirrorFen = 21,
+  SpireFields = 22,
+  /** The bedrock wall between the realms. */
+  VeilWall = 23,
 }
-export const BIOME_COUNT = 18;
+export const BIOME_COUNT = 24;
 
 export type BiomeTag = 'temperate' | 'cold' | 'hot' | 'wet' | 'dry' | 'snow' | 'forest' | 'open' | 'water' | 'coast' | 'mountain' | 'dark';
 
@@ -61,6 +69,12 @@ export const BIOME_INFO: readonly BiomeInfo[] = [
   info('Glacier Peaks', ['cold', 'snow', 'mountain'], 0xe8f2ff),
   info('Icy Sea', ['water', 'cold'], 0xe8f2ff),
   info('Frozen Shore', ['cold', 'snow', 'coast'], 0xe8f2ff),
+  info('Lumen Shelves', ['dark', 'open'], 0x6a5cb8),
+  info('Prism Thicket', ['dark', 'forest'], 0x8a6ad8),
+  info('Hush Hollows', ['dark', 'dry', 'open'], 0x4a5a9a),
+  info('Mirror Fen', ['dark', 'wet'], 0x9a8cd8),
+  info('Spire Fields', ['dark', 'mountain'], 0x7a6ab8),
+  info('The Veil Wall', ['dark'], 0x2a2244),
 ];
 
 const B = Biome;

@@ -102,7 +102,8 @@ describe('generator 2', () => {
       for (const b of seen) union.add(b);
     }
     expect(union.size).toBe(18);
-    expect(BIOME_INFO).toHaveLength(18);
+    // 18 overworld biomes plus the Gloamreach's 5 and the Veil Wall.
+    expect(BIOME_INFO).toHaveLength(24);
   });
 
   it('layers bedrock, slate, lava and ores properly', () => {

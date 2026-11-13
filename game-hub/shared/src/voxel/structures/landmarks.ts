@@ -22,7 +22,7 @@ interface Palette {
   worn: Block;
 }
 
-const PALETTES: Record<StructureType, Palette> = {
+const PALETTES: Partial<Record<StructureType, Palette>> = {
   [StructureType.SunscorchTemple]: { body: Block.SandstoneBricks, accent: Block.Marble, worn: Block.Sandstone },
   [StructureType.FrostCitadel]: { body: Block.IceBricks, accent: Block.PackedIce, worn: Block.StoneBricks },
   [StructureType.OvergrownShrine]: { body: Block.MossyStoneBricks, accent: Block.MudBricks, worn: Block.MossyCobble },
@@ -111,7 +111,7 @@ export function buildLandmark(s: LandmarkSite, rng: () => number): StructureVolu
 
 function buildSpire(s: LandmarkSite, rng: () => number): StructureVolume {
   const F = s.floor;
-  const p = PALETTES[s.type];
+  const p = PALETTES[s.type]!;
   const c = spireCorner(s);
   const top = spireTop(F);
   const oy = F - 1;
@@ -143,7 +143,7 @@ function buildSpire(s: LandmarkSite, rng: () => number): StructureVolume {
 
 function buildGatehouse(s: LandmarkSite, rng: () => number): StructureVolume {
   const F = s.floor;
-  const p = PALETTES[StructureType.AshenCrypt];
+  const p = PALETTES[StructureType.AshenCrypt]!;
   const g = cryptGate(s.anchor.x, s.anchor.z);
   const top = gateTop(F);
   const ox = g.x - 4;

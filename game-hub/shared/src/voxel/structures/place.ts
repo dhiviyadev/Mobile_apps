@@ -13,6 +13,7 @@ import { hash4, mulberry32 } from '../../util/rng';
 import { SEA_LEVEL } from '../constants';
 import { Biome } from '../worldgen/biomes';
 import { citadel } from './citadel';
+import { eclipseOrrery, fallenLattice, twilitLattice } from './gloam';
 import { crypt, cryptShaft } from './crypt';
 import { buildLandmark, cryptGateFits, landmarkBox, unionBox } from './landmarks';
 import { shrine } from './shrine';
@@ -60,15 +61,19 @@ export const SPAWN_GUARANTEE = 250;
 
 const MIN_COUNT = 6;
 
-export const TEMPLATES: Record<StructureType, Template> = {
+export const TEMPLATES: Partial<Record<StructureType, Template>> = {
   [StructureType.SunscorchTemple]: temple,
   [StructureType.FrostCitadel]: citadel,
   [StructureType.OvergrownShrine]: shrine,
   [StructureType.AshenCrypt]: crypt,
+  // Gloamreach (package D): placed by worldgen/gloam/sites.ts, not by the ruin rules below.
+  [StructureType.FallenLattice]: fallenLattice,
+  [StructureType.TwilitLattice]: twilitLattice,
+  [StructureType.EclipseOrrery]: eclipseOrrery,
 };
 
 /** Footprint size, height spread allowed, lowest height and highest floor per type. */
-const SITE: Record<StructureType, { size: number; spread: number; minAbove: number; maxF: number }> = {
+const SITE: Partial<Record<StructureType, { size: number; spread: number; minAbove: number; maxF: number }>> = {
   [StructureType.SunscorchTemple]: { size: 35, spread: 8, minAbove: SEA_LEVEL + 2, maxF: 46 },
   [StructureType.FrostCitadel]: { size: 35, spread: 10, minAbove: SEA_LEVEL + 2, maxF: 49 },
   [StructureType.OvergrownShrine]: { size: 33, spread: 8, minAbove: SEA_LEVEL, maxF: 45 },
@@ -110,7 +115,7 @@ function samples(gen: SiteSource, cx: number, cz: number, size: number): number[
 
 /** The floor F if the site suits the type, else null. */
 function siteFloor(gen: SiteSource, type: StructureType, ax: number, az: number, relaxed = false): number | null {
-  const site = SITE[type];
+  const site = SITE[type]!;
   const c = type === StructureType.AshenCrypt ? cryptShaft(ax, az) : { x: ax, z: az };
   const hs = samples(gen, c.x, c.z, site.size);
   if (hs[8] - hs[0] > site.spread * (relaxed ? 2 : 1) || hs[0] < site.minAbove) return null;
@@ -121,16 +126,16 @@ function siteFloor(gen: SiteSource, type: StructureType, ax: number, az: number,
   return F;
 }
 
-function describe(seed: number, rx: number, rz: number, type: StructureType, ax: number, az: number, F: number, biome: Biome, landmark = false): PlacedStructure {
-  const id = ((rx & 0xff) << 8) | (rz & 0xff);
-  const l = TEMPLATES[type].layout(ax, az, F);
+export function describe(seed: number, rx: number, rz: number, type: StructureType, ax: number, az: number, F: number, biome: Biome, landmark = false, idOverride?: number): PlacedStructure {
+  const id = idOverride ?? ((rx & 0xff) << 8) | (rz & 0xff);
+  const l = TEMPLATES[type]!.layout(ax, az, F);
   return {
     floor: F,
     ...(landmark ? { landmark } : {}),
     info: {
       id,
       type,
-      name: STRUCTURE_NAMES[type],
+      name: STRUCTURE_NAMES[type] ?? '',
       biome,
       anchor: { x: ax, z: az },
       bounds: landmark ? unionBox(l.bounds, landmarkBox({ type, anchor: { x: ax, z: az }, bounds: l.bounds, floor: F })) : l.bounds,
@@ -202,6 +207,15 @@ export function computeStructures(gen: SiteSource, seed: number): PlacedStructur
   return regions.map(([rx, rz]) => found.get(`${rx},${rz}`)).filter((p): p is PlacedStructure => !!p);
 }
 
+/**
+ * Selects what LazyStructures places. `maxX`: regions reaching past this x get no structure
+ * (generator 4: the overworld ends at OVERWORLD_MAX_X). `structureSet` is reserved for the ruins package.
+ */
+export interface LazyOptions {
+  structureSet?: 1 | 2;
+  maxX?: number;
+}
+
 /** Regions remembered by LazyStructures (each holds at most one structure). */
 const REGION_CACHE = 1024;
 /** Structures stay inside their region (margin 30; footprints and gatehouses reach at most 22 from the anchor); queries look this much wider. */
@@ -227,6 +241,7 @@ export class LazyStructures {
     private readonly seed: number,
     limit: number,
     edgeMargin = 128,
+    private readonly options: LazyOptions = {},
   ) {
     this.maxRegion = Math.floor((limit - edgeMargin) / this.rules.region) - 1;
   }
@@ -274,6 +289,7 @@ export class LazyStructures {
   }
 
   private inWorld(rx: number, rz: number): boolean {
+    if (this.options.maxX !== undefined && (rx + 1) * this.rules.region > this.options.maxX) return false;
     return rx >= -this.maxRegion - 1 && rx <= this.maxRegion && rz >= -this.maxRegion - 1 && rz <= this.maxRegion;
   }
 
@@ -318,9 +334,9 @@ export class LazyStructures {
 /** Builds the blocks of a placed structure (decoration seeded per structure). */
 export function buildStructure(p: PlacedStructure, seed: number): Built {
   const rng = mulberry32(hash4(seed, p.info.id, p.info.type, 0x5eed));
-  const built = TEMPLATES[p.info.type].build(p.info.anchor.x, p.info.anchor.z, p.floor, rng);
+  const built = TEMPLATES[p.info.type]!.build(p.info.anchor.x, p.info.anchor.z, p.floor, rng);
   if (p.landmark) {
-    const l = TEMPLATES[p.info.type].layout(p.info.anchor.x, p.info.anchor.z, p.floor);
+    const l = TEMPLATES[p.info.type]!.layout(p.info.anchor.x, p.info.anchor.z, p.floor);
     const site = { type: p.info.type, anchor: p.info.anchor, bounds: l.bounds, floor: p.floor };
     built.volumes.push(...buildLandmark(site, mulberry32(hash4(seed, p.info.id, p.info.type, 0x1a4d))));
   }

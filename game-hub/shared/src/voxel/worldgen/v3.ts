@@ -18,7 +18,7 @@ import { hash4, hashFloat } from '../../util/rng';
 import { Block } from '../blocks';
 import { blockIndex } from '../chunk';
 import { CHUNK_SIZE, ENDLESS_LIMIT, SEA_LEVEL, TERRAIN_HEIGHT, TERRAIN_VOLUME } from '../constants';
-import { LazyStructures, type PlacedStructure } from '../structures/place';
+import { LazyStructures, type LazyOptions, type PlacedStructure } from '../structures/place';
 import type { StructureInfo } from '../structures/types';
 import { Biome, CLIMATE_TABLE, hClass, tClass } from './biomes';
 import { type ColumnV2, LAVA_LEVEL, TerrainGeneratorV2, type TreeV2 } from './v2';
@@ -107,7 +107,17 @@ export class TerrainGeneratorV3 extends TerrainGeneratorV2 {
     this.nRoomDetail = new SimplexNoise(s ^ 0xcbbb9d5d);
     this.nRavine = new SimplexNoise(s ^ 0x629a292a);
     this.nMouth = new SimplexNoise(s ^ 0x9159015a);
-    this.lazy = new LazyStructures(this, this.seed, ENDLESS_LIMIT);
+    this.lazy = new LazyStructures(this, this.seed, ENDLESS_LIMIT, 128, this.structureOptions());
+  }
+
+  /** Which structures this generator places (v3: set 1, the whole world). Generator 4 limits them to the overworld. */
+  protected structureOptions(): LazyOptions {
+    return {};
+  }
+
+  /** Distance in blocks to the world edge (negative outside): the sea fade and the bedrock rim follow it. Generator 4 moves the east edge. */
+  protected edge(x: number, z: number): number {
+    return edgeDistance(x, z);
   }
 
   // ---- climate and terrain (3x larger) -------------------------------------------------------
@@ -146,7 +156,7 @@ export class TerrainGeneratorV3 extends TerrainGeneratorV2 {
       const f = Math.floor(s);
       h = lerp(h, SEA + 3 + (f + smoothstep(0.75, 1, s - f)) * 4, P[3]);
     }
-    const edge = edgeDistance(x, z);
+    const edge = this.edge(x, z);
     if (edge < EDGE_FADE) h = lerp(SEA - 14, h, smoothstep(8, EDGE_FADE, edge));
     const height = Math.max(4, Math.min(MAX_TERRAIN, Math.floor(h)));
     let biome: Biome;
@@ -234,17 +244,17 @@ export class TerrainGeneratorV3 extends TerrainGeneratorV2 {
     const x0 = cx * CHUNK_SIZE;
     const z0 = cz * CHUNK_SIZE;
     // Wholly past the edge: solid bedrock.
-    if (edgeDistance(x0, z0) < 0 && edgeDistance(x0 + CHUNK_SIZE - 1, z0 + CHUNK_SIZE - 1) < 0) {
+    if (this.edge(x0, z0) < 0 && this.edge(x0 + CHUNK_SIZE - 1, z0 + CHUNK_SIZE - 1) < 0) {
       out.fill(Block.Bedrock);
       return out;
     }
     this.prepareCaves(x0, z0);
     super.generateChunk(cx, cz, out);
     // The rim: bedrock walls along the edge (and past it).
-    if (edgeDistance(x0, z0) < RIM || edgeDistance(x0 + CHUNK_SIZE - 1, z0 + CHUNK_SIZE - 1) < RIM) {
+    if (this.edge(x0, z0) < RIM || this.edge(x0 + CHUNK_SIZE - 1, z0 + CHUNK_SIZE - 1) < RIM) {
       for (let lz = 0; lz < CHUNK_SIZE; lz++) {
         for (let lx = 0; lx < CHUNK_SIZE; lx++) {
-          if (edgeDistance(x0 + lx, z0 + lz) >= RIM) continue;
+          if (this.edge(x0 + lx, z0 + lz) >= RIM) continue;
           for (let y = 0; y < TERRAIN_HEIGHT; y++) out[blockIndex(lx, y, lz)] = Block.Bedrock;
         }
       }
@@ -337,7 +347,7 @@ export class TerrainGeneratorV3 extends TerrainGeneratorV2 {
 
   protected override carveColumn(out: Uint8Array, lx: number, lz: number, wx: number, wz: number, col: ColumnV2): void {
     const h = col.height;
-    if (edgeDistance(wx, wz) < EDGE_FADE) return; // the deep edge sea stays sealed
+    if (this.edge(wx, wz) < EDGE_FADE) return; // the deep edge sea stays sealed
     // Ceiling: a few blocks of rock under the surface, more under or beside water.
     let top = h - 5;
     if (h < SEA + 12) top = Math.min(top, this.lowestAround(wx, wz, 3) - 5, this.lowestAround(wx, wz, 6) - 4);
