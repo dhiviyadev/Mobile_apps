@@ -20,8 +20,8 @@ import type { PlacementRules, SiteSource } from './place';
 import type { Template } from './template';
 import { StructureType } from './types';
 
-/** Generator 4: a little denser than generator 3 (region 160, 8 types). Landmarks are only used for the crypt's gatehouse. */
-export const V4_RULES: PlacementRules = { region: 160, margin: 32, chance: 0.9, minFromSpawn: 64, landmarks: true };
+/** Generator 4: a bit rarer than generator 3 (region 176, chance 0.9; 8 types). Landmarks are only used for the crypt's gatehouse. */
+export const V4_RULES: PlacementRules = { region: 184, margin: 32, chance: 0.85, minFromSpawn: 64, landmarks: true };
 
 export const SET2_TEMPLATES: Partial<Record<StructureType, Template>> = {
   [StructureType.SunscorchTemple]: temple2,
