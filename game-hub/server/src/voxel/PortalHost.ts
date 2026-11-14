@@ -46,6 +46,13 @@ export class PortalHost implements VoxelSubsystem {
           p.y = y;
           p.z = z;
         }
+        // Survival keeps its own copy of the position (saved on logout): move it along at once.
+        const sp = survival?.sim.players.get(id);
+        if (sp) {
+          sp.x = x;
+          sp.y = y;
+          sp.z = z;
+        }
         // Chunks of the far side stream in behind the jump: a little extra grace for the fall.
         room.graceUntil(id, 4000);
       },

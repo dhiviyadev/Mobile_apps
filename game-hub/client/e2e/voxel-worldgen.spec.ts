@@ -12,12 +12,12 @@ test.describe('Voxelvale world generators', () => {
     await primeSettings(page);
   });
 
-  test('a new world is endless (generator 3) and streams terrain past the old edge', async ({ page }) => {
+  test('a new world is endless (generator 4) and streams terrain past the old edge', async ({ page }) => {
     await page.goto('/');
     await newVoxelWorld(page, 'sandbox', 'Endless test');
     await waitForGame(page);
     const info = await page.evaluate(() => ({ gen: (window as unknown as { __voxel: V }).__voxel.generator.genVersion, limit: (window as unknown as { __voxel: V }).__voxel.generator.limit, radius: (window as unknown as { __voxel: V }).__voxel.world.radiusChunks }));
-    expect(info).toEqual({ gen: 3, limit: 32000, radius: 2000 });
+    expect(info).toEqual({ gen: 4, limit: 32000, radius: 2000 });
     // Far past where generator-2 worlds end (512): the terrain loads there and the player is not pushed back.
     await page.evaluate(() => {
       const v = (window as unknown as { __voxel: V }).__voxel;

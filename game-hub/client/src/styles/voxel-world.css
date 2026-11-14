@@ -202,3 +202,17 @@
 @media (prefers-reduced-motion: reduce) {
   .gloam-veil-swirl { animation: none; }
 }
+
+.tp-realm {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #e8e0ff;
+  background: linear-gradient(135deg, #5a3aa8, #2a1a6a);
+  border: 1px solid rgba(180, 140, 255, 0.5);
+  vertical-align: middle;
+}

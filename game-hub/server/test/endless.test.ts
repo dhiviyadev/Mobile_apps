@@ -6,7 +6,7 @@ import { VoxelFluids } from '../src/voxel/VoxelFluids';
 describe('endless server worlds (generator 3)', { timeout: 30_000 }, () => {
   it('keep memory bounded while a player walks 3000 blocks', () => {
     const world = new ServerVoxelWorld(5, 'survival');
-    expect(world.genVersion).toBe(3);
+    expect(world.genVersion).toBe(4);
     const read = world.reader();
     let maxCached = 0;
     let maxQueued = 0;

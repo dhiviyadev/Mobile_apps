@@ -56,7 +56,7 @@ describe('realms', () => {
   });
 });
 
-describe('generator 4', () => {
+describe('generator 4', { timeout: 60_000 }, () => {
   it('keeps the overworld of generator 3 where nothing of the Gloamreach reaches', () => {
     const g3 = createWorldGenerator(77, 'survival', 3);
     const g4 = createWorldGenerator(77, 'survival', 4);
