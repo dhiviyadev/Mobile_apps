@@ -80,7 +80,9 @@ export async function passMapVote(page: Page, card = 0): Promise<void> {
 /** Opens the Voxelvale world menu (or uses it when it is already up, as after leaving a game). */
 export async function openWorldMenu(page: Page): Promise<void> {
   const menu = page.getByTestId('world-menu');
-  if (!(await menu.isVisible())) await page.getByTestId('card-voxel').click();
+  // Right after leaving a game the menu may be on its way in (animating): give it a moment before opening it by hand.
+  const open = await menu.waitFor({ state: 'visible', timeout: 1500 }).then(() => true, () => false);
+  if (!open) await page.getByTestId('card-voxel').click();
   await expect(menu).toBeVisible();
   // The list is read from the device's storage: wait for it.
   await expect(page.locator('[data-testid="world-card"], [data-testid="worlds-empty"]').first()).toBeVisible();
@@ -116,11 +118,13 @@ export async function newVoxelWorld(page: Page, mode: 'sandbox' | 'survival', na
 /** Leaves the running game from the pause menu. */
 export async function leaveGame(page: Page): Promise<void> {
   const pause = page.getByTestId('pause-menu');
-  // Desktop: a lost pointer lock may already have opened the menu (Escape would close it).
-  await page.waitForTimeout(150);
-  if (!(await pause.isVisible())) {
+  const visible = (ms: number) => pause.waitFor({ state: 'visible', timeout: ms }).then(() => true, () => false);
+  // Desktop: a lost pointer lock opens the menu by itself a moment later (Escape would then close it again).
+  let shown = await visible(800);
+  for (let tries = 0; !shown && tries < 3; tries++) {
     if (await page.locator('.touch-btn[data-id="menu"]').count()) await page.locator('.touch-btn[data-id="menu"]').tap();
     else await page.keyboard.press('Escape');
+    shown = await visible(2000);
   }
   await page.getByTestId('leave-game').click();
 }
