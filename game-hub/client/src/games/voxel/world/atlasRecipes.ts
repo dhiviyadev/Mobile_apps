@@ -679,12 +679,13 @@ Object.assign(DRAWERS, {
   },
   [Tile.FrostRune]: glowRune(0x6a8aa8, 0x3a5070, 0xd8f8ff, 1),
   [Tile.FrostCrystal]: (px, r) => {
+    // Binary alpha like the stained glass (the glass pass alpha-tests): bright facets and edges, clear gaps.
     px.fill((x, y, rr) => {
       const edge = x === 0 || y === 0 || x === 15 || y === 15;
       const facet = (x + y) % 8 === 0 || Math.abs(x - y) % 8 === 0;
       if (edge) return [...hex(0x6ac0f0), 255] as RGBA;
-      if (facet) return [...hex(0xe8fbff), 235] as RGBA;
-      return rr() < 0.55 ? ([...mix(hex(0x8ad4ff), hex(0xd8f4ff), (x + y) / 30), 150] as RGBA) : ([...hex(0xb0e4ff), 110] as RGBA);
+      if (facet) return [...hex(0xeafcff), 255] as RGBA;
+      return rr() < 0.7 ? ([...mix(hex(0x8ad4ff), hex(0xd8f4ff), (x + y) / 30), 255] as RGBA) : CLEAR;
     }, r);
   },
   [Tile.VerdantRune]: glowRune(0x4a6a3a, 0x2a4020, 0xc8ff90, 2),

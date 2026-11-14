@@ -259,13 +259,19 @@ export const temple2: Template = {
 
     // ---- avenue dressing: idols, braziers, obelisks -----------------------------------------
     const idol = (x: number, z: number) => {
+      // A seated sun idol facing the avenue: pedestal, broad torso with arms, head with amber eyes and a rune crown.
+      const inward = x < CX ? 1 : -1;
       p.fill(x - 1, 2, z - 1, x + 1, 3, z + 1, Block.GildedBricks);
-      p.fill(x - 1, 4, z - 1, x + 1, 6, z + 1, SB);
-      p.set(x, 5, z - 2 + (x < CX ? 3 : 0) * 0, SB);
-      p.fill(x, 7, z, x, 8, z, SB);
-      p.fill(x - 1, 9, z - 1, x + 1, 10, z + 1, Block.GildedBricks);
-      p.set(x, 10, z, Block.SunRune);
-      p.set(x, 11, z, Block.Lamp);
+      p.fill(x - 1, 4, z - 1, x + 1, 7, z + 1, SB);
+      p.fill(x - 2 * inward, 5, z - 1, x - 2 * inward, 6, z + 1, SB);
+      p.fill(x + 2 * inward, 5, z - 1, x + 2 * inward, 5, z + 1, SB);
+      p.fill(x - 1, 8, z - 1, x + 1, 10, z + 1, SB);
+      p.set(x + inward * 2, 9, z, Block.GlassAmber);
+      p.set(x + inward, 9, z - 1, Block.GlassAmber);
+      p.set(x + inward, 9, z + 1, Block.GlassAmber);
+      p.fill(x - 1, 11, z - 1, x + 1, 11, z + 1, Block.GildedBricks);
+      p.set(x, 12, z, Block.SunRune);
+      p.set(x, 13, z, Block.Lamp);
     };
     for (const z of [6, 13]) for (const sx of [-6, 6]) idol(CX + sx, z);
     for (const z of [3, 9, 16]) {

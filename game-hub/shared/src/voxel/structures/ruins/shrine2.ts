@@ -182,6 +182,21 @@ export const shrine2: Template = {
     p.set(C - 1, 3, 31, Block.Lantern);
     p.set(C + 1, 3, 31, Block.Lantern);
 
+    // The carved face on the south side: eyes on the second tier, a nose, and teeth round the tunnel, its mouth.
+    for (const sx of [-1, 1]) {
+      for (let dx = 3; dx <= 5; dx++) for (const ly of [8, 9]) p.set(C + sx * dx, ly, C + 11, VR);
+      p.set(C + sx * 4, 8, C + 11, Block.GlassGreen);
+      for (let dx = 2; dx <= 6; dx++) p.set(C + sx * dx, 10, C + 11, Block.Marble);
+      for (let dx = 2; dx <= 4; dx++) for (const ly of [4, 5]) p.set(C + sx * dx, ly, C + 14, GM);
+    }
+    for (const ly of [8, 9]) p.set(C, ly, C + 12, MS);
+    p.set(C, 10, C + 12, Block.Marble);
+    for (let dx = -4; dx <= 4; dx++) {
+      if (Math.abs(dx) <= 1) continue;
+      p.set(C + dx, 6, C + 14, dx % 2 === 0 ? Block.Marble : MS);
+      p.set(C + dx, 3, C + 14, dx % 2 === 0 ? MS : Block.Marble);
+    }
+
     // ---- root chambers -----------------------------------------------------------------------
     for (const west of [true, false]) {
       const [a, b] = west ? [7, 9] : [31, 33];
