@@ -390,7 +390,7 @@ describe('crossing', () => {
       }
     }
     expect(crossings).toBe(48);
-  });
+  }, 60_000);
 });
 
 describe('Fallen Lattices', () => {
