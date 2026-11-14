@@ -241,6 +241,23 @@ describe('gate shapes', () => {
   });
 });
 
+describe('arrival spots', () => {
+  it('stand on solid ground beside the gate, never in the veil and never in thin air', () => {
+    const floating: GateFrame = { axis: 0, x: 10, y: 20, z: 10 };
+    const sim = new Sim(null);
+    sim.ring(floating);
+    // Nothing under the front of the gate: no safe spot.
+    expect(gateArrival(sim.read, floating)).toBeNull();
+    // A step of ground in front of it: the spot stands on it, beside the plane, feet level with the ring's bottom row.
+    sim.edit(12, 19, 12, Block.Stone);
+    const spot = gateArrival(sim.read, floating)!;
+    expect(spot).toBeTruthy();
+    expect(Math.floor(spot.y)).toBe(20);
+    expect(IS_SOLID[sim.read(Math.floor(spot.x), 19, Math.floor(spot.z))]).toBe(1);
+    expect(sim.read(Math.floor(spot.x), Math.floor(spot.y), Math.floor(spot.z))).toBe(Block.Air);
+  });
+});
+
 describe('crossing', () => {
   it('charges for two seconds in the veil, cancels when you step out, and cools down after arriving', () => {
     const gen = createWorldGenerator(11, 'survival', 4);

@@ -636,9 +636,9 @@ Object.assign(PAINTERS, {
 
 /** A faint lattice of lines across a stone, used by the Lattice Stones (unlit dim, lit bright). */
 const latticeStone = (lit: boolean): Drawer => (px, r) => {
-  px.fill(bricksPainter(lit ? 0x4a3a78 : 0x2c2640, lit ? 0x2a2048 : 0x1c1830, 8, 8), r);
-  const line1 = hex(lit ? 0xd8c8ff : 0x5a4a88);
-  const line2 = hex(lit ? 0x8ae8ff : 0x42386a);
+  px.fill(bricksPainter(lit ? 0x4a3a78 : 0x3a3258, lit ? 0x2a2048 : 0x241e3c, 8, 8), r);
+  const line1 = hex(lit ? 0xd8c8ff : 0x7a68c0);
+  const line2 = hex(lit ? 0x8ae8ff : 0x5a4a98);
   for (let i = 1; i < 15; i++) {
     px.set(i, i, jitter(line1, r, 0.08));
     px.set(15 - i, i, jitter(line1, r, 0.08));
