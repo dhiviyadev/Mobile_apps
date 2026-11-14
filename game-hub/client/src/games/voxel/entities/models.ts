@@ -565,7 +565,7 @@ const BRAMBLEHORN: ModelDef = {
 };
 
 const ANVILHEART: ModelDef = {
-  palette: hex({ iron: '4a4a52', dark: '2a2a30', slag: '7a3a2a', glow: 'ff8a2a', hot: 'ffd070', plate: '62626c' }),
+  palette: hex({ iron: '6e6e7a', dark: '40404a', slag: '7a3a2a', glow: 'ff8a2a', hot: 'ffd070', plate: '9a9aa8' }),
   stride: 1.2,
   shadow: 1.8,
   biped: true,

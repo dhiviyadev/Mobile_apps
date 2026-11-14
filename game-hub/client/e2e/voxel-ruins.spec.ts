@@ -12,7 +12,7 @@ test.describe('Voxelvale ruin bosses (offline)', () => {
   test.beforeEach(async ({ page }) => {
     await primeSettings(page);
     await page.goto('/');
-    await playVoxelOffline(page, 'sandbox');
+    await playVoxelOffline(page, 'survival');
     await waitForGame(page);
     await page.waitForTimeout(400);
   });
