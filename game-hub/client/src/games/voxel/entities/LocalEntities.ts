@@ -51,6 +51,7 @@ const BOSS_STRUCTURES: Record<string, StructureType> = {
   stormtalon: StructureType.StormcrownAerie,
   'bramblehorn-elder': StructureType.HollowheartGrove,
   'anvilheart-colossus': StructureType.CinderdeepForge,
+  'eclipse-colossus': StructureType.EclipseOrrery,
 };
 
 export class LocalEntities {

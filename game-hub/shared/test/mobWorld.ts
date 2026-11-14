@@ -64,11 +64,11 @@ export interface TestSetup {
   time: { value: number };
 }
 
-const flatGenerator = (biome: Biome): WorldGenerator => ({
+const flatGenerator = (biome: Biome, genVersion: 1 | 2 | 3 | 4 = 1): WorldGenerator => ({
   mode: 'survival',
-  genVersion: 1,
+  genVersion,
   radiusChunks: 32,
-  limit: 512,
+  limit: genVersion >= 3 ? 32000 : 512,
   course: null,
   generateChunk: () => new Uint8Array(0),
   findSpawn: () => ({ x: 0, y: FLOOR, z: 0 }),
@@ -79,7 +79,7 @@ const flatGenerator = (biome: Biome): WorldGenerator => ({
   structureAt: () => null,
 });
 
-export function setupWorld(opts: { mode?: VoxelMode; time?: number; caps?: Partial<EntityCaps>; biome?: Biome; seed?: number; blocks?: FlatBlocks } = {}): TestSetup {
+export function setupWorld(opts: { mode?: VoxelMode; time?: number; caps?: Partial<EntityCaps>; biome?: Biome; seed?: number; blocks?: FlatBlocks; genVersion?: 1 | 2 | 3 | 4 } = {}): TestSetup {
   const blocks = opts.blocks ?? new FlatBlocks();
   const time = { value: opts.time ?? 0.5 };
   const drops: TestSetup['drops'] = [];
@@ -88,7 +88,7 @@ export function setupWorld(opts: { mode?: VoxelMode; time?: number; caps?: Parti
   const host: EntityHost = {
     getBlock: blocks.get,
     isAvailable: () => true,
-    generator: flatGenerator(opts.biome ?? Biome.Plains),
+    generator: flatGenerator(opts.biome ?? Biome.Plains, opts.genVersion ?? 1),
     timeOfDay: () => time.value,
     setBlock: (x, y, z, id) => {
       setBlocks.push([x, y, z, id]);

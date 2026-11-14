@@ -37,6 +37,8 @@ import type { VoxelNet } from './net/VoxelNet';
 import { SurvivalController } from './survival/SurvivalController';
 import { LocalTeleport, NetTeleport } from './teleport/backends';
 import { TeleportController } from './teleport/TeleportController';
+import { LocalPortal, NetPortal } from './portal/backends';
+import { PortalController } from './portal/PortalController';
 import { HeldItemView } from './render/HeldItemView';
 import { createItemIcons } from './ui/itemIcons';
 import { WorldFeatures } from './world/WorldFeatures';
@@ -131,6 +133,8 @@ export class VoxelGame {
   readonly localEntities: LocalEntities | null;
   /** Teleport menu (saved places, requests); null in parkour. */
   readonly teleport: TeleportController | null;
+  /** Lattice Rings, the realm sky and its banners (package D). */
+  readonly portal: PortalController | null;
   private readonly modules: VoxelModule[];
   /** Touch controls (packages relabel buttons with setButton). */
   readonly touchControls: TouchControls | null;
@@ -221,7 +225,10 @@ export class VoxelGame {
     if (this.teleport && !opts.online) {
       this.teleport.attach(new LocalTeleport(this, mode === 'survival', opts.initialPlaces ?? [], !!opts.initialAutoDecline, this.teleport.onEvent));
     }
-    this.modules = [this.entities, this.survival, this.worldFeatures, this.teleport].filter((m): m is NonNullable<typeof m> => m !== null);
+    this.portal = combat ? new PortalController(this) : null;
+    if (this.portal && !opts.online) this.portal.attach(new LocalPortal(this, mode === 'survival', this.portal.onEvent));
+    // The portal module comes first: a Dusk Lens used on a Lattice Stone must not be taken as a placement.
+    this.modules = [this.portal, this.entities, this.survival, this.worldFeatures, this.teleport].filter((m): m is NonNullable<typeof m> => m !== null);
 
     const hook = <K extends keyof InteractionHooks>(k: K): InteractionHooks[K] | undefined => this.modules.find((m) => m.interaction?.[k])?.interaction?.[k];
     // Creatures and players can both be under the crosshair, and creatures, chests and items can all use secondary: ask every module.
@@ -345,6 +352,7 @@ export class VoxelGame {
     }
     this.pause.setRoomCode(net.roomCode);
     if (this.teleport && 'session' in net) this.teleport.attach(new NetTeleport((net as VoxelNet).session, this.teleport.onEvent));
+    if (this.portal && 'session' in net) this.portal.attach(new NetPortal((net as VoxelNet).session, this.portal.onEvent));
     this.fluids.clear();
   }
 
@@ -488,7 +496,7 @@ export class VoxelGame {
     this.updateLighting();
 
     this.fx.update(dt);
-    this.entities?.render(dt, this.camera, this.sky.daylight);
+    this.entities?.render(dt, this.camera, Math.max(this.sky.daylight, this.sky.realmMix * 0.8));
     for (const m of this.modules) m.update?.(dt, input, paused);
     this.syncHotbar(false);
     this.net?.sendState(b.x, b.y, b.z, this.player.yaw, this.player.pitch, (this.player.crouching ? 1 : 0) | (b.inWater ? 2 : 0) | (this.player.sprinting ? 4 : 0));
@@ -529,8 +537,10 @@ export class VoxelGame {
       // Biome fog tint (WorldFeatures eases it between biomes).
       const tint = this.worldFeatures.fogTint;
       if (tint.weight > 0) u.uFogColor.value.lerp(tint.color, (0.15 + 0.15 * this.sky.daylight) * tint.weight);
-      u.uFogNear.value = far * 0.6;
-      u.uFogFar.value = far * 0.95;
+      // The Gloamreach is hazier: its mist closes the view in a little.
+      const gloam = this.sky.realmMix;
+      u.uFogNear.value = far * (0.6 - 0.28 * gloam);
+      u.uFogFar.value = far * (0.95 - 0.2 * gloam);
       // Height counts little: the ground stays visible from the top of a tall build.
       u.uFogVertical.value = AIR_FOG_VERTICAL;
     }

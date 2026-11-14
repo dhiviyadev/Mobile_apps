@@ -31,6 +31,7 @@ const STYLE: Partial<Record<StructureType, { wall: number; floor: number; pillar
   [StructureType.StormcrownAerie]: { wall: Block.Cobble, floor: Block.Snow, pillar: Block.Ice, ceiling: Block.Cobble, trim: Block.Lamp },
   [StructureType.HollowheartGrove]: { wall: Block.Log, floor: Block.Dirt, pillar: Block.Log, ceiling: Block.Leaves, trim: Block.Lamp },
   [StructureType.CinderdeepForge]: { wall: Block.Stone, floor: Block.Gravel, pillar: Block.Brick, ceiling: Block.Stone, trim: Block.Lamp },
+  [StructureType.EclipseOrrery]: { wall: Block.EclipseBrick, floor: Block.OrreryBrass, pillar: Block.EclipseBrick, ceiling: Block.EclipseBrick, trim: Block.Moonlamp },
 };
 
 /** Builds a test arena of `type` centred on (cx, cz) with its floor surface at feet height `floorY`. */

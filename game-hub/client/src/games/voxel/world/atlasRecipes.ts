@@ -755,11 +755,156 @@ Object.assign(DRAWERS, {
     for (let x = 3; x < 13; x++) px.set(x, 7, hex(0xffe08a));
   },
 } satisfies Partial<Record<number, Drawer>>);
+// ---- Gloamreach tiles (package D, 256..295) -----------------------------------------------------
+
+/** A faint lattice of lines across a stone, used by the Lattice Stones (unlit dim, lit bright). */
+const latticeStone = (lit: boolean): Drawer => (px, r) => {
+  px.fill(bricksPainter(lit ? 0x4a3a78 : 0x3a3258, lit ? 0x2a2048 : 0x241e3c, 8, 8), r);
+  const line1 = hex(lit ? 0xd8c8ff : 0x7a68c0);
+  const line2 = hex(lit ? 0x8ae8ff : 0x5a4a98);
+  for (let i = 1; i < 15; i++) {
+    px.set(i, i, jitter(line1, r, 0.08));
+    px.set(15 - i, i, jitter(line1, r, 0.08));
+  }
+  for (let y = 4; y <= 11; y++) for (let x = 4; x <= 11; x++) if (Math.abs(x - 7.5) + Math.abs(y - 7.5) < 3.2) px.set(x, y, jitter(line2, r, 0.1));
+  px.set(7, 7, hex(lit ? 0xffffff : 0x6a5aa8));
+  px.set(8, 8, hex(lit ? 0xffffff : 0x6a5aa8));
+  for (let i = 0; i < 16; i++) {
+    for (const [x, y] of [[i, 0], [i, 15], [0, i], [15, i]]) px.set(x, y, jitter(scale(hex(lit ? 0x6a58b8 : 0x1a1628), 1), r, 0.1));
+  }
+};
+
+const GLOAM_PAINTERS: Partial<Record<number, Painter | Drawer>> = {};
+const gp = (t: number, p: Painter) => (GLOAM_PAINTERS[t] = p);
+const gd = (t: number, d: Drawer) => (GLOAM_DRAWERS[t] = d);
+const GLOAM_DRAWERS: Partial<Record<number, Drawer>> = {};
+
+gp(Tile.Gloamstone, (x, y, r) => {
+  const vein = Math.sin(x * 0.8 + y * 0.5) + Math.cos(y * 1.1 - x * 0.3) > 1.35;
+  return jitter(vein ? hex(0x7a6ca0) : r() < 0.08 ? hex(0x6a5e90) : hex(0x5a4f78), r, 0.12);
+});
+gp(Tile.Murkstone, (x, y, r) => jitter(r() < 0.04 ? hex(0x4a8aa8) : r() < 0.2 ? hex(0x3a3e5a) : hex(0x2a2d44), r, 0.14 + (Math.sin(x + y * 2) > 0.9 ? 0.05 : 0)));
+gp(Tile.DuskmossTop, (_x, _y, r) => (r() < 0.05 ? jitter(hex(0x9af0ff), r, 0.1) : jitter(r() < 0.25 ? hex(0x5a86d0) : hex(0x3f5e9a), r, 0.2)));
+gp(Tile.DuskmossSide, (x, y, r) => (y < 3 + Math.floor(Math.abs(Math.sin(x * 1.9)) * 2 + r() * 1.3) ? jitter(r() < 0.2 ? hex(0x5a86d0) : hex(0x3f5e9a), r, 0.18) : jitter(r() < 0.1 ? hex(0x362a48) : hex(0x4a3a5c), r, 0.18)));
+gp(Tile.Gloamsoil, (_x, _y, r) => jitter(r() < 0.1 ? hex(0x362a48) : r() < 0.06 ? hex(0x6a5a80) : hex(0x4a3a5c), r, 0.16));
+gp(Tile.PrismCrystal, (x, y, r) => {
+  const edge = x === 0 || y === 0 || x === 15 || y === 15;
+  const facet = ((x + y) % 5 === 0 || (x - y + 16) % 7 === 0) && !edge;
+  if (edge) return jitter(hex(0xe8d8ff), r, 0.06);
+  return facet ? jitter(hex(0xf0e8ff), r, 0.05) : jitter(mix(hex(0x8a5ce8), hex(0xc8a8ff), (x + y) / 30), r, 0.1);
+});
+gd(Tile.GlimmerCluster, (px, r) => {
+  for (const [cx, h, c] of [[5, 9, 0x6ad8ff], [8, 13, 0x9af0ff], [11, 8, 0x6ad8ff], [3, 5, 0x5ab8e8]] as [number, number, number][]) {
+    for (let y = 15 - h; y <= 15; y++) {
+      const w = Math.max(0, Math.floor((y - (15 - h)) / 4));
+      for (let x = cx - w; x <= cx + w; x++) px.set(x, y, jitter(x === cx ? hex(0xe8ffff) : hex(c), r, 0.1));
+    }
+  }
+});
+gd(Tile.StarfallOre, (px, r) => {
+  px.fill(speckle(0x2a2d44, 0x3a3e5a, 0.2, 0.12), r);
+  for (let i = 0; i < 5; i++) {
+    const cx = 2 + Math.floor(r() * 12);
+    const cy = 2 + Math.floor(r() * 12);
+    for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) if (dx === 0 && dy === 0 || r() < 0.7) px.set(cx + dx, cy + dy, jitter(hex(0x7affd8), r, 0.12));
+    px.set(cx, cy, hex(0xe8fff8));
+  }
+});
+gd(Tile.GloamwoodLogSide, (px, r) => {
+  px.fill((x, _y, rr) => jitter(x % 4 === 0 ? hex(0x2e2444) : hex(0x4a3a5e), rr, 0.14), r);
+  for (let i = 0; i < 3; i++) {
+    const x = 2 + Math.floor(r() * 12);
+    const y = 2 + Math.floor(r() * 12);
+    px.set(x, y, hex(0x7affd8));
+    px.set(x, y + 1, hex(0x4fc8a8));
+  }
+});
+gp(Tile.GloamwoodLogTop, logTop(0x2e2444, 0x6a5a8a, 0x8a78b0));
+gp(Tile.GloamwoodLeaves, leaves(0x6a5cd8, 0x4a3fa8, 0.1, [0x9af0ff, 0.05]));
+gp(Tile.GloamwoodPlanks, planksPainter(0x6a5a88, 0x463a60));
+gp(Tile.Voidglass, (x, y, r) => {
+  if (x === 0 || y === 0 || x === 15 || y === 15) return [58, 47, 92, 255];
+  if ((x - y === 3 || x - y === 4) && x > 3 && x < 12) return [120, 100, 200, 255];
+  return r() < 0.03 ? [100, 80, 190, 255] : CLEAR;
+});
+gd(Tile.LumenBell, (px, r) => {
+  line(px, 8, 15, 8, 7, hex(0x3a8a8a));
+  line(px, 8, 11, 5, 9, hex(0x3a8a8a));
+  disc(px, 8, 5, 3.4, (x, y) => (y > 6 ? null : (x + y) % 4 === 0 ? hex(0xe8e0ff) : jitter(hex(0x9a8cff), r, 0.08)));
+  for (const x of [5, 7, 9, 11]) px.set(x, 8, hex(0x6a5cd8));
+  px.set(8, 9, hex(0xffffff));
+});
+gd(Tile.WispTuft, (px, r) => {
+  for (let i = 0; i < 7; i++) {
+    const x = 2 + i * 2;
+    const h = 5 + Math.floor(r() * 7);
+    for (let y = 15; y > 15 - h; y--) px.set(x + (y < 15 - h / 2 ? (i % 2 ? 1 : -1) : 0), y, jitter(y < 15 - h + 2 ? hex(0x9ab8ff) : hex(0x4a6ad8), r, 0.12));
+  }
+});
+gp(Tile.MistcapTop, (x, y, r) => {
+  const spot = (x * 5 + y * 3) % 11 === 0 && r() < 0.8;
+  return jitter(spot ? hex(0xfff0ff) : hex(r() < 0.3 ? 0xc870ff : 0xa850e8), r, 0.1);
+});
+gp(Tile.MistcapSide, (x, y, r) => jitter(y > 12 ? (x % 2 ? hex(0xe8d0f8) : hex(0xb898d8)) : (x * 3 + y * 5) % 13 === 0 ? hex(0xfff0ff) : hex(0xa850e8), r, 0.1));
+gp(Tile.MistcapStem, (x, y, r) => jitter(y % 6 === 5 ? hex(0xb8a8c8) : x % 5 === 0 ? hex(0xc8b8d8) : hex(0xe0d4ec), r, 0.07));
+gp(Tile.SpirestoneSide, (x, y, r) => jitter((y + Math.floor(Math.sin(x * 0.7) * 1.4)) % 5 === 4 ? hex(0x8a7ea8) : (x + y * 2) % 9 === 0 ? hex(0xd0c4e8) : hex(0xb4a8d0), r, 0.08));
+gp(Tile.SpirestoneTop, smoothTop(0xb4a8d0));
+gp(Tile.GloamBricks, bricksPainter(0x5a4f78, 0x3a3252));
+gp(Tile.PolishedGloamstone, polished(0x6a5f8a));
+gp(Tile.Moonlamp, (x, y, r) => {
+  const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+  return jitter(d > 6.5 ? hex(0x6a5a98) : d < 3 ? hex(0xffffff) : hex(0xdcd0ff), r, 0.05);
+});
+gd(Tile.LatticeStone, latticeStone(false));
+gd(Tile.LatticeStoneLit, latticeStone(true));
+gp(Tile.Veil, (x, y, r) => {
+  const dx = x - 7.5;
+  const dy = y - 7.5;
+  const ang = Math.atan2(dy, dx);
+  const rad = Math.hypot(dx, dy);
+  const s = Math.sin(ang * 3 + rad * 0.9) + Math.sin(rad * 0.7 - ang) * 0.6;
+  if (s < -0.9 && r() < 0.8) return CLEAR;
+  const c = s > 0.9 ? hex(0xf4ecff) : s > 0.1 ? hex(0xb48cff) : hex(0x6a46e8);
+  return jitter(c, r, 0.08);
+});
+gp(Tile.GloamMist, (x, y, r) => ((x + y * 3) % 7 === 0 || r() < 0.18 ? jitter(hex(0xa898e0), r, 0.1) : CLEAR));
+gp(Tile.StarfallBlock, (x, y, r) => {
+  const edge = x === 0 || y === 0 || x === 15 || y === 15;
+  const star = (x * 7 + y * 11) % 17 === 0;
+  return jitter(edge ? hex(0x2fb090) : star ? hex(0xffffff) : (x + y) % 6 === 0 ? hex(0x9affe0) : hex(0x4fe8c0), r, 0.06);
+});
+gp(Tile.EclipseBrick, (x, y, r) => {
+  const row = Math.floor(y / 4);
+  const mortar = y % 4 === 3 || (x + (row % 2) * 4) % 8 === 7;
+  return jitter(mortar ? hex(0x14102a) : r() < 0.03 ? hex(0xd8a848) : hex(0x2a2440), r, 0.1);
+});
+gp(Tile.OrreryBrass, (x, y, r) => {
+  const d = Math.hypot(x - 7.5, y - 7.5);
+  const edge = x === 0 || y === 0 || x === 15 || y === 15;
+  return jitter(edge ? hex(0x9a6a28) : Math.abs(d - 5) < 0.7 || Math.abs(d - 2) < 0.6 ? hex(0xfff0a8) : hex(0xd8a848), r, 0.07);
+});
+gp(Tile.EclipseGlass, (x, y, r) => {
+  if (x === 0 || y === 0 || x === 15 || y === 15 || x === 7 || y === 7) return hex(0x2a2048);
+  return ((x + y) & 1) === 0 || r() < 0.2 ? (r() < 0.1 ? [210, 190, 255, 255] : [106, 79, 216, 255]) : CLEAR;
+});
+gp(Tile.Shardsand, (_x, _y, r) => (r() < 0.05 ? jitter(hex(0xd8c8ff), r, 0.1) : jitter(r() < 0.3 ? hex(0x7a6aa8) : hex(0x8a7ab8), r, 0.1)));
+gd(Tile.Lumenvine, (px, r) => {
+  for (const x of [4, 8, 12]) {
+    const len = 9 + Math.floor(r() * 7);
+    for (let y = 0; y < len; y++) px.set(x + (y % 4 === 2 ? 1 : 0), y, jitter(hex(0x3a8a8a), r, 0.12));
+    px.set(x, len, hex(0x9af0ff));
+    px.set(x, len - 3, hex(0x9af0ff));
+  }
+});
+
+for (const [t, p] of Object.entries(GLOAM_PAINTERS)) PAINTERS[+t] = p as Painter;
+for (const [t, d] of Object.entries(GLOAM_DRAWERS)) DRAWERS[+t] = d as Drawer;
 
 /** Tiles drawn as sprites (transparent background): what the atlas test checks for both alpha kinds. */
 export const SPRITE_TILES: readonly number[] = [
   Tile.TallGrass, Tile.Fern, Tile.DryGrass, Tile.DeadBush, Tile.Sunpetal, Tile.Rosette, Tile.Bluebell, Tile.Frostbloom,
   Tile.RedMushroom, Tile.BrownMushroom, Tile.Duskcap, Tile.Reeds, Tile.HangingMoss, Tile.LilyPad, Tile.Torch, Tile.Lantern, Tile.Ladder,
+  Tile.GlimmerCluster, Tile.LumenBell, Tile.WispTuft, Tile.Lumenvine,
 ];
 
 /**

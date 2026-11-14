@@ -13,6 +13,7 @@ import { hash4, hashFloat, mulberry32 } from '../../util/rng';
 import { SEA_LEVEL } from '../constants';
 import { Biome } from '../worldgen/biomes';
 import { citadel } from './citadel';
+import { eclipseOrrery, fallenLattice, twilitLattice } from './gloam';
 import { crypt, cryptShaft } from './crypt';
 import { buildLandmark, cryptGateFits, landmarkBox, unionBox } from './landmarks';
 import { shrine } from './shrine';
@@ -79,6 +80,10 @@ export const TEMPLATES: Partial<Record<StructureType, Template>> = {
   [StructureType.FrostCitadel]: citadel,
   [StructureType.OvergrownShrine]: shrine,
   [StructureType.AshenCrypt]: crypt,
+  // Gloamreach (package D): placed by worldgen/gloam/sites.ts, not by the ruin rules below.
+  [StructureType.FallenLattice]: fallenLattice,
+  [StructureType.TwilitLattice]: twilitLattice,
+  [StructureType.EclipseOrrery]: eclipseOrrery,
 };
 
 /** Footprint size, height spread allowed, lowest height and highest floor per type. */
@@ -141,8 +146,8 @@ function siteFloor(gen: SiteSource, type: StructureType, ax: number, az: number,
   return F;
 }
 
-function describe(seed: number, rx: number, rz: number, type: StructureType, ax: number, az: number, F: number, biome: Biome, landmark = false, set: StructureSet = 1): PlacedStructure {
-  const id = ((rx & 0xff) << 8) | (rz & 0xff);
+export function describe(seed: number, rx: number, rz: number, type: StructureType, ax: number, az: number, F: number, biome: Biome, landmark = false, set: StructureSet = 1, idOverride?: number): PlacedStructure {
+  const id = idOverride ?? ((rx & 0xff) << 8) | (rz & 0xff);
   const l = templateOf(set, type).layout(ax, az, F);
   return {
     floor: F,
@@ -229,6 +234,15 @@ export function computeStructures(gen: SiteSource, seed: number): PlacedStructur
     if (!found.has(`${rx},${rz}`)) tryRegion(rx, rz, 0x57c8, 8, false);
   }
   return regions.map(([rx, rz]) => found.get(`${rx},${rz}`)).filter((p): p is PlacedStructure => !!p);
+}
+
+/**
+ * Selects what LazyStructures places. `maxX`: regions reaching past this x get no structure
+ * (generator 4: the overworld ends at OVERWORLD_MAX_X). `structureSet` is reserved for the ruins package.
+ */
+export interface LazyOptions {
+  structureSet?: 1 | 2;
+  maxX?: number;
 }
 
 /** Regions remembered by LazyStructures (each holds at most one structure). */

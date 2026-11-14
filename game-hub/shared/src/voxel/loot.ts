@@ -24,6 +24,15 @@ export enum LootTableId {
   GroveBoss = 14,
   ForgeCommon = 15,
   ForgeBoss = 16,
+  // ---- Gloamreach (package D, 40..47; 9..16 belong to package S) ----
+  /** A ruined Lattice Ring that is whole but unlit: a Dusk Lens and supplies. */
+  FallenLatticeLens = 40,
+  /** A ruined Lattice Ring missing stones: spare Lattice Stones and supplies. */
+  FallenLatticeRepair = 41,
+  /** A lit waygate in the Gloamreach. */
+  TwilitLatticeCommon = 42,
+  OrreryCommon = 43,
+  OrreryBoss = 44,
 }
 
 export interface LootEntry {
@@ -121,6 +130,31 @@ export const LOOT_TABLES: Partial<Record<LootTableId, LootTable>> = {
     rolls: [4, 6],
     guaranteed: [g(['cobalt_axe', 'cobalt_sword', 'cobalt_shield']), g(['ember_shard'], 2, 4)],
     entries: [e('cobalt_gem', 4, 2, 3), e('gold_ingot', 3, 2, 5), e('iron_ingot', 3, 4, 8)],
+  },
+  [LootTableId.FallenLatticeLens]: {
+    rolls: [2, 4],
+    guaranteed: [g(['dusk_lens'])],
+    entries: [e('bread', 4, 1, 3), e('block:Torch', 4, 4, 8), e('iron_ingot', 3, 1, 3), e('arrow', 3, 4, 10), e('cooked_meat', 3, 1, 2), e('block:StoneBricks', 3, 4, 8), e('apple', 2, 1, 3)],
+  },
+  [LootTableId.FallenLatticeRepair]: {
+    rolls: [2, 3],
+    guaranteed: [g(['block:LatticeStone'], 4, 4)],
+    entries: [e('bread', 4, 1, 3), e('block:Torch', 4, 4, 8), e('iron_ingot', 3, 1, 2), e('arrow', 3, 4, 10), e('copper_ingot', 3, 2, 4), e('apple', 2, 1, 3)],
+  },
+  [LootTableId.TwilitLatticeCommon]: {
+    rolls: [2, 4],
+    guaranteed: [],
+    entries: [e('glow_dust', 4, 1, 3), e('wisp_dust', 4, 1, 3), e('mistcap_stew', 3, 1, 2), e('prism_shard', 3, 1, 3), e('starfall_shard', 1, 1), e('block:Moonlamp', 2, 1, 2), e('cobalt_gem', 1, 1)],
+  },
+  [LootTableId.OrreryCommon]: {
+    rolls: [3, 5],
+    guaranteed: [],
+    entries: [e('starfall_shard', 3, 1, 3), e('prism_shard', 4, 2, 5), e('wisp_dust', 4, 2, 4), e('gold_ingot', 3, 1, 3), e('mistcap_stew', 3, 1, 3), e('block:Moonlamp', 2, 1, 2), e('cobalt_gem', 2, 1, 2), e('block:OrreryBrass', 2, 4, 8), e('prism_bow', 1, 1)],
+  },
+  [LootTableId.OrreryBoss]: {
+    rolls: [4, 6],
+    guaranteed: [g(['starfall_pickaxe', 'starfall_sword', 'starfall_axe']), g(['prism_bow', 'starfall_shard'], 1, 1), g(['starfall_shard'], 3, 6)],
+    entries: [e('cobalt_gem', 4, 2, 3), e('gold_ingot', 3, 2, 4), e('starfall_ingot', 3, 1, 2), e('prism_shard', 3, 3, 6), e('block:StarfallBlock', 1, 1)],
   },
 };
 

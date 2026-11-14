@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { daylightAt } from '@hub/shared';
 import { mulberry32 } from '@hub/shared';
+import { GloamSky } from './GloamSky';
 
 const DAY_TOP = new THREE.Color(0x5aa9f5);
 const DAY_HORIZON = new THREE.Color(0xbfe3ff);
@@ -13,6 +14,11 @@ const DUSK_TOP = new THREE.Color(0x4a5a9a);
 const DUSK_HORIZON = new THREE.Color(0xffa36b);
 const NIGHT_TOP = new THREE.Color(0x070b1e);
 const NIGHT_HORIZON = new THREE.Color(0x1a2342);
+/** The Gloamreach: a fixed violet twilight (no sun cycle). */
+const GLOAM_TOP = new THREE.Color(0x140c34);
+const GLOAM_HORIZON = new THREE.Color(0x5a3f96);
+/** Sky light the realm holds (0 night .. 1 day): dusky but readable. */
+export const GLOAM_DAYLIGHT = 0.62;
 
 /** Must stay inside the camera's far plane (see VoxelGame.applyRenderDistance). */
 export const SKY_RADIUS = 200;
@@ -31,6 +37,12 @@ export class Sky {
   /** 0..1, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset. */
   time = 0.3;
   daylight = 1;
+  /** 0 overworld .. 1 Gloamreach, eased by setRealm. */
+  realmMix = 0;
+  private realmTarget = 0;
+  private lastMix = -1;
+  private lastReal = performance.now();
+  readonly gloam = new GloamSky();
   readonly horizon = new THREE.Color();
   readonly zenith = new THREE.Color();
   private readonly dome: THREE.Mesh;
@@ -84,12 +96,24 @@ export class Sky {
       this.clouds.setColorAt(i, this.cloudColor.setRGB(1, 1, 1));
     }
 
-    this.group.add(this.dome, this.sun, this.moon, this.stars, this.clouds);
+    this.group.add(this.dome, this.sun, this.moon, this.stars, this.clouds, this.gloam.group);
     this.update(0, new THREE.Vector3());
+  }
+
+  /** Which realm the camera is in: the sky eases there over about a second. */
+  setRealm(gloamreach: boolean, instant = false): void {
+    this.realmTarget = gloamreach ? 1 : 0;
+    if (instant) this.realmMix = this.realmTarget;
   }
 
   /** Advances time (seconds of real time, given the cycle length) and follows the camera. */
   update(dtDays: number, cameraPos: THREE.Vector3): void {
+    const now = performance.now();
+    const realDt = Math.min(0.25, (now - this.lastReal) / 1000);
+    this.lastReal = now;
+    const dm = this.realmTarget - this.realmMix;
+    this.realmMix += Math.sign(dm) * Math.min(Math.abs(dm), realDt * 0.9);
+    const mix = this.realmMix;
     this.time = (this.time + dtDays) % 1;
     const sunAngle = (this.time - 0.25) * Math.PI * 2; // 0 at sunrise
     const elevation = Math.sin(sunAngle);
@@ -98,10 +122,16 @@ export class Sky {
 
     this.zenith.copy(NIGHT_TOP).lerp(DAY_TOP, this.daylight).lerp(DUSK_TOP, dusk * 0.4);
     this.horizon.copy(NIGHT_HORIZON).lerp(DAY_HORIZON, this.daylight).lerp(DUSK_HORIZON, dusk * 0.7);
+    if (mix > 0) {
+      this.zenith.lerp(GLOAM_TOP, mix);
+      this.horizon.lerp(GLOAM_HORIZON, mix);
+      this.daylight = this.daylight + (GLOAM_DAYLIGHT - this.daylight) * mix;
+    }
 
     // Dome gradient: vertex colour by height (only recomputed when the sky visibly changes).
-    if (Math.abs(this.time - this.lastDomeTime) > 0.0008) {
+    if (Math.abs(this.time - this.lastDomeTime) > 0.0008 || mix !== this.lastMix) {
       this.lastDomeTime = this.time;
+      this.lastMix = mix;
       const pos = this.dome.geometry.attributes.position as THREE.BufferAttribute;
       const c = this.tmpColor;
       for (let i = 0; i < pos.count; i++) {
@@ -118,8 +148,12 @@ export class Sky {
     this.sun.lookAt(0, 0, 0);
     this.moon.position.copy(dir).multiplyScalar(-SKY_RADIUS * 0.85);
     this.moon.lookAt(0, 0, 0);
-    (this.moon.material as THREE.MeshBasicMaterial).opacity = 1 - this.daylight * 0.8;
-    (this.stars.material as THREE.PointsMaterial).opacity = Math.max(0, 1 - this.daylight * 2.2);
+    (this.moon.material as THREE.MeshBasicMaterial).opacity = (1 - this.daylight * 0.8) * (1 - mix);
+    (this.stars.material as THREE.PointsMaterial).opacity = Math.max(0, 1 - this.daylight * 2.2) * (1 - mix) + mix * 0.85;
+    this.sun.visible = mix < 0.98;
+    this.moon.visible = mix < 0.98;
+    this.clouds.visible = mix < 0.5;
+    this.gloam.update(realDt, mix, cameraPos, this.daylight);
 
     // Clouds drift along +X and stay put in world space, wrapping in a CLOUD_TILE square around the
     // camera; towards the tile edge they take on the horizon colour so they never pop in or out.
@@ -142,6 +176,7 @@ export class Sky {
   }
 
   dispose(): void {
+    this.gloam.dispose();
     this.group.traverse((o) => {
       const mesh = o as THREE.Mesh;
       mesh.geometry?.dispose();

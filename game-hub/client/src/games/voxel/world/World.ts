@@ -177,6 +177,11 @@ export class World {
   }
   // ---- end fast reader ----
 
+  /** The recorded edit of a cell (player or gameplay), or undefined when the cell was never edited: reads work for unloaded chunks too. */
+  peekEdit(x: number, y: number, z: number): number | undefined {
+    return this.edits.get(chunkKey(toChunkCoord(x), toChunkCoord(z)))?.get(blockIndex(toLocal(x), y, toLocal(z)));
+  }
+
   isLoaded(x: number, z: number): boolean {
     return !!this.chunks.get(chunkKey(toChunkCoord(x), toChunkCoord(z)))?.blocks;
   }

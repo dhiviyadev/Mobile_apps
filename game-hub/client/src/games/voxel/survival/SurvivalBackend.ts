@@ -35,6 +35,8 @@ export interface SurvivalBackend {
   /** Offline: a local edit was applied (player = the local player made it). */
   afterLocalEdit(x: number, y: number, z: number, before: number, after: number, player: boolean): void;
   takeEvents(): ClientEvent[];
+  /** Offline only: takes items from the local inventory (the Dusk Lens for a Lattice Ring); online the server does. */
+  takeItem?(item: number, n: number): boolean;
   takePrivate(): PrivateEvent[];
   rules(): { pvp: boolean; keepInventory: boolean };
   day(): number;

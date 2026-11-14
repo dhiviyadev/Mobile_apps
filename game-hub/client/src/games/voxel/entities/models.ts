@@ -617,6 +617,228 @@ function vine(side: 'L' | 'R', x: number): PartDef[] {
   return out;
 }
 
+
+// ---- the Gloamreach (package D) -----------------------------------------------------------------
+
+const GLOAM_LANTERNHORN: ModelDef = {
+  palette: hex({ fur: 'd2c8e6', dark: '5a4a7a', antler: '8a6a4a', glow: 'ffe8a0', eye: '17141a', belly: 'f0eaf8' }),
+  stride: 2.4,
+  shadow: 0.8,
+  parts: parts(`
+    body    -       0.62 0.58 1.10   0 1.00 0        b fur   torso
+    belly   body    0.52 0.10 0.90   0 -0.04 0       b belly detail
+    rump    body    0.58 0.52 0.30   0 0.0 0.58      c fur   detail
+    neck    body    0.26 0.62 0.26   0 0.30 -0.50    b fur   neck rot(-25,0,0)
+    head    neck    0.30 0.30 0.44   0 0.58 -0.06    b fur   head
+    snout   head    0.18 0.16 0.16   0 -0.06 -0.28   f dark  detail
+    eyeL    head    0.06 0.06 0.02  -0.12 0.06 -0.20 c eye   detail
+    eyeR    head    0.06 0.06 0.02   0.12 0.06 -0.20 c eye   detail
+    earL    head    0.16 0.07 0.07  -0.20 0.12 0.06  c fur   ear rot(0,0,-20)
+    earR    head    0.16 0.07 0.07   0.20 0.12 0.06  c fur   ear rot(0,0,20)
+    antL    head    0.06 0.44 0.06  -0.10 0.16 0.02  b antler detail rot(0,0,14)
+    antR    head    0.06 0.44 0.06   0.10 0.16 0.02  b antler detail rot(0,0,-14)
+    tineL   antL    0.05 0.26 0.05  -0.10 0.30 0     b antler detail rot(0,0,35)
+    tineR   antR    0.05 0.26 0.05   0.10 0.30 0     b antler detail rot(0,0,-35)
+    lampL   tineL   0.15 0.17 0.15   0 0.30 0        b glow  emissive detail
+    lampR   tineR   0.15 0.17 0.15   0 0.30 0        b glow  emissive detail
+    lamp2L  antL    0.12 0.13 0.12   0 0.48 0        b glow  emissive detail
+    lamp2R  antR    0.12 0.13 0.12   0 0.48 0        b glow  emissive detail
+    legFL   -       0.14 0.74 0.14  -0.22 0.74 -0.42 t dark  legA
+    legFR   -       0.14 0.74 0.14   0.22 0.74 -0.42 t dark  legB
+    legBL   -       0.14 0.74 0.14  -0.22 0.74 0.42  t dark  legB
+    legBR   -       0.14 0.74 0.14   0.22 0.74 0.42  t dark  legA
+    tail    body    0.14 0.20 0.12   0 0.22 0.60     k belly tail detail
+  `),
+};
+
+const GLOAM_BOBBLESNOUT: ModelDef = {
+  palette: hex({ skin: 'b8a0d8', belly: 'ece0f8', snout: 'f0b0d0', eye: '17141a', tip: '9af0ff' }),
+  stride: 3.0,
+  shadow: 0.5,
+  parts: parts(`
+    body    -       0.60 0.50 0.66   0 0.30 0.02    b skin  torso
+    belly   body    0.48 0.12 0.50   0 -0.02 -0.04  b belly detail
+    head    -       0.52 0.46 0.46   0 0.58 -0.34   b skin  head
+    snout   head    0.30 0.28 0.30   0 -0.06 -0.36  f snout detail
+    nostrL  snout   0.06 0.06 0.02  -0.07 0.02 -0.31 c eye   detail
+    nostrR  snout   0.06 0.06 0.02   0.07 0.02 -0.31 c eye   detail
+    eyeL    head    0.08 0.10 0.02  -0.16 0.10 -0.235 c eye  detail
+    eyeR    head    0.08 0.10 0.02   0.16 0.10 -0.235 c eye  detail
+    earL    head    0.14 0.20 0.06  -0.24 0.24 0.02  b skin  ear rot(0,0,-20)
+    earR    head    0.14 0.20 0.06   0.24 0.24 0.02  b skin  ear rot(0,0,20)
+    legFL   -       0.14 0.30 0.14  -0.20 0.30 -0.22 t belly legA
+    legFR   -       0.14 0.30 0.14   0.20 0.30 -0.22 t belly legB
+    legBL   -       0.14 0.30 0.14  -0.20 0.30 0.26  t belly legB
+    legBR   -       0.14 0.30 0.14   0.20 0.30 0.26  t belly legA
+    tail    body    0.12 0.12 0.12   0 0.14 0.38     k tip   tail emissive
+  `),
+};
+
+const GLOAM_GLIMMERHARE: ModelDef = {
+  palette: hex({ fur: '7a8ae8', belly: 'd8e0ff', glow: '9af0ff', eye: '17141a' }),
+  stride: 3.0,
+  shadow: 0.35,
+  parts: parts(`
+    body   -     0.40 0.34 0.48   0 0.12 0.02     b fur   torso
+    belly  body  0.30 0.22 0.04   0 0.04 -0.24    b belly detail
+    head   -     0.30 0.28 0.28   0 0.38 -0.20    f fur   head
+    earL   head  0.07 0.40 0.05  -0.08 0.14 -0.08 b glow  ear emissive rot(-8,0,8)
+    earR   head  0.07 0.40 0.05   0.08 0.14 -0.08 b glow  ear emissive rot(-8,0,-8)
+    eyeL   head  0.02 0.07 0.07  -0.155 0.04 -0.17 c eye  detail
+    eyeR   head  0.02 0.07 0.07   0.155 0.04 -0.17 c eye  detail
+    nose   head  0.06 0.05 0.02   0 -0.02 -0.285   c belly detail
+    footL  -     0.11 0.10 0.28  -0.13 0.10 0.08   t fur   legA
+    footR  -     0.11 0.10 0.28   0.13 0.10 0.08   t fur   legA
+    pawL   -     0.07 0.12 0.07  -0.09 0.12 -0.15  t belly legB detail
+    pawR   -     0.07 0.12 0.07   0.09 0.12 -0.15  t belly legB detail
+    tail   body  0.16 0.16 0.14   0 0.20 0.26      k glow  tail emissive detail
+  `),
+};
+
+const GLOAM_WISPLING: ModelDef = {
+  palette: hex({ core: 'f4eeff', glow: 'b48cff', tail: '7a5ae8', eye: '1a1030' }),
+  stride: 0,
+  shadow: 0.35,
+  parts: parts(`
+    core   -     0.34 0.34 0.34   0 0.40 0        c core  torso emissive
+    halo   core  0.56 0.56 0.56   0 0 0           c glow  spin emissive alpha 0.35
+    eyeL   core  0.07 0.08 0.02  -0.08 0.02 -0.175 c eye  detail
+    eyeR   core  0.07 0.08 0.02   0.08 0.02 -0.175 c eye  detail
+    tail1  core  0.22 0.22 0.22   0 -0.08 0.26    c tail  tail emissive alpha 0.85
+    tail2  tail1 0.16 0.16 0.18   0 -0.04 0.22    c tail  tail emissive alpha 0.7
+    tail3  tail2 0.10 0.10 0.14   0 -0.02 0.18    c glow  tail emissive alpha 0.55
+    wispL  core  0.30 0.04 0.20  -0.20 0.06 0.02  l glow  wingL emissive alpha 0.6
+    wispR  core  0.30 0.04 0.20   0.20 0.06 0.02  r glow  wingR emissive alpha 0.6
+  `),
+};
+
+const GLOAM_SHARDBACK: ModelDef = {
+  palette: hex({ body: '2e2a44', shard: 'b48cff', leg: '1e1a30', eye: '7affd8', plate: '4a4468' }),
+  stride: 5.0,
+  shadow: 0.75,
+  parts: parts(`
+    abdomen -       0.80 0.36 0.62   0 0.28 0.22     b body  torso
+    plate   abdomen 0.84 0.10 0.60   0 0.36 0        b plate detail
+    shardA  plate   0.16 0.40 0.16  -0.20 0.08 0.06  b shard emissive detail rot(0,0,-8)
+    shardB  plate   0.18 0.56 0.18   0.06 0.08 -0.04 b shard emissive detail rot(0,0,6)
+    shardC  plate   0.14 0.34 0.14   0.26 0.08 0.14  b shard emissive detail rot(0,0,14)
+    shardD  plate   0.12 0.28 0.12  -0.02 0.08 0.20  b shard emissive detail
+    head    -       0.50 0.30 0.40   0 0.30 -0.28    b body  head
+    mandL   head    0.08 0.06 0.22  -0.12 0.06 -0.20 f shard jaw detail
+    mandR   head    0.08 0.06 0.22   0.12 0.06 -0.20 f shard jaw detail
+    eyeL    head    0.07 0.07 0.02  -0.09 0.22 -0.205 c eye emissive
+    eyeR    head    0.07 0.07 0.02   0.09 0.22 -0.205 c eye emissive
+    leg1L   -       0.62 0.08 0.08  -0.30 0.42 -0.25 l leg   legA rot(0,-20,35)
+    leg2L   -       0.62 0.08 0.08  -0.30 0.42 0     l leg   legB rot(0,0,35)
+    leg3L   -       0.62 0.08 0.08  -0.30 0.42 0.25  l leg   legA rot(0,20,35)
+    leg1R   -       0.62 0.08 0.08   0.30 0.42 -0.25 r leg   legB rot(0,20,-35)
+    leg2R   -       0.62 0.08 0.08   0.30 0.42 0     r leg   legA rot(0,0,-35)
+    leg3R   -       0.62 0.08 0.08   0.30 0.42 0.25  r leg   legB rot(0,-20,-35)
+  `),
+};
+
+const GLOAM_HUSHWALKER: ModelDef = {
+  palette: hex({ robe: '3a3462', dark: '1c1636', mist: '8a7ac0', eye: 'ffffff', hand: '4a4468' }),
+  stride: 1.8,
+  shadow: 0.6,
+  biped: true,
+  parts: parts(`
+    legL   -      0.16 1.00 0.18  -0.14 1.00 0      t dark  legA
+    legR   -      0.16 1.00 0.18   0.14 1.00 0      t dark  legB
+    robe   -      0.56 0.50 0.34   0 0.78 0         b robe  detail
+    torso  -      0.50 0.64 0.30   0 1.00 0         b robe  torso
+    mist   torso  0.62 0.50 0.10   0 0.02 0.18     t mist  cape detail alpha 0.8
+    shoulders torso 0.74 0.18 0.30 0 0.60 0        b dark  detail
+    head   torso  0.34 0.40 0.34   0 0.78 -0.02    b dark  head
+    hood   head   0.40 0.20 0.40   0 0.30 0.01     b robe  detail
+    eyeL   head   0.07 0.14 0.02  -0.08 0.04 -0.175 c eye  emissive
+    eyeR   head   0.07 0.14 0.02   0.08 0.04 -0.175 c eye  emissive
+    armL   torso  0.12 0.96 0.14  -0.42 0.58 0      t robe  armL
+    armR   torso  0.12 0.96 0.14   0.42 0.58 0      t robe  armR
+    handL  armL   0.16 0.26 0.18   0 -0.96 0        t hand  detail
+    handR  armR   0.16 0.26 0.18   0 -0.96 0        t hand  detail
+    clawL  handL  0.04 0.18 0.04  -0.05 -0.26 0     t mist  detail
+    clawR  handR  0.04 0.18 0.04   0.05 -0.26 0     t mist  detail
+  `),
+};
+
+const GLOAM_GLINTCASTER: ModelDef = {
+  palette: hex({ robe: '3a2e68', trim: 'd8a848', crystal: 'b48cff', face: '14102a', eye: '9af0ff', staff: '6a5a88' }),
+  stride: 0,
+  shadow: 0.55,
+  parts: [
+    ...parts(`
+      hem     -       0.70 0.50 0.60   0 0.30 0        b robe
+      robe2   hem     0.58 0.55 0.46   0 0.50 0        b robe  torso
+      sash    robe2   0.62 0.08 0.50   0 0.18 0        c trim  detail
+      chest   robe2   0.64 0.40 0.40   0 0.55 0        b robe  detail
+      head    chest   0.38 0.40 0.38   0 0.40 -0.02   b robe  head
+      face    head    0.26 0.26 0.02   0 0.10 -0.195  c face
+      eyeL    head    0.07 0.05 0.02  -0.06 0.14 -0.205 c eye emissive
+      eyeR    head    0.07 0.05 0.02   0.06 0.14 -0.205 c eye emissive
+      crown   head    0.30 0.10 0.30   0 0.40 0        b trim  detail
+      gem     crown   0.10 0.14 0.10   0 0.10 -0.12   b crystal emissive detail
+      armL    chest   0.14 0.60 0.16  -0.40 0.30 0     t robe  armL
+      armR    chest   0.14 0.60 0.16   0.40 0.30 0     t robe  armR
+      staff   armR    0.06 1.40 0.06   0 -0.55 -0.12  c staff weapon
+      orb     staff   0.22 0.26 0.22   0 0.78 0        c crystal emissive detail
+      hand    armL    0.16 0.16 0.16   0 -0.60 0      t trim  detail
+    `),
+    ...ring(3, (i) => ({ id: `prism${i}`, parent: 'chest', size: [0.14, 0.30, 0.14], at: [0, 0.4, 0], anchor: 'c', color: 'crystal', role: 'orbit', emissive: true, index: i } as PartDef)),
+  ],
+};
+
+const GLOAM_MURKPUFF: ModelDef = {
+  palette: hex({ cap: '4a3a78', spot: '9af0ff', stem: 'c8b8e8', gill: '8a7ab8', eye: '1a1030' }),
+  stride: 3.0,
+  shadow: 0.55,
+  biped: true,
+  parts: parts(`
+    legL   -     0.14 0.20 0.16  -0.11 0.20 0      t stem legA
+    legR   -     0.14 0.20 0.16   0.11 0.20 0      t stem legB
+    stem   -     0.46 0.55 0.46   0 0.20 0         b stem torso
+    gills  stem  0.84 0.06 0.84   0 0.55 0         t gill cap detail
+    cap    stem  0.90 0.36 0.90   0 0.55 0         b cap  cap
+    capTop cap   0.62 0.12 0.62   0 0.36 0         b cap  detail
+    spot1  cap   0.16 0.04 0.16  -0.22 0.36 -0.20  b spot emissive detail
+    spot2  cap   0.14 0.04 0.14   0.24 0.36 -0.10  b spot emissive detail
+    spot3  cap   0.16 0.04 0.16   0.05 0.36 0.24   b spot emissive detail
+    spot5  cap   0.12 0.12 0.02   0.18 0.12 -0.455 c spot emissive detail
+    eyeL   stem  0.07 0.10 0.02  -0.10 0.36 -0.235 c eye
+    eyeR   stem  0.07 0.10 0.02   0.10 0.36 -0.235 c eye
+    armL   stem  0.08 0.20 0.08  -0.27 0.42 0      t stem armL detail
+    armR   stem  0.08 0.20 0.08   0.27 0.42 0      t stem armR detail
+  `),
+};
+
+const GLOAM_COLOSSUS: ModelDef = {
+  palette: hex({ stone: '2a2440', dark: '14102a', brass: 'd8a848', glow: 'b48cff', core: 'ffffff', void: '07050f' }),
+  stride: 0,
+  shadow: 1.5,
+  parts: [
+    ...parts(`
+      keel      -         1.10 0.70 1.10   0 0.30 0        b dark
+      keel2     keel      1.40 0.70 1.30   0 0.70 0        b stone
+      waist     keel2     1.70 0.40 1.40   0 0.70 0        b brass detail
+      torso     waist     2.00 1.20 1.30   0 0.40 0        b stone torso
+      plate     torso     1.10 0.70 0.08   0 0.55 -0.67    f brass detail
+      core      plate     0.40 0.40 0.06   0 0 -0.08       f glow  emissive
+      shoulders torso     2.70 0.36 1.10   0 1.10 0        b brass detail
+      corona    torso     1.30 1.30 0.10   0 1.55 0.60     c glow  emissive alpha 0.55
+      head      torso     0.95 0.95 0.80   0 1.20 -0.05    b void  head
+      eclipse   head      0.62 0.62 0.04   0 0.42 -0.42    c glow  emissive
+      ringTop   head      1.10 0.10 1.00   0 0.98 0        b brass detail
+      armL      shoulders 0.50 1.40 0.50  -1.45 0.0 0      t stone armL
+      armR      shoulders 0.50 1.40 0.50   1.45 0.0 0      t stone armR
+      fistL     armL      0.80 0.80 0.80   0 -1.50 0       t brass
+      fistR     armR      0.80 0.80 0.80   0 -1.50 0       t brass
+      gemL      fistL     0.30 0.30 0.04   0 -0.40 -0.42   c glow  emissive detail
+      gemR      fistR     0.30 0.30 0.04   0 -0.40 -0.42   c glow  emissive detail
+    `),
+    ...ring(6, (i) => ({ id: `moon${i}`, size: [0.46, 0.46, 0.46], at: [0, 2.0, 0], anchor: 'c', color: i % 2 ? 'glow' : 'brass', role: 'orbit', emissive: true, index: i } as PartDef)),
+  ],
+};
+
 // ---- projectiles -------------------------------------------------------------------------
 
 const arrowModel = (fletch: string, shaft = 0.6): ModelDef => ({
@@ -648,6 +870,10 @@ const PROJECTILE_MODELS: Record<number, ModelDef> = {
     t1    pod  0.06 0.18 0.06  0 0.15 0      b thorn
     t2    pod  0.06 0.18 0.06  0 -0.15 0     t thorn
   `) },
+  [ProjectileKind.GlintBolt]: { palette: hex({ core: 'e8f4ff', halo: '8ad8ff' }), stride: 0, shadow: 0, parts: parts(`
+    core  -  0.18 0.18 0.18  0 0 0  c core spin emissive
+    halo  -  0.34 0.34 0.34  0 0 0  c halo spin emissive alpha 0.4
+  `) },
   [ProjectileKind.Ember]: { palette: hex({ ember: 'ff6a2a' }), stride: 0, shadow: 0, parts: parts(`
     ember -  0.18 0.18 0.18  0 0 0  c ember spin emissive
   `) },
@@ -672,6 +898,15 @@ export const MOB_MODELS: Record<MobKind, ModelDef> = {
   [MobKind.Stormtalon]: STORMTALON,
   [MobKind.BramblehornElder]: BRAMBLEHORN,
   [MobKind.AnvilheartColossus]: ANVILHEART,
+  [MobKind.Lanternhorn]: GLOAM_LANTERNHORN,
+  [MobKind.Bobblesnout]: GLOAM_BOBBLESNOUT,
+  [MobKind.Glimmerhare]: GLOAM_GLIMMERHARE,
+  [MobKind.Wispling]: GLOAM_WISPLING,
+  [MobKind.Shardback]: GLOAM_SHARDBACK,
+  [MobKind.Hushwalker]: GLOAM_HUSHWALKER,
+  [MobKind.Glintcaster]: GLOAM_GLINTCASTER,
+  [MobKind.Murkpuff]: GLOAM_MURKPUFF,
+  [MobKind.EclipseColossus]: GLOAM_COLOSSUS,
 };
 
 const DEG = Math.PI / 180;

@@ -35,6 +35,16 @@ export enum MobKind {
   Stormtalon = 37,
   BramblehornElder = 38,
   AnvilheartColossus = 39,
+  // ---- the Gloamreach (package D, 44..59; 36..43 belong to package S) ----
+  Lanternhorn = 44,
+  Bobblesnout = 45,
+  Glimmerhare = 46,
+  Wispling = 47,
+  Shardback = 48,
+  Hushwalker = 49,
+  Glintcaster = 50,
+  Murkpuff = 51,
+  EclipseColossus = 52,
 }
 
 /** Biome and structure recolours (4 bits on the wire). */

@@ -10,6 +10,7 @@ import { BurstKind, EntityEventType, MobAction, MobKind, MobVariant, TelegraphSh
 import { beginCharge, fan, lob, summonAt, updateCharge } from './attacks';
 import type { BossController, BossScript, Telegraph } from './boss';
 import { RUIN_BOSS_SCRIPTS } from './ruinScripts';
+import { eclipseColossus } from './gloamBoss';
 
 const ALL = 7;
 const P23 = 6;
@@ -387,6 +388,7 @@ export const BOSS_SCRIPTS: Readonly<Partial<Record<MobKind, BossScript>>> = {
   [MobKind.Thornmaw]: thornmaw,
   [MobKind.AshenKnight]: knight,
   ...RUIN_BOSS_SCRIPTS,
+  [MobKind.EclipseColossus]: eclipseColossus,
 };
 
 /** Which boss guards a structure type. */
@@ -399,6 +401,7 @@ export const BOSS_FOR_STRUCTURE: Readonly<Partial<Record<StructureType, MobKind>
   [StructureType.StormcrownAerie]: MobKind.Stormtalon,
   [StructureType.HollowheartGrove]: MobKind.BramblehornElder,
   [StructureType.CinderdeepForge]: MobKind.AnvilheartColossus,
+  [StructureType.EclipseOrrery]: MobKind.EclipseColossus,
 };
 
 export function bossTitle(kind: MobKind): string {

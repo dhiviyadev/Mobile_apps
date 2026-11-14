@@ -7,5 +7,7 @@ export { Biome, BIOME_COUNT, BIOME_INFO, type BiomeInfo, type BiomeTag, TreeSpec
 export { type Column, type Tree, TerrainGeneratorV1 } from './v1';
 export { type ColumnV2, LAVA_LEVEL, TerrainGeneratorV2, type TreeV2 } from './v2';
 export { edgeDistance, TerrainGeneratorV3 } from './v3';
+export { TerrainGeneratorV4 } from './v4';
+export { GloamTerrain, type GloamColumn } from './gloam/terrain';
 /** @deprecated The original generator under its old name (= TerrainGeneratorV1). */
 export { TerrainGeneratorV1 as TerrainGenerator } from './v1';

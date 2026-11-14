@@ -36,14 +36,14 @@ describe('room codes', () => {
 
 describe('protocol version', () => {
   it('accepts only this build, and tells old and new pages apart', () => {
-    expect(PROTOCOL_VERSION).toBe(3);
+    expect(PROTOCOL_VERSION).toBe(4);
     expect(protocolError(PROTOCOL_VERSION)).toBeNull();
     // Older, missing (a page from before versioning) or malformed.
-    for (const old of [undefined, 1, 2, '3', 1.5, null]) {
+    for (const old of [undefined, 1, 2, 3, '4', 1.5, null]) {
       expect(protocolError(old)).toBe(`${PROTOCOL_TEXT.clientOutdated} (${PROTOCOL_ERRORS.clientOutdated})`);
     }
-    expect(protocolError(4)).toBe(`${PROTOCOL_TEXT.serverOutdated} (${PROTOCOL_ERRORS.serverOutdated})`);
-    expect(protocolError(4)).toMatch(/being updated/);
+    expect(protocolError(5)).toBe(`${PROTOCOL_TEXT.serverOutdated} (${PROTOCOL_ERRORS.serverOutdated})`);
+    expect(protocolError(5)).toMatch(/being updated/);
     expect(protocolError(undefined)).toMatch(/Reload the page/);
   });
 });

@@ -26,6 +26,8 @@ export * from './util/binary';
 export * from './voxel/protocol';
 export * from './voxel/worldFile';
 export * from './voxel/teleport';
+export * from './voxel/realm';
+export * from './voxel/portal';
 export * from './arena/constants';
 export * from './arena/weapons';
 export * from './arena/geometry';

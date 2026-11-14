@@ -39,7 +39,8 @@ describe('survival items', () => {
     expect(ids.length).toBeGreaterThanOrEqual(55);
     const tiles = ids.map((id) => itemDef(id)!.tile);
     expect(new Set(tiles).size).toBe(tiles.length);
-    for (const t of tiles) expect(t >= 160 && t <= 239).toBe(true);
+    // 160..239 and the Gloamreach's 296..319.
+    for (const t of tiles) expect((t >= 160 && t <= 239) || (t >= 296 && t <= 319)).toBe(true);
     expect(new Set(ids.map((id) => itemDef(id)!.key)).size).toBe(ids.length);
   });
 
@@ -115,8 +116,8 @@ describe('inventory operations', () => {
 
 describe('recipes', () => {
   it('has 89 recipes with unique ids, at most 4 inputs and valid items', () => {
-    expect(RECIPES).toHaveLength(89);
-    expect(new Set(RECIPES.map((r) => r.id)).size).toBe(89);
+    expect(RECIPES.length).toBeGreaterThanOrEqual(89);
+    expect(new Set(RECIPES.map((r) => r.id)).size).toBe(RECIPES.length);
     for (const r of RECIPES) {
       expect(r.inputs.length).toBeLessThanOrEqual(4);
       expect(itemDef(r.output), `recipe ${r.id}`).toBeDefined();

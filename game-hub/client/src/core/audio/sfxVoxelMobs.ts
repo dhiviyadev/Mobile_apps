@@ -63,9 +63,9 @@ function voice(k: SynthKit, v: Voice, o: VoiceOpts): void {
   if (o.breath) k.noise(v, { dur: o.dur, vol: vol * o.breath, type: 'bandpass', freq: o.formant ?? 1200, q: o.q ?? 1.2, delay: o.delay });
 }
 
-type Step = { v: VoiceOpts } | { n: NoiseOpts } | { t: ToneOpts } | { notes: [number[], number, OscillatorType, number, number] };
+export type Step = { v: VoiceOpts } | { n: NoiseOpts } | { t: ToneOpts } | { notes: [number[], number, OscillatorType, number, number] };
 
-function recipe(k: SynthKit, steps: Step[], length: number, minGap?: number): SfxDef {
+export function recipe(k: SynthKit, steps: Step[], length: number, minGap?: number): SfxDef {
   return {
     play: (v) => {
       for (const s of steps) {

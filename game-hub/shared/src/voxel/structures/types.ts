@@ -19,6 +19,13 @@ export enum StructureType {
   HollowheartGrove = 7,
   CinderdeepForge = 8,
   // 9..12: portal sites (package D)
+  // ---- Gloamreach (package D: 9..12; 5..8 belong to package S) ----
+  /** A fallen Lattice Ring in the overworld: whole but unlit, or missing stones. */
+  FallenLattice = 9,
+  /** A lit Lattice Ring in the Gloamreach: the way home. */
+  TwilitLattice = 10,
+  /** The Eclipse Orrery and its Colossus. */
+  EclipseOrrery = 11,
 }
 
 export const STRUCTURE_NAMES: Partial<Record<StructureType, string>> = {
@@ -30,6 +37,9 @@ export const STRUCTURE_NAMES: Partial<Record<StructureType, string>> = {
   [StructureType.StormcrownAerie]: 'Stormcrown Aerie',
   [StructureType.HollowheartGrove]: 'Hollowheart Grove',
   [StructureType.CinderdeepForge]: 'Cinderdeep Forge',
+  [StructureType.FallenLattice]: 'Fallen Lattice',
+  [StructureType.TwilitLattice]: 'Twilit Lattice',
+  [StructureType.EclipseOrrery]: 'Eclipse Orrery',
 };
 
 export interface Vec3i {

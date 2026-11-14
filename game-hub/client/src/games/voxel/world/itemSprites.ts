@@ -70,6 +70,12 @@ function palette(id: number): { main: RGB; light: RGB; dark: RGB; accent: RGB } 
     case Item.GaleshotBow: return { main: 0xdff4ff, light: 0xffffff, dark: 0x5a8ab8, accent: 0x6ad8ff };
     case Item.RootsplitterAxe: return { main: 0x8a5a2a, light: 0xc8905a, dark: 0x4a2e14, accent: 0x7ae86a };
     case Item.ForgeheartHammer: return { main: 0x4a4a52, light: 0x8a8a96, dark: 0x24242a, accent: 0xff7a2a };
+    case Item.StarfallPickaxe:
+    case Item.StarfallShovel:
+    case Item.StarfallAxe:
+    case Item.StarfallSword: return { main: 0x4fe8c0, light: 0xd8fff2, dark: 0x1a7a68, accent: 0x7affd8 };
+    case Item.PrismBow: return { main: 0xb48cff, light: 0xe8d8ff, dark: 0x5a3aa8, accent: 0x9af0ff };
+    case Item.EclipseGlaive: return { main: 0x2a2440, light: 0xb48cff, dark: 0x14102a, accent: 0xd8a848 };
     case Item.CobaltCrossbow: return { main: 0x2f6fe0, light: 0x9cc8ff, dark: 0x1a3a8a, accent: GOLD };
     case Item.Crossbow: return { main: 0xd8dde6, light: 0xffffff, dark: 0x8a909c, accent: 0xc8743a };
   }
@@ -376,7 +382,54 @@ export function paintItemTile(tile: number, out: Uint8ClampedArray): boolean {
   return true;
 }
 
+/** The Gloamreach's own sprites (materials, the Dusk Lens, the Eclipse Glaive); tools use the generic painters with a Starfall palette. */
+function gloamItem(c: Canvas16, id: number): boolean {
+  switch (id) {
+    case Item.DuskLens:
+      disc(c.px, 7.5, 7, 5.6, (x, y, d) => (d > 4.2 ? 0xc8a8ff : (x + y) % 5 === 0 ? 0xf4ecff : d < 2 ? 0xd8c8ff : 0x8a5ce8));
+      line(c.px, 11, 11, 14, 14, 0x8a6a3a, 2);
+      c.px(5, 5, 0xffffff);
+      c.px(6, 5, 0xffffff);
+      return true;
+    case Item.StarfallShard:
+      poly(c.px, [[7, 1], [11, 6], [10, 14], [5, 14], [4, 6]], (x, y) => (x === 7 || (y < 5 && x === 6) ? 0xe8fff8 : x < 7 ? 0x4fe8c0 : 0x1a9a80));
+      c.px(6, 8, 0xffffff);
+      return true;
+    case Item.StarfallIngot:
+      ingot(c, 0xd8fff2, 0x4fe8c0, 0x1a7a68);
+      return true;
+    case Item.WispDust:
+      for (const [x, y, col] of [[7, 7, 0xffffff], [5, 9, 0xc8b8ff], [9, 5, 0xc8b8ff], [10, 10, 0xe8e0ff], [4, 5, 0xa898e8], [11, 7, 0xa898e8], [7, 11, 0xa898e8], [8, 3, 0xe8e0ff]] as [number, number, number][]) {
+        c.px(x, y, col);
+        c.px(x + 1, y, col);
+        c.px(x, y + 1, col);
+      }
+      return true;
+    case Item.MurkPelt:
+      poly(c.px, [[3, 4], [8, 2], [13, 4], [14, 10], [11, 14], [5, 14], [2, 10]], (x, y) => ((x * 5 + y * 3) % 7 === 0 ? 0x6a6a92 : y < 6 ? 0x4a4a6a : 0x363652));
+      return true;
+    case Item.PrismShard:
+      poly(c.px, [[4, 13], [6, 3], [10, 2], [12, 10], [9, 14]], (x, y) => (x + y < 13 ? 0xc8a8ff : 0x7a4ad8));
+      c.px(7, 5, 0xffffff);
+      c.px(8, 6, 0xf4ecff);
+      return true;
+    case Item.MistcapStew:
+      poly(c.px, [[2, 8], [14, 8], [12, 14], [4, 14]], (_x, y) => (y < 9 ? 0xd8c8e8 : 0x6a5a88));
+      disc(c.px, 8, 7, 4.5, (x, y, d) => (y > 7 ? null : d > 3.5 ? 0xa850e8 : (x + y) % 3 === 0 ? 0xfff0ff : 0xc870ff));
+      return true;
+    case Item.EclipseGlaive:
+      line(c.px, 2, 14, 11, 5, (i) => (i % 2 ? 0x5a4a78 : 0x3a2e58));
+      poly(c.px, [[9, 7], [10, 2], [15, 1], [14, 6], [13, 9], [11, 10]], (x, y) => (x + y < 14 ? 0xb48cff : x + y < 16 ? 0x6a4ad8 : 0x2a2440));
+      c.px(12, 4, 0xffffff);
+      c.px(2, 14, 0xd8a848);
+      c.px(3, 13, 0xd8a848);
+      return true;
+  }
+  return false;
+}
+
 function paintItem(c: Canvas16, id: number): void {
+  if (gloamItem(c, id)) return;
   if (id === Item.Satchel) return satchel(c);
   if (id === Item.Arrow) return arrow(c, 0x5a5a64, 0x9a9aa4, false);
   if (id === Item.EmberArrow) return arrow(c, 0xff6a2a, 0xffd08a, true);

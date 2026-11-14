@@ -58,6 +58,8 @@ import {
   isPlayerKey,
   type GenVersion,
   LATEST_GEN_VERSION,
+  Realm,
+  realmAt,
   type MoveUpdate,
   isValidRoomCode,
   isVoxelMode,
@@ -86,6 +88,7 @@ import { ServerEntities } from '../voxel/ServerEntities';
 import type { VoxelRoomApi, VoxelSubsystem } from '../voxel/subsystem';
 import { SurvivalRoomHost } from '../voxel/SurvivalRoomHost';
 import { TeleportHost } from '../voxel/TeleportHost';
+import { PortalHost } from '../voxel/PortalHost';
 import { getWorldStore, publicSlotIds, type SavedWorld } from '../voxel/WorldStore';
 import { type HostedInfo, UPLOAD_ERRORS, WorldUpload } from '../voxel/HostedWorld';
 import { assertProtocol, HubRoom, ROOM_CODE_SET } from './HubRoom';
@@ -202,6 +205,8 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
   survival: SurvivalRoomHost | null = null;
   /** Saved places and teleport requests (Package W). */
   teleports: TeleportHost | null = null;
+  /** Rift Gates (package D). */
+  portals: PortalHost | null = null;
   /** Something besides block edits changed since the last save (subsystems call markDirty). */
   private progressDirty = false;
   /** Hosted world (options.host): it comes from the host's device and its saves go back there. Null otherwise. */
@@ -477,12 +482,14 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     this.entities = null;
     this.survival = null;
     this.teleports = null;
+    this.portals = null;
     if (this.mode === 'parkour') return;
     const api = this.roomApi();
     this.entities = new ServerEntities(api, sections);
     this.survival = new SurvivalRoomHost(api, this.entities, playerKeyHash, sections);
     this.teleports = new TeleportHost(api, this.entities, playerKeyHash);
-    this.subsystems = [this.entities, this.survival, this.teleports];
+    this.portals = new PortalHost(api, this.entities, this.survival);
+    this.subsystems = [this.entities, this.survival, this.teleports, this.portals];
   }
 
   /** The room as subsystems see it. */
@@ -926,6 +933,7 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     if (this.mode === 'parkour') return 'editing disabled in this mode';
     if (!rt.editBucket.take()) return 'rate limited';
     if (!this.world.blockInWorld(e.x, e.y, e.z) || e.y < 1) return 'out of world';
+    if (realmAt(this.state.genVersion, e.x) === Realm.Veil) return 'the Veil Wall is sealed';
     const current = this.world.getBlock(e.x, e.y, e.z);
     if (e.id === Block.Air) {
       if (!blockDef(current).breakable) return 'unbreakable';
@@ -976,7 +984,8 @@ export class VoxelRoom extends HubRoom<VoxelState, VoxelPlayer> {
     rt.lastMoveAt = now;
 
     const limit = this.world.generator.limit;
-    const inBounds = Math.abs(m.x) <= limit && Math.abs(m.z) <= limit && m.y > -64 && m.y < CHUNK_HEIGHT + 64;
+    // The Veil Wall (generator 4, x in [12000, 14000)) is impassable: only portals cross it.
+    const inBounds = Math.abs(m.x) <= limit && Math.abs(m.z) <= limit && m.y > -64 && m.y < CHUNK_HEIGHT + 64 && realmAt(this.state.genVersion, m.x) !== Realm.Veil;
     const horizontal = Math.hypot(m.x - player.x, m.z - player.z);
     const vertical = Math.abs(m.y - player.y);
     let allowance = 0;

@@ -17,8 +17,8 @@ export const FIRST_ITEM = 256;
 export const MAX_ITEM = 511;
 
 export enum ItemKind { Block = 0, Material = 1, Food = 2, Ammo = 3, Tool = 4, Sword = 5, Shield = 6, Bow = 7, Crossbow = 8, Special = 9 }
-/** Same scale as BlockDef.minTier: 0 hand, 1 wood, 2 stone, 3 iron, 4 cobalt. */
-export type Tier = 0 | 1 | 2 | 3 | 4;
+/** Same scale as BlockDef.minTier: 0 hand, 1 wood, 2 stone, 3 iron, 4 cobalt, 5 starfall (Gloamreach). */
+export type Tier = 0 | 1 | 2 | 3 | 4 | 5;
 
 export interface MeleeStats {
   damage: number;
@@ -195,6 +195,20 @@ export enum Item {
   GaleshotBow = 322,
   RootsplitterAxe = 323,
   ForgeheartHammer = 324,
+  // ---- Gloamreach (package D, 337..368; 321..336 belong to package S) -------------------
+  DuskLens = 337,
+  StarfallShard = 338,
+  StarfallIngot = 339,
+  StarfallPickaxe = 340,
+  StarfallShovel = 341,
+  StarfallAxe = 342,
+  StarfallSword = 343,
+  WispDust = 344,
+  MurkPelt = 345,
+  PrismShard = 346,
+  MistcapStew = 347,
+  EclipseGlaive = 348,
+  PrismBow = 349,
 }
 
 /** Fist (and any non-weapon item). */
@@ -207,6 +221,7 @@ export const TIER_COLORS: readonly (readonly [number, number, number])[] = [
   [0x8c8f99, 0xb4b7c0, 0x5a5c64],
   [0xd8dde6, 0xffffff, 0x8a909c],
   [0x2f6fe0, 0x9cc8ff, 0x1a3a8a],
+  [0x4fe8c0, 0xd8fff2, 0x1a7a68],
 ];
 /** Boss unique palettes (main, accent). */
 export const UNIQUE_COLORS: Readonly<Record<number, readonly [number, number]>> = {
@@ -218,12 +233,14 @@ export const UNIQUE_COLORS: Readonly<Record<number, readonly [number, number]>> 
   [Item.GaleshotBow]: [0xdff4ff, 0x6ad8ff],
   [Item.RootsplitterAxe]: [0x8a5a2a, 0x7ae86a],
   [Item.ForgeheartHammer]: [0x4a4a52, 0xff7a2a],
+  [Item.EclipseGlaive]: [0x2a2440, 0xb48cff],
+  [Item.PrismBow]: [0xb48cff, 0x9af0ff],
 };
 
-const TIER_NAMES = ['', 'Wooden', 'Stone', 'Iron', 'Cobalt'] as const;
-const TIER_KEYS = ['', 'wooden', 'stone', 'iron', 'cobalt'] as const;
-const TIER_SPEED = [1, 2, 3.5, 5, 7];
-const TIER_DURABILITY = [0, 60, 130, 250, 1200];
+const TIER_NAMES = ['', 'Wooden', 'Stone', 'Iron', 'Cobalt', 'Starfall'] as const;
+const TIER_KEYS = ['', 'wooden', 'stone', 'iron', 'cobalt', 'starfall'] as const;
+const TIER_SPEED = [1, 2, 3.5, 5, 7, 9];
+const TIER_DURABILITY = [0, 60, 130, 250, 1200, 2400];
 
 type ItemSpec = Omit<ItemDef, 'tile' | 'durability' | 'sandbox' | 'maxStack'> & Partial<Pick<ItemDef, 'tile' | 'durability' | 'sandbox' | 'maxStack'>>;
 /** Sprite tiles follow the ids (256 -> 160) unless given. */
@@ -288,6 +305,34 @@ for (const t of [1, 2, 3, 4] as const) {
     melee: { damage: SWORD_DMG[t], cooldown: t === 4 ? 0.5 : 0.55, reach: 3.2, knockback: 5.0, lift: 3.6, shieldDisable: 0, wear: 1 } });
 }
 
+// Starfall tools (package D): tier 5, ids 340..343 (not in the wooden..cobalt id blocks).
+{
+  const t = 5;
+  const common = { kind: ItemKind.Tool, maxStack: 1, color: TIER_COLORS[t][0], durability: TIER_DURABILITY[t], sandbox: true };
+  reg({ ...common, id: Item.StarfallPickaxe, tile: 297, key: 'starfall_pickaxe', name: 'Starfall Pickaxe', tool: { kind: 'pick', tier: t, speed: TIER_SPEED[t] },
+    melee: { damage: 6, cooldown: 0.7, reach: 3.0, knockback: 4.4, lift: 3.4, shieldDisable: 0, wear: 2 } });
+  reg({ ...common, id: Item.StarfallShovel, tile: 298, key: 'starfall_shovel', name: 'Starfall Shovel', tool: { kind: 'shovel', tier: t, speed: TIER_SPEED[t] },
+    melee: { damage: 5.5, cooldown: 0.7, reach: 3.0, knockback: 4.4, lift: 3.4, shieldDisable: 0, wear: 2 } });
+  reg({ ...common, id: Item.StarfallAxe, tile: 299, key: 'starfall_axe', name: 'Starfall Axe', tool: { kind: 'axe', tier: t, speed: TIER_SPEED[t] },
+    melee: { damage: 10, cooldown: 0.78, reach: 3.1, knockback: 6.0, lift: 4.2, shieldDisable: 2, wear: 1 } });
+  reg({ ...common, kind: ItemKind.Sword, id: Item.StarfallSword, tile: 300, key: 'starfall_sword', name: 'Starfall Sword',
+    melee: { damage: 9.5, cooldown: 0.48, reach: 3.3, knockback: 5.2, lift: 3.7, shieldDisable: 0, wear: 1 } });
+}
+
+// Gloamreach materials and food (sprites 296..319).
+reg({ id: Item.DuskLens, key: 'dusk_lens', name: 'Dusk Lens', tile: 296, color: 0xb48cff, kind: ItemKind.Material, maxStack: 4, sandbox: true });
+reg({ id: Item.StarfallShard, key: 'starfall_shard', name: 'Starfall Shard', tile: 301, color: 0x7affd8, kind: ItemKind.Material });
+reg({ id: Item.StarfallIngot, key: 'starfall_ingot', name: 'Starfall Ingot', tile: 302, color: 0x4fe8c0, kind: ItemKind.Material });
+reg({ id: Item.WispDust, key: 'wisp_dust', name: 'Wisp Dust', tile: 303, color: 0xc8b8ff, kind: ItemKind.Material });
+reg({ id: Item.MurkPelt, key: 'murk_pelt', name: 'Murk Pelt', tile: 304, color: 0x4a4a6a, kind: ItemKind.Material });
+reg({ id: Item.PrismShard, key: 'prism_shard', name: 'Prism Shard', tile: 305, color: 0xb48cff, kind: ItemKind.Material });
+reg({ id: Item.MistcapStew, key: 'mistcap_stew', name: 'Mistcap Stew', tile: 306, color: 0xd88cff, kind: ItemKind.Food, maxStack: 16, food: { food: 8, heal: 3 }, sandbox: true });
+reg({ id: Item.EclipseGlaive, key: 'eclipse_glaive', name: 'Eclipse Glaive', tile: 307, color: 0xb48cff, kind: ItemKind.Sword, maxStack: 1, durability: 2000, sandbox: true,
+  melee: { damage: 11, cooldown: 0.55, reach: 3.4, knockback: 5.4, lift: 3.8, shieldDisable: 0.5, wear: 1 }, effects: [{ kind: 1, strength: 0.4, seconds: 3 }] });
+
+reg({ id: Item.PrismBow, key: 'prism_bow', name: 'Prism Bow', tile: 308, color: 0xb48cff, kind: ItemKind.Bow, maxStack: 1, durability: 1400, sandbox: true,
+  ranged: { type: 'bow', drawTime: 0.7, minCharge: 0.2, speedMin: 14, speedMax: 44, damageMin: 3, damageMax: 11, knockMin: 2, knockMax: 5.5, lift: 2, ammo: [Item.Arrow, Item.EmberArrow], pierce: 2 } });
+
 // Shields.
 reg({ id: Item.WoodenShield, key: 'wooden_shield', name: 'Wooden Shield', color: 0x9a6b3c, kind: ItemKind.Shield, maxStack: 1, durability: 150, shield: { block: 0.7 }, sandbox: true });
 reg({ id: Item.IronShield, key: 'iron_shield', name: 'Iron Shield', color: 0xb8bec8, kind: ItemKind.Shield, maxStack: 1, durability: 336, shield: { block: 0.85 }, sandbox: true });
@@ -337,6 +382,8 @@ export function itemTier(id: ItemId): Tier {
   if (id === Item.WoodenShield) return 1;
   if (id === Item.IronShield || id === Item.Crossbow) return 3;
   if (id === Item.CobaltShield || id === Item.CobaltCrossbow || (id >= Item.SunforgedSword && id <= Item.AshenAxe) || (id >= Item.CoralfangBlade && id <= Item.ForgeheartHammer)) return 4;
+  if (id >= Item.StarfallPickaxe && id <= Item.StarfallSword) return 5;
+  if (id === Item.CobaltShield || id === Item.CobaltCrossbow || (id >= Item.SunforgedSword && id <= Item.AshenAxe) || id === Item.EclipseGlaive || id === Item.PrismBow) return 4;
   return 0;
 }
 

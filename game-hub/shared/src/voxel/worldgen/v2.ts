@@ -415,14 +415,15 @@ export class TerrainGeneratorV2 {
   }
 
   protected volumesFor(p: PlacedStructure): StructureVolume[] {
-    let v = this.volumes.get(p.info.id);
+    const key = p.info.id * 64 + p.info.type;
+    let v = this.volumes.get(key);
     if (v) {
-      this.volumes.delete(p.info.id);
+      this.volumes.delete(key);
     } else {
       v = buildStructure(p, this.seed).volumes;
       if (this.volumes.size >= 4) this.volumes.delete(this.volumes.keys().next().value as number);
     }
-    this.volumes.set(p.info.id, v);
+    this.volumes.set(key, v);
     return v;
   }
 

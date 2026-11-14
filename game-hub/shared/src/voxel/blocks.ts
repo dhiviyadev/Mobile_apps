@@ -1,8 +1,8 @@
 /**
  * Block registry. Ids are bytes stored in chunk arrays, sent over the network
  * and kept in saved worlds, so never renumber an existing block: append only.
- * 0..29 original, 30..126 world upgrade, 127 survival (Bedroll), 128..143 ruins (package S).
- * Next free: 144 (144..191 belong to package D, the dimension).
+ * 0..29 original, 30..126 world upgrade, 127 survival (Bedroll), 128..143 ruins (package S),
+ * 144..172 Gloamreach (package D). Next free: 173 (D may use up to 191).
  *
  * Texture tiles reference the procedural atlas generated on the client
  * (client/src/games/voxel/world/atlas.ts). Tile = row * ATLAS_COLS + col.
@@ -162,6 +162,39 @@ export enum Block {
   GlowcapBlock = 141,
   SlagBricks = 142,
   ForgeVent = 143,
+  // ---- Gloamreach (package D, 144..191; 128..143 belong to package S) ---------------
+  Gloamstone = 144,
+  Murkstone = 145,
+  Duskmoss = 146,
+  Gloamsoil = 147,
+  PrismCrystal = 148,
+  GlimmerCluster = 149,
+  StarfallOre = 150,
+  GloamwoodLog = 151,
+  GloamwoodLeaves = 152,
+  GloamwoodPlanks = 153,
+  Voidglass = 154,
+  LumenBell = 155,
+  WispTuft = 156,
+  Mistcap = 157,
+  MistcapStem = 158,
+  Spirestone = 159,
+  GloamBricks = 160,
+  PolishedGloamstone = 161,
+  Moonlamp = 162,
+  /** Portal frame stone (unlit). Craftable, placeable: twelve make a Lattice Ring. */
+  LatticeStone = 163,
+  /** The same stone once its gate is lit (glowing runes). Never placeable; breaking it closes the veil. */
+  LatticeStoneLit = 164,
+  /** The shimmering membrane inside a lit gate. Non-solid, never placeable. */
+  Veil = 165,
+  GloamMist = 166,
+  StarfallBlock = 167,
+  EclipseBrick = 168,
+  OrreryBrass = 169,
+  EclipseGlass = 170,
+  Shardsand = 171,
+  Lumenvine = 172,
 }
 
 /** How a block is meshed, ray-tested and drawn as an icon. */
@@ -286,7 +319,8 @@ const def = (id: Block, name: string, tiles: [number, number, number], color: nu
 /**
  * Atlas tile indices. 0..22 are the original tiles (never moved); 23..132 are
  * painted by the world area (and 131..132 per the survival design); 133..148
- * are the ruins blocks (package S); item sprites use 160..239; the crack overlay uses 240..247.
+ * are the ruins blocks (package S); item sprites use 160..239; the crack overlay uses 240..247;
+ * 256..511 are the Gloamreach's blocks (256..295) and item sprites (296..319).
  */
 export const Tile = {
   GrassTop: 0,
@@ -429,14 +463,52 @@ export const Tile = {
   GlowcapBlock: 146,
   SlagBricks: 147,
   ForgeVent: 148,
+  // ---- Gloamreach tiles (package D: 256 and up; the atlas has 32 rows) ----
+  Gloamstone: 256,
+  Murkstone: 257,
+  DuskmossTop: 258,
+  DuskmossSide: 259,
+  Gloamsoil: 260,
+  PrismCrystal: 261,
+  GlimmerCluster: 262,
+  StarfallOre: 263,
+  GloamwoodLogSide: 264,
+  GloamwoodLogTop: 265,
+  GloamwoodLeaves: 266,
+  GloamwoodPlanks: 267,
+  Voidglass: 268,
+  LumenBell: 269,
+  WispTuft: 270,
+  MistcapTop: 271,
+  MistcapSide: 272,
+  MistcapStem: 273,
+  SpirestoneSide: 274,
+  SpirestoneTop: 275,
+  GloamBricks: 276,
+  PolishedGloamstone: 277,
+  Moonlamp: 278,
+  LatticeStone: 279,
+  LatticeStoneLit: 280,
+  Veil: 281,
+  GloamMist: 282,
+  StarfallBlock: 283,
+  EclipseBrick: 284,
+  OrreryBrass: 285,
+  EclipseGlass: 286,
+  Shardsand: 287,
+  Lumenvine: 288,
+  /** Gloamreach item sprites 296..319. */
+  GloamItems: 296,
   /** First item sprite tile (survival registry: 160..239). */
   ItemSprites: 160,
   /** 8 break stages, 240..247. */
   Crack0: 240,
 } as const;
 
-/** Columns (and rows) of the 16x16 tile atlas: tile = row * ATLAS_COLS + col. */
+/** Columns of the tile atlas: tile = row * ATLAS_COLS + col. */
 export const ATLAS_COLS = 16;
+/** Rows of the atlas (16 until the Gloamreach, then 32: tiles 256..511 are package D's). */
+export const ATLAS_ROWS = 32;
 
 const T = Tile;
 const same = (t: number): [number, number, number] => [t, t, t];
@@ -629,12 +701,52 @@ for (const d of [
   def(Block.GlowcapBlock, 'Glowcap Block', same(T.GlowcapBlock), 0x8a6aff, { hardness: 0.3, tool: 'axe', sound: 'plant', placeable: true, light: 10, category: 'light' }),
   def(Block.SlagBricks, 'Slag Bricks', same(T.SlagBricks), 0x5a2a22, { hardness: 1.3, ...STONE1, minTier: 2 }),
   def(Block.ForgeVent, 'Forge Vent', same(T.ForgeVent), 0xff6a1a, { hardness: 1.5, ...STONE1, minTier: 2, emissive: true, light: 13, category: 'light' }),
+  // ---- Gloamreach (package D) --------------------------------------------------------
+  def(Block.Gloamstone, 'Gloamstone', same(T.Gloamstone), 0x5a4f78, { hardness: 0.7, ...STONE1, category: 'natural' }),
+  def(Block.Murkstone, 'Murkstone', same(T.Murkstone), 0x2e3148, { hardness: 0.8, ...STONE1, category: 'natural' }),
+  def(Block.Duskmoss, 'Duskmoss', [T.DuskmossTop, T.Gloamsoil, T.DuskmossSide], 0x4a6fa8, { hardness: 0.3, tool: 'shovel', sound: 'grass', category: 'natural', placeable: true }),
+  def(Block.Gloamsoil, 'Gloamsoil', same(T.Gloamsoil), 0x4a3a5c, { hardness: 0.25, tool: 'shovel', sound: 'dirt', category: 'natural', placeable: true }),
+  def(Block.PrismCrystal, 'Prism Crystal', same(T.PrismCrystal), 0xb48cff, {
+    transparent: true, hardness: 0.6, tool: 'pick', minTier: 1, light: 9, lightCost: 0, emissive: false, sound: 'glass', category: 'natural', placeable: true,
+  }),
+  def(Block.GlimmerCluster, 'Glimmer Cluster', same(T.GlimmerCluster), 0xa0e8ff, {
+    ...PLANT, box: FLOWER_BOX, light: 10, emissive: true, hardness: 0.2, tool: 'pick', sound: 'glass', category: 'light',
+  }),
+  def(Block.StarfallOre, 'Starfall Ore', same(T.StarfallOre), 0x7affd8, { hardness: 1.8, ...STONE1, minTier: 3, light: 5, category: 'ore' }),
+  def(Block.GloamwoodLog, 'Gloamwood Log', [T.GloamwoodLogTop, T.GloamwoodLogTop, T.GloamwoodLogSide], 0x4a3a5e, { hardness: 0.5, ...WOOD, category: 'wood' }),
+  def(Block.GloamwoodLeaves, 'Gloamwood Leaves', same(T.GloamwoodLeaves), 0x6a5cd8, { ...LEAVES, light: 4 }),
+  def(Block.GloamwoodPlanks, 'Gloamwood Planks', same(T.GloamwoodPlanks), 0x6a5a88, { hardness: 0.4, ...WOOD, category: 'wood' }),
+  def(Block.Voidglass, 'Voidglass', same(T.Voidglass), 0x3a2f5c, { transparent: true, hardness: 0.2, sound: 'glass', category: 'building', placeable: true }),
+  def(Block.LumenBell, 'Lumen Bell', same(T.LumenBell), 0x9a8cff, { ...PLANT, box: FLOWER_BOX, light: 8, emissive: true, category: 'light' }),
+  def(Block.WispTuft, 'Wisp Tuft', same(T.WispTuft), 0x6a8ad8, { ...PLANT, box: GRASS_BOX, replaceable: true, decor: true }),
+  def(Block.Mistcap, 'Mistcap', [T.MistcapTop, T.MistcapStem, T.MistcapSide], 0xd88cff, { hardness: 0.25, light: 7, sound: 'plant', tool: 'axe', category: 'plant', placeable: true }),
+  def(Block.MistcapStem, 'Mistcap Stem', same(T.MistcapStem), 0xd8d0e8, { hardness: 0.3, sound: 'plant', tool: 'axe', category: 'plant', placeable: true }),
+  def(Block.Spirestone, 'Spirestone', [T.SpirestoneTop, T.SpirestoneTop, T.SpirestoneSide], 0xb4a8d0, { hardness: 0.8, ...STONE1, category: 'natural' }),
+  def(Block.GloamBricks, 'Gloam Bricks', same(T.GloamBricks), 0x5a4f78, { hardness: 0.8, ...STONE1, category: 'building' }),
+  def(Block.PolishedGloamstone, 'Polished Gloamstone', same(T.PolishedGloamstone), 0x6a5f8a, { hardness: 0.8, ...STONE1, category: 'building' }),
+  def(Block.Moonlamp, 'Moonlamp', same(T.Moonlamp), 0xe8e0ff, { emissive: true, hardness: 0.3, light: 15, sound: 'glass', category: 'light', placeable: true }),
+  def(Block.LatticeStone, 'Lattice Stone', same(T.LatticeStone), 0x4a3a78, { hardness: 1.6, ...STONE1, minTier: 2, light: 2, category: 'utility' }),
+  def(Block.LatticeStoneLit, 'Lit Lattice Stone', same(T.LatticeStoneLit), 0xa88cff, { hardness: 1.6, ...STONE1, minTier: 2, emissive: true, light: 10, category: 'hidden', placeable: false }),
+  def(Block.Veil, 'Veil', same(T.Veil), 0xb48cff, {
+    solid: false, transparent: true, emissive: true, breakable: false, light: 11, sound: 'cloth', category: 'hidden',
+  }),
+  def(Block.GloamMist, 'Gloam Mist', same(T.GloamMist), 0x9a8cd8, {
+    solid: false, transparent: true, replaceable: true, hardness: 0, lightCost: 1, light: 2, sound: 'cloth', category: 'natural', placeable: true,
+  }),
+  def(Block.StarfallBlock, 'Starfall Block', same(T.StarfallBlock), 0x7affd8, { hardness: 1.5, ...STONE1, minTier: 3, emissive: true, light: 8, category: 'building', placeable: true }),
+  def(Block.EclipseBrick, 'Eclipse Brick', same(T.EclipseBrick), 0x2a2440, { hardness: 1.4, ...STONE1, minTier: 2, category: 'building' }),
+  def(Block.OrreryBrass, 'Orrery Brass', same(T.OrreryBrass), 0xd8a848, { hardness: 1.4, ...STONE1, minTier: 2, category: 'building' }),
+  def(Block.EclipseGlass, 'Eclipse Glass', same(T.EclipseGlass), 0x6a4fd8, { transparent: true, hardness: 0.3, light: 6, sound: 'glass', category: 'building', placeable: true }),
+  def(Block.Shardsand, 'Shardsand', same(T.Shardsand), 0x8a7ab8, { hardness: 0.25, tool: 'shovel', sound: 'sand', category: 'natural', placeable: true }),
+  def(Block.Lumenvine, 'Lumenvine', same(T.Lumenvine), 0x8ad8ff, {
+    ...PLANT, box: [3, 0, 3, 13, 16, 13], replaceable: true, support: Support.Above, light: 6, emissive: true, category: 'light',
+  }),
 ]) {
   DEFS[d.id] = d;
 }
 
 export const BLOCKS: readonly BlockDef[] = DEFS;
-/** One past the highest defined id (144). */
+/** One past the highest defined id. */
 export const BLOCK_COUNT = DEFS.length;
 
 export function blockDef(id: number): BlockDef {
@@ -646,9 +758,9 @@ export const IS_SOLID = new Uint8Array(256);
 export const IS_TRANSPARENT = new Uint8Array(256);
 export const IS_LIQUID = new Uint8Array(256);
 export const IS_EMISSIVE = new Uint8Array(256);
-export const TILE_TOP = new Uint8Array(256);
-export const TILE_BOTTOM = new Uint8Array(256);
-export const TILE_SIDE = new Uint8Array(256);
+export const TILE_TOP = new Uint16Array(256);
+export const TILE_BOTTOM = new Uint16Array(256);
+export const TILE_SIDE = new Uint16Array(256);
 /** BlockShape per id. */
 export const SHAPE = new Uint8Array(256);
 /** Shape bounds / 16, 6 floats per id: x0, y0, z0, x1, y1, z1 (cube 0..1). */
@@ -741,6 +853,10 @@ export const CREATIVE_BLOCKS: readonly Block[] = [
   // ruins (package S)
   Block.SunRune, Block.GildedBricks, Block.FrostRune, Block.FrostCrystal, Block.VerdantRune, Block.GlowMoss, Block.EmberRune, Block.CinderBricks,
   Block.WhitewashBricks, Block.BeaconLens, Block.CloudstoneBricks, Block.GaleRune, Block.Heartwood, Block.GlowcapBlock, Block.SlagBricks, Block.ForgeVent,
+  // Gloamreach (package D)
+  Block.Gloamstone, Block.Murkstone, Block.Duskmoss, Block.Gloamsoil, Block.Shardsand, Block.PrismCrystal, Block.StarfallOre, Block.Spirestone, Block.GloamMist,
+  Block.GloamwoodLog, Block.GloamwoodLeaves, Block.GloamwoodPlanks, Block.GlimmerCluster, Block.LumenBell, Block.WispTuft, Block.Lumenvine, Block.Mistcap, Block.MistcapStem,
+  Block.GloamBricks, Block.PolishedGloamstone, Block.Voidglass, Block.EclipseBrick, Block.OrreryBrass, Block.EclipseGlass, Block.StarfallBlock, Block.Moonlamp, Block.LatticeStone,
 ];
 
 /** Picker category per id ('hidden' for undefined ids). */

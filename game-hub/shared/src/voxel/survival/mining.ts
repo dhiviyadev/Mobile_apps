@@ -32,15 +32,19 @@ export function breakWear(block: number, held: ItemId): number {
   return def.tool && def.tool.kind === blockDef(block).tool ? 1 : 2;
 }
 
-const LEAVES = new Set<number>([Block.Leaves, Block.AspenLeaves, Block.PineLeaves, Block.MahoganyLeaves, Block.ThornwoodLeaves, Block.DuskwoodLeaves]);
+const LEAVES = new Set<number>([Block.Leaves, Block.AspenLeaves, Block.PineLeaves, Block.MahoganyLeaves, Block.ThornwoodLeaves, Block.DuskwoodLeaves, Block.GloamwoodLeaves]);
 const APPLE_LEAVES = new Set<number>([Block.Leaves, Block.AspenLeaves, Block.MahoganyLeaves]);
-const NO_DROP = new Set<number>([Block.Glass, Block.GlassRed, Block.GlassBlue, Block.GlassGreen, Block.GlassAmber, Block.Ice, Block.SnowLayer]);
+const NO_DROP = new Set<number>([Block.Glass, Block.GlassRed, Block.GlassBlue, Block.GlassGreen, Block.GlassAmber, Block.Ice, Block.SnowLayer, Block.GloamMist, Block.Veil, Block.Voidglass, Block.EclipseGlass]);
 const SOIL = new Set<number>([Block.Grass, Block.SnowyGrass, Block.ForestFloor, Block.ParchedGrass]);
 const SIMPLE: Readonly<Record<number, ItemId>> = {
   [Block.Stone]: Block.Cobble,
   [Block.CoalOre]: Item.Coal,
   [Block.CobaltOre]: Item.CobaltGem,
   [Block.EmberOre]: Item.EmberShard,
+  [Block.StarfallOre]: Item.StarfallShard,
+  [Block.LatticeStoneLit]: Block.LatticeStone,
+  // Duskmoss gives Gloamsoil, like grass gives dirt.
+  [Block.Duskmoss]: Block.Gloamsoil,
 };
 
 /**

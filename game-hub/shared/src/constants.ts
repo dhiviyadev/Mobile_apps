@@ -74,5 +74,7 @@ export const CLOSE_KICKED = 4100;
  *   2 = Arcfire Arena upgrade (self-snapshot v2, vote phase, new schema fields)
  *   3 = Voxelvale build height 256: edits and moves above y 64 (older clients drop such edits and
  *       older servers refuse them, so mixed versions would see different worlds)
+ *   4 = Voxelvale generator 4: the Gloamreach (blocks and items up to 173 / 348, portal and veil
+ *       messages, structure types 9..11, creatures 44..52)
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;

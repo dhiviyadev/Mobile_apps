@@ -3,20 +3,21 @@ import type { VoxelMode } from '../constants';
 import { CHUNK_SIZE, ENDLESS_RADIUS_CHUNKS, SEA_LEVEL, WORLD_RADIUS_CHUNKS } from './constants';
 import { generateParkourChunk, generateParkourCourse, type ParkourCourse } from './parkour';
 import type { StructureInfo } from './structures/types';
-import { Biome, TerrainGeneratorV1, TerrainGeneratorV2, TerrainGeneratorV3 } from './worldgen';
+import { Biome, TerrainGeneratorV1, TerrainGeneratorV2, TerrainGeneratorV3, TerrainGeneratorV4 } from './worldgen';
 
 /**
  * Terrain generator version, stored with every saved world (CVW2 header, offline
  * save `gen`). 1 = the original generator, frozen byte-for-byte; 2 = biomes,
  * ores and structures (world area), frozen too; 3 = endless, 3x larger biomes,
- * cave systems. Worlds without a version are 1.
+ * cave systems; 4 = generator 3's overworld plus the Veil Wall and the Gloamreach
+ * (realm.ts). Worlds without a version are 1.
  */
-export type GenVersion = 1 | 2 | 3;
+export type GenVersion = 1 | 2 | 3 | 4;
 /** Version new worlds get. */
-export const LATEST_GEN_VERSION: GenVersion = 3;
+export const LATEST_GEN_VERSION: GenVersion = 4;
 
 export function isGenVersion(v: unknown): v is GenVersion {
-  return v === 1 || v === 2 || v === 3;
+  return v === 1 || v === 2 || v === 3 || v === 4;
 }
 
 /** World size in chunks for a mode and generator version (see chunkInWorld). */
@@ -72,8 +73,8 @@ export function createWorldGenerator(seed: number, mode: VoxelMode, genVersion: 
       structureAt: () => null,
     };
   }
-  if (genVersion === 3) {
-    const v3 = new TerrainGeneratorV3(seed);
+  if (genVersion === 3 || genVersion === 4) {
+    const v3 = genVersion === 4 ? new TerrainGeneratorV4(seed) : new TerrainGeneratorV3(seed);
     return {
       mode,
       genVersion,

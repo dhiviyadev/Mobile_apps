@@ -66,8 +66,8 @@ function medianPatch(g: { column(x: number, z: number): { biome: Biome } }, step
 
 describe('generator 3 terrain', { timeout: 30_000 }, () => {
   it('is the version new worlds get, endless, and deterministic in any chunk order', () => {
-    expect(LATEST_GEN_VERSION).toBe(3);
-    const g = createWorldGenerator(1234, 'survival');
+    expect(LATEST_GEN_VERSION).toBe(4);
+    const g = createWorldGenerator(1234, 'survival', 3);
     expect(g.genVersion).toBe(3);
     expect(g.radiusChunks).toBe(ENDLESS_RADIUS_CHUNKS);
     expect(g.limit).toBe(32000);
@@ -329,7 +329,7 @@ describe('generator 3 structures', { timeout: 30_000 }, () => {
     const types = new Set<StructureType>();
     const biomes = new Set<Biome>();
     for (let seed = 1; seed <= 6; seed++) {
-      const g = createWorldGenerator(seed, 'survival');
+      const g = createWorldGenerator(seed, 'survival', 3);
       for (const s of near(g, 0, 0, 1500)) {
         types.add(s.type);
         biomes.add(s.biome);

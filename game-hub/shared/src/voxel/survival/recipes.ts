@@ -24,12 +24,12 @@ export type Ingredient = { item: ItemId; n: number } | { tag: ItemTag; n: number
 const LOGS = [Block.Log, Block.AspenLog, Block.PineLog, Block.MahoganyLog, Block.ThornwoodLog, Block.DuskwoodLog];
 const PLANKS = [Block.Planks, Block.AspenPlanks, Block.PinePlanks, Block.MahoganyPlanks, Block.ThornwoodPlanks, Block.DuskwoodPlanks];
 export const TAGS: Readonly<Record<ItemTag, readonly ItemId[]>> = {
-  planks: PLANKS,
-  logs: LOGS,
+  planks: [...PLANKS, Block.GloamwoodPlanks],
+  logs: [...LOGS, Block.GloamwoodLog],
   rock: [Block.Cobble, Block.MossyCobble, Block.Granite, Block.Basalt, Block.Slate],
   cloth: [Block.ClothWhite, Block.ClothRed, Block.ClothOrange, Block.ClothYellow, Block.ClothGreen, Block.ClothBlue, Block.ClothPurple, Block.ClothBlack],
   sand: [Block.Sand, Block.RedSand],
-  fuel: [Item.Coal, ...LOGS, ...PLANKS],
+  fuel: [Item.Coal, ...LOGS, ...PLANKS, Block.GloamwoodLog, Block.GloamwoodPlanks],
 };
 export const TAG_LABELS: Readonly<Record<ItemTag, string>> = { planks: 'any planks', logs: 'any log', rock: 'any rock', cloth: 'any cloth', sand: 'any sand', fuel: 'fuel' };
 
@@ -137,6 +137,24 @@ add(106, F, Block.MudBricks, 1, 'blocks', it(Block.Mud), FUEL);
 add(107, F, Item.CookedMeat, 1, 'food', it(Item.RawMeat), FUEL);
 add(108, F, Item.Coal, 1, 'materials', tg('logs'), FUEL);
 add(109, F, Item.CookedFish, 1, 'food', it(Item.RawFish), FUEL);
+
+// Gloamreach (package D, recipe ids 200..): the Lattice Ring, its key, Starfall and the realm's materials.
+add(200, W, Block.LatticeStone, 4, 'blocks', it(Block.StoneBricks, 4), it(Item.CobaltGem), it(Item.IronIngot));
+add(201, W, Item.DuskLens, 1, 'materials', it(Item.GoldIngot, 2), it(Item.CobaltGem, 2), it(Item.EmberShard));
+add(202, H, Block.GloamwoodPlanks, 4, 'blocks', it(Block.GloamwoodLog));
+add(203, F, Item.StarfallIngot, 1, 'materials', it(Item.StarfallShard), FUEL);
+add(204, W, Item.StarfallPickaxe, 1, 'tools', it(Item.StarfallIngot, 3), it(Item.Stick, 2));
+add(205, W, Item.StarfallShovel, 1, 'tools', it(Item.StarfallIngot), it(Item.Stick, 2));
+add(206, W, Item.StarfallAxe, 1, 'tools', it(Item.StarfallIngot, 3), it(Item.Stick, 2));
+add(207, W, Item.StarfallSword, 1, 'weapons', it(Item.StarfallIngot, 2), it(Item.Stick));
+add(208, W, Block.StarfallBlock, 1, 'blocks', it(Item.StarfallIngot, 4));
+add(209, W, Item.MistcapStew, 1, 'food', it(Block.Mistcap, 2), it(Item.Apple));
+add(210, W, Block.GloamBricks, 4, 'blocks', it(Block.Gloamstone, 4));
+add(211, W, Block.PolishedGloamstone, 4, 'blocks', it(Block.GloamBricks, 4));
+add(212, W, Block.Moonlamp, 1, 'blocks', it(Block.PrismCrystal), it(Item.WispDust));
+add(213, W, Block.Voidglass, 4, 'blocks', it(Item.PrismShard, 2), it(Block.Shardsand, 2));
+add(215, H, Item.DuskLens, 1, 'materials', it(Item.PrismShard, 3), it(Item.GlowDust));
+add(214, W, Block.Lantern, 1, 'blocks', it(Block.GlimmerCluster), it(Item.CopperIngot));
 
 export const RECIPES: readonly Recipe[] = list;
 const BY_ID = new Map(list.map((r) => [r.id, r]));
