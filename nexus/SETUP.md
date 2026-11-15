@@ -176,3 +176,4 @@ Static settings are environment variables (see `.env.example`); runtime preferen
 - **Quick actions** — copy text anywhere (⌘C), press ⌥⇧Q, choose an action.
 - **Hands-free** — the wave button in the message box. Needs a local speech engine (Settings → Voice).
 - **Self-contained app** — `./scripts/build-standalone.sh --install` builds a NEXUS.app that carries the core inside it. Its data lives in `~/Library/Application Support/NEXUS` unless you already have a NEXUS data folder, which it keeps using.
+- **Markets** — sidebar → Markets → *Turn on Markets*. Add symbols to the watchlist (shares like `AAPL`, funds like `SPY`, crypto like `BTC-USD`, non-US listings with their suffix such as `SAP.DE` or `RELIANCE.NS`). The practice account starts with 100,000 USD of pretend money; *Reset* lets you choose another amount and currency. Prices come from Yahoo Finance's public service and can be delayed.

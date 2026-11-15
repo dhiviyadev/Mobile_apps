@@ -106,6 +106,7 @@ All of these are **off until you switch them on** in Settings, and a paired phon
 | Pictures and screenshots | Nothing (local model). With cloud chat allowed for a message, attachments follow the existing cloud rules. | Screenshots are only taken when you press the button on the Mac; phones can't trigger them. |
 | OCR | Nothing. Runs with Apple Vision (or Tesseract). | Can be turned off in Settings → Web & apps. |
 | Phone notifications | A short title and one line, **encrypted end to end** (RFC 8291) so Apple/Google only see that a notification was sent. | Only after the phone itself turns notifications on; Mac-side master switch; subscriptions accepted only for Apple, Google, Mozilla and Microsoft push services; signing key stored 0600 in `data/secrets`. |
+| Markets | The ticker symbols and search phrases you look up (to Yahoo Finance). Holdings, orders and cash never leave the Mac. | Off by default. Uses the same guarded fetcher as web access. Trading is a practice account only: there is no broker connection and no code that can place a real order; agents have a read-only price tool and no trading tool; phones can view but not trade. |
 | Quick actions | Nothing. | The clipboard is read only when you press ⌥⇧Q. |
 | Hands-free voice | Nothing (local transcription). | The microphone is open only while the visible hands-free indicator is on; it switches itself off after two silent listens. No wake word, no background listening. |
 

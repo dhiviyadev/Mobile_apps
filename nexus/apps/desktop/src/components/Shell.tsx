@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity, ArrowUpCircle, Bell, Loader2, Bot, BookOpen, Command, FolderKanban, Home, MessageSquare, OctagonX, Play, Search, Settings, Sparkles, Workflow,
+  Activity, ArrowUpCircle, Bell, Loader2, Bot, BookOpen, ChartCandlestick, Command, FolderKanban, Home, MessageSquare, OctagonX, Play, Search, Settings, Sparkles, Workflow,
 } from "lucide-react";
 import { useCore, activeTasks, EMPTY } from "@/stores/core";
 import { useChat } from "@/stores/chat";
@@ -19,7 +19,8 @@ export const NAV: { id: Workspace; label: string; icon: typeof Home; key: string
   { id: "agents", label: "Agents", icon: Bot, key: "4" },
   { id: "knowledge", label: "Knowledge", icon: BookOpen, key: "5" },
   { id: "automations", label: "Automations", icon: Workflow, key: "6" },
-  { id: "system", label: "System", icon: Activity, key: "7" },
+  { id: "markets", label: "Markets", icon: ChartCandlestick, key: "7" },
+  { id: "system", label: "System", icon: Activity, key: "8" },
 ];
 
 export function Sidebar() {

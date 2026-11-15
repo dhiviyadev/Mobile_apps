@@ -307,6 +307,7 @@ export interface Bootstrap {
   update: { available: boolean; behind: number; applying: boolean };
   projects?: Project[];
   web?: { enabled: boolean };
+  markets?: { enabled: boolean };
   apple?: { available: boolean; calendar: boolean; reminders: boolean; mail: boolean };
   onboarding?: { completed: boolean };
   cloud: { enabled: boolean; provider: string; model: string; has_key: boolean; allow_documents: boolean; keychain_available: boolean };
@@ -339,4 +340,4 @@ export interface SystemSnapshot {
   history: { ts: number; cpu_percent: number; memory_percent: number; memory_used: number; swap_used: number; pressure: string | null }[];
 }
 
-export type Workspace = "home" | "chat" | "projects" | "agents" | "knowledge" | "automations" | "system" | "settings";
+export type Workspace = "home" | "chat" | "projects" | "agents" | "knowledge" | "automations" | "markets" | "system" | "settings";

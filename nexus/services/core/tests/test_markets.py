@@ -47,6 +47,8 @@ class FakeYahoo:
             if sym not in self.prices:
                 return httpx.Response(404, json={"chart": {"result": None, "error": {"code": "Not Found", "description": "No data found"}}})
             price, prev, cur, name = self.prices[sym]
+            if dict(request.url.params).get("range") != "1d":
+                prev = price / 2  # like the real service: on long ranges this is the close before the range began
             return httpx.Response(200, json=chart(sym, price, prev, cur, name=name))
         return httpx.Response(404)
 
@@ -91,11 +93,13 @@ def test_history_quote_search_and_cache(client, st, yahoo):
     on(client)
     h = client.get("/api/markets/history/aapl?range=6mo").json()
     assert h["symbol"] == "AAPL" and h["interval"] == "1d" and len(h["candles"]) == 4
-    assert h["quote"]["price"] == 200.0 and round(h["quote"]["change_percent"], 3) == round(4 / 196 * 100, 3)
+    # The day's change comes from yesterday's close (196), not from the start of the six-month range (100).
+    assert h["quote"]["price"] == 200.0 and h["quote"]["previous_close"] == 196.0
+    assert round(h["quote"]["change_percent"], 3) == round(4 / 196 * 100, 3)
     assert "may be delayed" in h["source"]
     req = yahoo.calls[-1]
     assert req.url.host == "93.184.216.34" and req.headers["host"] == "query1.finance.yahoo.com"  # pinned, like web access
-    assert dict(req.url.params)["range"] == "6mo"
+    assert {dict(c.url.params)["range"] for c in yahoo.calls} == {"6mo", "1d"}
     n = len(yahoo.calls)
     client.get("/api/markets/history/AAPL?range=6mo")
     assert len(yahoo.calls) == n  # served from the short-lived cache

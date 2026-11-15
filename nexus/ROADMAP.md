@@ -27,6 +27,15 @@ also in a real browser against the running core.
 - ✅ **First-run guide** — name → model → folder; skipped for existing installs
 - ✅ **Self-contained app** — core frozen with PyInstaller, starts by itself, and the native desktop binary was run here and found/started the bundled core with data in Application Support · 🟡 `scripts/build-standalone.sh` on macOS (bundling, helpers, dmg). The bundled core does not include MLX Whisper; voice uses whisper.cpp if installed. Updating a self-contained app = installing a newer build.
 
+## Markets (charts, alerts, practice trading)
+- ✅ Watchlist, search, price history for six ranges, day change taken from the one-day view, short-lived caching, clear errors (unknown symbol, service busy); 9 backend tests against responses in the data service's documented shape
+- ✅ Charts: candles or line, 20/50-bar averages, volume in its own panel, hover and keyboard read-out, table view; colours checked for colour-blind separation (blue = up, red = down); verified in a browser
+- ✅ Practice account: buys and sells at the latest price, average cost, gain/loss, no short selling or overspending, single currency, reset; orders blocked during emergency stop; phones can look but not trade
+- ✅ Price alerts with notifications (checked every 3 minutes while NEXUS runs)
+- ✅ Agents (Chief of Staff, Analyst) can look up prices; there is deliberately **no** tool that trades
+- 🟡 **Live data has not been fetched yet**: Yahoo Finance is blocked in the build environment, so browser checks used generated sample prices (the screenshots in `docs/screenshots/markets*.png` show sample data, not real quotes). The service is unofficial; if its format differs from what the tests assume, the first chart on your Mac will show an error — tell me what it says.
+- ⏳ Real-money trading through a broker (needs your broker account, its API keys in the Keychain, and an approval step per order) · more indicators (RSI, MACD) · markets on the phone app
+
 ## Phase 0 — Environment audit
 - ✅ Read-only audit script `scripts/audit.sh` (hardware, memory pressure, tools, Ollama models, Hermes config summary without secrets, ports, LaunchAgents, nearby projects) — tested on Linux
 - ⛔ Audit of *your* Mac — run `./scripts/audit.sh` there (the build environment cannot reach your machine)

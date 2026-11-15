@@ -141,3 +141,4 @@ chunks and memories. Embeddings are float32 blobs on `chunks`; `SQLiteVectorStor
 | `remote/push.py` | Web Push (VAPID) for paired phones; forwards approvals, notifications and finished agent tasks |
 | `api/routes_extras.py` | REST surface for the above |
 | Shell (`src-tauri`) | ⌥⇧Q quick actions; starts a bundled core (`Resources/core/nexus-core`) when present |
+| `markets/service.py` | Price history/quotes/search via the guarded fetcher, watchlist, price alerts, practice (paper) account; `components/PriceChart.tsx` draws the charts in plain SVG |

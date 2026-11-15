@@ -260,6 +260,15 @@ export function WebAndApps({ values, set }: { values: Values; set: SetFn }) {
         </p>
       </Card>
 
+      <Card title="Markets">
+        <Row
+          label="Get market prices"
+          hint="Off: nothing is requested. On: the ticker symbols you look at are sent to Yahoo Finance to fetch prices and charts. Your practice holdings and orders stay on this Mac. NEXUS never places real orders."
+        >
+          <Toggle checked={Boolean(values["markets.enabled"])} onChange={(v) => void set("markets.enabled", v)} />
+        </Row>
+      </Card>
+
       <Card title="Calendar, Reminders and Mail">
         {!mac && <p className="mb-2 text-[12.5px] text-warn">These work when NEXUS runs on a Mac.</p>}
         <Row label="Read my calendar" hint="Lets the assistant see today's and upcoming events, for briefings and planning.">

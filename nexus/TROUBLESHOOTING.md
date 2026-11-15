@@ -77,3 +77,5 @@ agree. In browser dev mode, open `http://127.0.0.1:1420/?token=$(cat data/secret
 - **No notifications on iPhone** — NEXUS must be opened from the Home Screen icon (not Safari), iOS 16.4+, and allowed in Settings → Notifications → NEXUS. Then *Mac* tab → Notifications → Turn off and on again.
 - **⌥⇧Q does nothing** — another app may own that shortcut; the shortcut works on text you've copied first.
 - **Hands-free stops by itself** — it pauses after hearing nothing twice in a row, so the microphone is never left open in a quiet room. Press the wave button again.
+- **Markets shows "Couldn't get market data"** — check the internet connection; the free data service also rate-limits heavy use ("busy, try again in a minute"). If every symbol fails, the service may have changed its format: please report the exact message.
+- **"trades in EUR, but the practice account is in USD"** — the practice account holds one currency. Markets → Practice account → Reset, and pick that currency.

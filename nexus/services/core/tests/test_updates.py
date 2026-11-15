@@ -82,8 +82,10 @@ def test_apply_runs_updater_and_reports_done(client, st, repos):
     # The core's own watcher clears the title-bar state and re-checks, without the Updates page open.
     st.updates.applying = True
     st.updates.result = None
+    # The watcher first notices the updater finished, then re-checks git; wait for both steps.
     for _ in range(80):
-        if not client.get("/api/bootstrap").json()["update"]["applying"]:
+        boot = client.get("/api/bootstrap").json()["update"]
+        if not boot["applying"] and not boot["available"]:
             break
         time.sleep(0.1)
     boot = client.get("/api/bootstrap").json()["update"]

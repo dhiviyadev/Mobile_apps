@@ -162,7 +162,15 @@ class MarketService:
             return hit[1]
         payload = await self._json(CHART_URL + quote(symbol, safe=""), {"range": range_, "interval": interval, "includePrePost": "false"})
         parsed = parse_chart(payload)
-        out = {"symbol": symbol, "range": range_, "interval": interval, "quote": quote_from(parsed), "candles": parsed["candles"],
+        q = quote_from(parsed)
+        if range_ != "1d":
+            # On longer ranges the service's "previous close" is the close before the *range* began, so the
+            # day's change has to come from the one-day view (cached for a minute).
+            try:
+                q = (await self.history(symbol, "1d", fresh=fresh))["quote"]
+            except MarketError:
+                q = {**q, "previous_close": None, "change": None, "change_percent": None}
+        out = {"symbol": symbol, "range": range_, "interval": interval, "quote": q, "candles": parsed["candles"],
                "fetched_at": now_iso(), "source": "Yahoo Finance (unofficial, may be delayed)"}
         self._cache[key] = (time.time(), out)
         if len(self._cache) > 200:
