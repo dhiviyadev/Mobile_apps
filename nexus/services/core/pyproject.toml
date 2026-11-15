@@ -16,6 +16,8 @@ dependencies = [
   "pypdf>=4.0",
   "python-docx>=1.1",
   "openpyxl>=3.1",
+  # Web Push for the phone app (approvals reach your phone)
+  "pywebpush>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -34,7 +36,7 @@ build-backend = "setuptools.build_meta"
 include = ["nexus_core*"]
 
 [tool.setuptools.package-data]
-nexus_core = ["db/migrations/*.sql"]
+nexus_core = ["db/migrations/*.sql", "native/*.swift"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

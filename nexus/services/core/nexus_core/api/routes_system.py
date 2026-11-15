@@ -58,6 +58,10 @@ async def bootstrap(st: AppState = Depends(get_state)) -> dict[str, Any]:
         "memory": {"proposed": len(st.memory.list(status="proposed"))},
         "voice": st.voice.status(),
         "cloud": st.cloud.status(),
+        "projects": st.projects.list(),
+        "web": {"enabled": st.web.enabled},
+        "apple": st.apple.status(),
+        "onboarding": {"completed": bool(st.prefs.get("onboarding.completed"))},
         "update": {"available": bool(st.updates.status.get("available")), "behind": st.updates.status.get("behind", 0),
                    "applying": st.updates.applying},
     }
@@ -170,7 +174,11 @@ def patch_settings(body: SettingsPatch, st: AppState = Depends(get_state)) -> di
         values = st.prefs.update(body.values)
     except KeyError as exc:
         raise HTTPException(400, f"Unknown setting {exc}") from exc
-    sensitive = [k for k in body.values if k.startswith("cloud.")]
+    if "knowledge.ocr" in body.values:
+        from ..knowledge import ocr
+
+        ocr.enabled = bool(body.values["knowledge.ocr"])
+    sensitive = [k for k in body.values if k.startswith(("cloud.", "web.", "integrations.", "remote.push"))]
     if sensitive:
         st.audit.record("user", "settings.cloud", ",".join(sensitive), "updated", values={k: body.values[k] for k in sensitive})
     st.bus.publish("settings.updated", {"keys": list(body.values)})

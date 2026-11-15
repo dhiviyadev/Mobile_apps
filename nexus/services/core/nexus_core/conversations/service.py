@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
+from pathlib import Path
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
@@ -29,12 +31,15 @@ class ConversationService:
         self._generations: dict[str, asyncio.Event] = {}  # generation_id -> stop flag
 
     # -- CRUD ---------------------------------------------------------------
-    def create(self, title: str | None = None, agent_id: str | None = None, model: str | None = None) -> dict[str, Any]:
+    def create(self, title: str | None = None, agent_id: str | None = None, model: str | None = None,
+               project_id: str | None = None) -> dict[str, Any]:
         cid = new_id("cnv")
         ts = now_iso()
+        if project_id and not self.state.projects.get(project_id):
+            project_id = None
         self.state.db.execute(
-            "INSERT INTO conversations(id, title, model, agent_id, created_at, updated_at) VALUES (?,?,?,?,?,?)",
-            (cid, title or "New conversation", model, agent_id, ts, ts),
+            "INSERT INTO conversations(id, title, model, agent_id, project_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+            (cid, title or "New conversation", model, agent_id, project_id or None, ts, ts),
         )
         conv = self.get(cid)
         self.state.bus.publish("conversation.updated", conv or {})
@@ -43,9 +48,13 @@ class ConversationService:
     def get(self, cid: str) -> dict[str, Any] | None:
         return self.state.db.query_one("SELECT * FROM conversations WHERE id = ?", (cid,))
 
-    def list(self, limit: int = 50, query: str | None = None, include_archived: bool = False) -> list[dict[str, Any]]:
+    def list(self, limit: int = 50, query: str | None = None, include_archived: bool = False,
+             project_id: str | None = None) -> list[dict[str, Any]]:
         where = [] if include_archived else ["archived = 0"]
         params: list[Any] = []
+        if project_id:
+            where.append("project_id = ?")
+            params.append(project_id)
         if query:
             where.append("(title LIKE ? OR id IN (SELECT conversation_id FROM messages WHERE content LIKE ?))")
             params += [f"%{query}%", f"%{query}%"]
@@ -57,6 +66,8 @@ class ConversationService:
     def update(self, cid: str, **fields: Any) -> dict[str, Any]:
         allowed = {"title", "model", "agent_id", "archived"}
         sets = {k: (int(v) if isinstance(v, bool) else v) for k, v in fields.items() if k in allowed and v is not None}
+        if fields.get("project_id") is not None:
+            sets["project_id"] = fields["project_id"] or None  # "" moves the conversation out of its project
         if sets:
             cols = ", ".join(f"{k} = ?" for k in sets)
             self.state.db.execute(f"UPDATE conversations SET {cols}, updated_at = ? WHERE id = ?", (*sets.values(), now_iso(), cid))
@@ -111,12 +122,29 @@ class ConversationService:
         if not ids:
             return "", []
         marks = ",".join("?" * len(ids))
-        rows = self.state.db.query(f"SELECT id, filename, text FROM attachments WHERE id IN ({marks})", ids)
+        rows = self.state.db.query(f"SELECT id, filename, text, mime FROM attachments WHERE id IN ({marks})", ids)
         parts, info = [], []
         for r in rows:
-            parts.append(f"<attachment name=\"{r['filename']}\">\n{truncate(r['text'] or '(no extractable text)', 24000)}\n</attachment>")
-            info.append({"id": r["id"], "filename": r["filename"]})
+            is_image = (r["mime"] or "").startswith("image/")
+            if r["text"] or not is_image:
+                label = "text recognised in image" if is_image else "attachment"
+                parts.append(f"<{label} name=\"{r['filename']}\">\n{truncate(r['text'] or '(no extractable text)', 24000)}\n</{label}>")
+            info.append({"id": r["id"], "filename": r["filename"], "image": is_image})
         return "\n\n".join(parts), info
+
+    def attachment_images(self, ids: list[str], limit: int = 4) -> list[str]:
+        """Base64 image data for image attachments (sent only to vision-capable models)."""
+        if not ids:
+            return []
+        marks = ",".join("?" * len(ids))
+        rows = self.state.db.query(f"SELECT path, mime FROM attachments WHERE id IN ({marks}) AND mime LIKE 'image/%'", ids)
+        out = []
+        for r in rows[:limit]:
+            try:
+                out.append(base64.b64encode(Path(r["path"]).read_bytes()).decode())
+            except OSError:
+                continue
+        return out
 
     # -- generation ---------------------------------------------------------
     def stop(self, generation_id: str) -> bool:
@@ -131,8 +159,10 @@ class ConversationService:
                            regenerate: bool = False) -> AsyncIterator[dict[str, Any]]:
         st = self.state
         st.approvals.ensure_not_halted()
-        if not self.get(cid):
+        conv = self.get(cid)
+        if not conv:
             raise KeyError(cid)
+        project = st.projects.get(conv.get("project_id"))
         gen_id = new_id("gen")
         stop = asyncio.Event()
         self._generations[gen_id] = stop
@@ -149,14 +179,17 @@ class ConversationService:
             name = st.prefs.get("profile.name")
             if name:
                 system += f" The user's name is {name}."
-            memories = st.memory.recall(content, limit=5) if use_memory and st.prefs.get("memory.inject_in_chat") else []
+            system += st.projects.prompt_block(project)
+            memories = (st.memory.recall(content, limit=5, project_id=project["id"] if project else None)
+                        if use_memory and st.prefs.get("memory.inject_in_chat") else [])
             if memories:
                 system += "\n\n" + st.memory.context_block(memories)
             sources: list[dict[str, Any]] = []
             if use_knowledge:
                 stats = st.knowledge.stats()
                 if stats.get("chunks"):
-                    res = await st.knowledge.search(content, limit=5, ollama=st.ollama, router=st.router, record=False)
+                    res = await st.knowledge.search(content, limit=5, ollama=st.ollama, router=st.router, record=False,
+                                                    project=st.projects.knowledge_scope(project))
                     sources = res["results"][:5]
             if sources:
                 excerpt = "\n\n".join(
@@ -189,6 +222,13 @@ class ConversationService:
             else:
                 used_model = await st.router.resolve("general", model)
                 yield {"type": "model", "model": used_model}
+                images = self.attachment_images(attachments or [])
+                if images:
+                    if "vision" in await st.ollama.capabilities(used_model):
+                        msgs[-1] = {**msgs[-1], "images": images}
+                    else:
+                        yield {"type": "warning", "text": f"{used_model} can't see images, so only recognised text was used. "
+                                                          "Pick a vision model (for example Gemma 4) to analyse the picture itself."}
                 check = await st.router.memory_check(used_model)
                 if not check["already_loaded"]:
                     yield {"type": "status", "status": "loading_model", "model": used_model}

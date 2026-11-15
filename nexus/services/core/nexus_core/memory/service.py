@@ -54,8 +54,12 @@ class MemoryService:
     def get(self, memory_id: str) -> dict[str, Any] | None:
         return self.db.query_one("SELECT * FROM memories WHERE id = ?", (memory_id,))
 
-    def list(self, category: str | None = None, status: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+    def list(self, category: str | None = None, status: str | None = None, limit: int = 200,
+             project_id: str | None = None) -> list[dict[str, Any]]:
         clauses, params = [], []
+        if project_id:
+            clauses.append("project_id = ?")
+            params.append(project_id)
         if category:
             clauses.append("category = ?")
             params.append(category)
@@ -66,7 +70,8 @@ class MemoryService:
         return self.db.query(f"SELECT * FROM memories {where} ORDER BY pinned DESC, updated_at DESC LIMIT ?", (*params, limit))
 
     def create(self, category: str, content: str, *, source_type: str = "user", source_ref: str | None = None,
-               status: str | None = None, pinned: bool = False, relevance: float = 0.5) -> dict[str, Any]:
+               status: str | None = None, pinned: bool = False, relevance: float = 0.5,
+               project_id: str | None = None) -> dict[str, Any]:
         if category not in CATEGORIES:
             raise ValueError(f"category must be one of {CATEGORIES}")
         content = content.strip()
@@ -83,9 +88,9 @@ class MemoryService:
         mid = new_id("mem")
         ts = now_iso()
         self.db.execute(
-            "INSERT INTO memories(id, category, content, status, source_type, source_ref, sensitive, pinned, relevance, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (mid, category, content, status, source_type, source_ref, int(sensitive), int(pinned), relevance, ts, ts),
+            "INSERT INTO memories(id, category, content, status, source_type, source_ref, sensitive, pinned, relevance, created_at, updated_at, project_id) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (mid, category, content, status, source_type, source_ref, int(sensitive), int(pinned), relevance, ts, ts, project_id or None),
         )
         mem = self.get(mid)
         self.bus.publish("memory.changed", {"id": mid, "action": "created", "status": status})
@@ -94,6 +99,8 @@ class MemoryService:
     def update(self, memory_id: str, **fields: Any) -> dict[str, Any]:
         allowed = {"category", "content", "status", "pinned", "relevance"}
         sets = {k: (int(v) if isinstance(v, bool) else v) for k, v in fields.items() if k in allowed and v is not None}
+        if fields.get("project_id") is not None:
+            sets["project_id"] = fields["project_id"] or None  # "" moves the memory out of its project
         if "category" in sets and sets["category"] not in CATEGORIES:
             raise ValueError("invalid category")
         if "content" in sets:
@@ -112,20 +119,24 @@ class MemoryService:
         self.db.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
         self.bus.publish("memory.changed", {"id": memory_id, "action": "deleted"})
 
-    def recall(self, query: str, limit: int = 6, mark_used: bool = True) -> list[dict[str, Any]]:
-        """Relevant ACTIVE memories for a prompt: FTS match ranked with pin/relevance boosts, plus pinned preferences."""
+    def recall(self, query: str, limit: int = 6, mark_used: bool = True, project_id: str | None = None) -> list[dict[str, Any]]:
+        """Relevant ACTIVE memories for a prompt: FTS match ranked with pin/relevance boosts, plus pinned preferences.
+
+        Memories filed under a project are only recalled inside that project; unfiled ones are recalled everywhere."""
         results: dict[str, dict[str, Any]] = {}
+        scope = "(m.project_id IS NULL OR m.project_id = ?)"
+        pid = project_id or ""
         q = fts_query(query, "or")
         if q:
             rows = self.db.query(
                 "SELECT m.*, bm25(memories_fts) AS rank FROM memories_fts JOIN memories m ON m.rowid = memories_fts.rowid "
-                "WHERE memories_fts MATCH ? AND m.status = 'active' ORDER BY rank LIMIT ?",
-                (q, limit * 2),
+                f"WHERE memories_fts MATCH ? AND m.status = 'active' AND {scope} ORDER BY rank LIMIT ?",
+                (q, pid, limit * 2),
             )
             for r in rows:
                 r["score"] = -r.pop("rank") + r["relevance"] + (1.0 if r["pinned"] else 0)
                 results[r["id"]] = r
-        for r in self.db.query("SELECT * FROM memories WHERE status='active' AND pinned=1 ORDER BY updated_at DESC LIMIT 5"):
+        for r in self.db.query(f"SELECT * FROM memories m WHERE status='active' AND pinned=1 AND {scope} ORDER BY updated_at DESC LIMIT 5", (pid,)):
             results.setdefault(r["id"], {**r, "score": 1.0 + r["relevance"]})
         ordered = sorted(results.values(), key=lambda r: -r["score"])[:limit]
         if mark_used and ordered:

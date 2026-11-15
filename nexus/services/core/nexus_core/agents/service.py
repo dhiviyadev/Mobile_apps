@@ -88,7 +88,7 @@ class AgentService:
         return pref  # auto | hermes | native
 
     def submit(self, agent_id: str, prompt: str, *, conversation_id: str | None = None, runtime: str | None = None,
-               automation_run_id: str | None = None, title: str | None = None) -> dict[str, Any]:
+               automation_run_id: str | None = None, title: str | None = None, project_id: str | None = None) -> dict[str, Any]:
         self.state.approvals.ensure_not_halted()
         agent = self.get(agent_id)
         if not agent:
@@ -101,10 +101,22 @@ class AgentService:
         mode = self.choose_runtime(agent, runtime)
 
         async def work() -> str:
-            return await self._execute(task["id"], agent, prompt, conversation_id, mode)
+            return await self._execute(task["id"], self._in_project(agent, conversation_id, project_id), prompt, conversation_id, mode)
 
         self.state.tasks.start(task["id"], work)
         return task
+
+    def _in_project(self, agent: dict[str, Any], conversation_id: str | None, project_id: str | None = None) -> dict[str, Any]:
+        """The agent, with the project's instructions added when the work belongs to a project."""
+        st = self.state
+        if not project_id and conversation_id:
+            conv = st.db.query_one("SELECT project_id FROM conversations WHERE id = ?", (conversation_id,))
+            project_id = conv["project_id"] if conv else None
+        project = st.projects.get(project_id)
+        if not project:
+            return agent
+        return {**agent, "system_prompt": agent["system_prompt"] + st.projects.prompt_block(project),
+                "project_id": project["id"], "project_scope": st.projects.knowledge_scope(project)}
 
     async def run_now(self, agent_id: str, prompt: str, **kwargs: Any) -> dict[str, Any]:
         """Run an agent task inline (used by automations to chain steps). Returns the finished task."""
@@ -114,6 +126,7 @@ class AgentService:
         task = self.state.tasks.create(kwargs.get("title") or prompt[:100], "agent", input=prompt, agent_id=agent_id,
                                        automation_run_id=kwargs.get("automation_run_id"))
         mode = self.choose_runtime(agent, kwargs.get("runtime"))
+        agent = self._in_project(agent, None, kwargs.get("project_id"))
         return await self.state.tasks.run_inline(task["id"], lambda: self._execute(task["id"], agent, prompt, None, mode))
 
     async def _execute(self, task_id: str, agent: dict[str, Any], prompt: str, conversation_id: str | None, mode: str) -> str:

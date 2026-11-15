@@ -37,13 +37,14 @@ async def run_native(state: "AppState", task_id: str, agent: dict[str, Any], pro
         "documents and memory. Do not guess file contents. Tools that change things may require the user's approval; "
         "if a tool is denied, explain what you were unable to do. Finish with a clear answer for the user."
     )
-    mems = state.memory.recall(prompt, limit=5)
+    mems = state.memory.recall(prompt, limit=5, project_id=agent.get("project_id"))
     if mems:
         system += "\n\n" + state.memory.context_block(mems)
         tm.add_event(task_id, "memory.recalled", f"Recalled {len(mems)} memories", data={"ids": [m["id"] for m in mems]})
 
     messages: list[dict[str, Any]] = [{"role": "system", "content": system}, *(history or []), {"role": "user", "content": prompt}]
-    ctx = ToolContext(state=state, task_id=task_id, agent_id=agent["id"])
+    ctx = ToolContext(state=state, task_id=task_id, agent_id=agent["id"], project_id=agent.get("project_id"),
+                      project_scope=agent.get("project_scope"))
     max_steps = int(state.prefs.get("agents.max_steps") or 8)
     final = ""
 

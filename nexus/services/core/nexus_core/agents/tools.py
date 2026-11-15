@@ -12,12 +12,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
+from ..integrations.apple import AppleUnavailable
+from ..integrations.web import WebBlocked, WebDisabled
 from ..util import truncate
 
 if TYPE_CHECKING:
     from ..app_state import AppState
 
-AccessClass = Literal["read", "write", "execute", "memory", "none"]
+AccessClass = Literal["read", "write", "execute", "memory", "network", "none"]
 
 
 @dataclass
@@ -25,6 +27,8 @@ class ToolContext:
     state: "AppState"
     task_id: str
     agent_id: str
+    project_id: str | None = None
+    project_scope: str | None = None  # project name to limit knowledge search to, when it has documents
 
 
 @dataclass
@@ -67,7 +71,7 @@ async def _search_files(ctx: ToolContext, args: dict[str, Any]) -> Any:
 
 async def _search_knowledge(ctx: ToolContext, args: dict[str, Any]) -> Any:
     st = ctx.state
-    res = await st.knowledge.search(args["query"], limit=int(args.get("limit") or 6), project=args.get("project"),
+    res = await st.knowledge.search(args["query"], limit=int(args.get("limit") or 6), project=args.get("project") or ctx.project_scope,
                                     ollama=st.ollama, router=st.router)
     return {"mode": res["mode"], "results": [
         {"title": r["title"], "path": r["path"], "location": r["location"],
@@ -84,11 +88,13 @@ async def _write_file(ctx: ToolContext, args: dict[str, Any]) -> Any:
 
 
 async def _recall_memory(ctx: ToolContext, args: dict[str, Any]) -> Any:
-    return {"memories": [{"category": m["category"], "content": m["content"]} for m in ctx.state.memory.recall(args["query"], limit=8)]}
+    return {"memories": [{"category": m["category"], "content": m["content"]}
+                         for m in ctx.state.memory.recall(args["query"], limit=8, project_id=ctx.project_id)]}
 
 
 async def _propose_memory(ctx: ToolContext, args: dict[str, Any]) -> Any:
-    mem = ctx.state.memory.create(args["category"], args["content"], source_type="agent", source_ref=ctx.task_id, status="proposed")
+    mem = ctx.state.memory.create(args["category"], args["content"], source_type="agent", source_ref=ctx.task_id, status="proposed",
+                                  project_id=ctx.project_id)
     return {"proposed": True, "id": mem["id"], "note": "Saved as a proposal; the user must approve it before it is used."}
 
 
@@ -108,6 +114,50 @@ async def _run_script(ctx: ToolContext, args: dict[str, Any]) -> Any:
 
 async def _open_application(ctx: ToolContext, args: dict[str, Any]) -> Any:
     return await ctx.state.macos.open_app(args["name"], actor=f"agent:{ctx.agent_id}", task_id=ctx.task_id)
+
+
+async def _web_search(ctx: ToolContext, args: dict[str, Any]) -> Any:
+    try:
+        return await ctx.state.web.search(args["query"], limit=int(args.get("limit") or 6), actor=f"agent:{ctx.agent_id}")
+    except (WebDisabled, WebBlocked) as exc:
+        return {"error": str(exc)}
+
+
+async def _fetch_url(ctx: ToolContext, args: dict[str, Any]) -> Any:
+    try:
+        return await ctx.state.web.fetch(args["url"], max_chars=int(args.get("max_chars") or 20000), actor=f"agent:{ctx.agent_id}")
+    except (WebDisabled, WebBlocked) as exc:
+        return {"error": str(exc)}
+
+
+async def _calendar_events(ctx: ToolContext, args: dict[str, Any]) -> Any:
+    try:
+        return await ctx.state.apple.events(int(args.get("days") or 1), actor=f"agent:{ctx.agent_id}")
+    except AppleUnavailable as exc:
+        return {"error": str(exc)}
+
+
+async def _list_reminders(ctx: ToolContext, args: dict[str, Any]) -> Any:
+    try:
+        return await ctx.state.apple.reminders(actor=f"agent:{ctx.agent_id}")
+    except AppleUnavailable as exc:
+        return {"error": str(exc)}
+
+
+async def _create_reminder(ctx: ToolContext, args: dict[str, Any]) -> Any:
+    try:
+        return await ctx.state.apple.create_reminder(args["title"], args.get("notes") or "", args.get("due"),
+                                                     actor=f"agent:{ctx.agent_id}", task_id=ctx.task_id)
+    except AppleUnavailable as exc:
+        return {"error": str(exc)}
+
+
+async def _draft_email(ctx: ToolContext, args: dict[str, Any]) -> Any:
+    try:
+        return await ctx.state.apple.draft_email(args.get("to") or "", args.get("subject") or "", args.get("body") or "",
+                                                 actor=f"agent:{ctx.agent_id}", task_id=ctx.task_id)
+    except AppleUnavailable as exc:
+        return {"error": str(exc)}
 
 
 TOOLS: dict[str, Tool] = {
@@ -147,6 +197,24 @@ TOOLS: dict[str, Tool] = {
         Tool("open_application", "Open a macOS application by name (requires user approval).",
              _obj({"name": {"type": "string"}}, ["name"]), "execute", _open_application,
              lambda a: f"Requesting to open {a.get('name')}"),
+        Tool("web_search", "Search the public web. Returns titles, links and short snippets. Only works when the user has turned web access on.",
+             _obj({"query": {"type": "string"}, "limit": {"type": "integer"}}, ["query"]), "network", _web_search,
+             lambda a: f"Searching the web for “{a.get('query')}”"),
+        Tool("fetch_url", "Read the text of a public web page (http/https). Only works when the user has turned web access on.",
+             _obj({"url": {"type": "string"}, "max_chars": {"type": "integer"}}, ["url"]), "network", _fetch_url,
+             lambda a: f"Reading {str(a.get('url', ''))[:80]}"),
+        Tool("calendar_events", "List the user's calendar events for today and the next days (1-14). Needs Calendar access turned on.",
+             _obj({"days": {"type": "integer", "description": "How many days from today, default 1"}}, []), "read", _calendar_events,
+             lambda a: "Checking the calendar"),
+        Tool("list_reminders", "List the user's open reminders with due dates. Needs Reminders access turned on.",
+             _obj({}, []), "read", _list_reminders, lambda a: "Checking reminders"),
+        Tool("create_reminder", "Add a reminder to the Reminders app (requires user approval). due is local time like 2026-03-01T09:00.",
+             _obj({"title": {"type": "string"}, "notes": {"type": "string"}, "due": {"type": "string"}}, ["title"]), "write",
+             _create_reminder, lambda a: f"Requesting to add reminder “{a.get('title')}”"),
+        Tool("draft_email", "Open a draft in the Mail app for the user to review and send (requires user approval). Never sends.",
+             _obj({"to": {"type": "string", "description": "One email address, or empty"}, "subject": {"type": "string"},
+                   "body": {"type": "string"}}, ["subject", "body"]), "write", _draft_email,
+             lambda a: f"Requesting to draft email “{a.get('subject')}”"),
     ]
 }
 

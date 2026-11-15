@@ -48,10 +48,20 @@ DEFAULTS: dict[str, Any] = {
     "appearance.material": "ambient",  # ambient | desktop | solid
     "appearance.motion": "full",  # full | calm
     "appearance.transparency": 73,  # 0 (frosted) … 100 (clearest glass)
+    "knowledge.ocr": True,  # recognise text in scanned PDFs and images (local)
+    # Web access for agents (off: nothing leaves the Mac)
+    "web.enabled": False,
+    # Apple apps (each asks macOS for permission the first time)
+    "integrations.calendar": False,
+    "integrations.reminders": False,
+    "integrations.mail": False,
+    # First-run setup
+    "onboarding.completed": False,
     # In-app updates (checking only; installing always needs a click)
     "updates.auto_check": True,
     # Remote access for paired phones (off until the user enables it)
     "remote.enabled": False,
+    "remote.push": True,  # phones that asked for notifications may receive them
     "remote.hostnames": [],  # e.g. ["my-mac.tail1234.ts.net"]
 }
 

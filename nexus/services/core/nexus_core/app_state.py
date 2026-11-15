@@ -14,17 +14,24 @@ from .config import Settings
 from .conversations.service import ConversationService
 from .db.database import Database
 from .events import EventBus
+from .integrations.apple import AppleService
 from .integrations.files import FileService
 from .integrations.macos import MacOSService
 from .integrations.notifications import NotificationService
+from .integrations.web import WebService
+from .knowledge import ocr
 from .knowledge.service import KnowledgeService
 from .memory.service import MemoryService
 from .models.cloud import CloudAdapter
+from .native import helpers as native_helpers
+from .models.manager import ModelManager
 from .models.ollama import OllamaClient
 from .models.router import ModelRouter
 from .permissions.approvals import ApprovalService
 from .permissions.audit import AuditLog
 from .permissions.policy import PermissionService
+from .projects.service import ProjectService
+from .remote.push import PushService
 from .remote.service import DeviceService
 from .security import Keychain, load_or_create_token
 from .settings_store import SettingsStore
@@ -41,6 +48,7 @@ class AppState:
         settings.ensure_dirs()
         self.settings = settings
         self.token = load_or_create_token(settings.secrets_dir)
+        native_helpers.configure(settings.data_dir / "bin")
         self.db = Database(settings.db_path)
         self.migrations_applied = self.db.migrate()
         self.bus = EventBus()
@@ -60,7 +68,13 @@ class AppState:
         self.notifications = NotificationService(self.db, self.bus, self.prefs, self.macos)
         self.knowledge = KnowledgeService(self.db, self.bus, self.permissions, float(self.prefs.get("knowledge.max_file_mb") or 25))
         self.memory = MemoryService(self.db, self.bus)
+        self.projects = ProjectService(self.db, self.bus)
+        self.web = WebService(self.prefs, self.audit)
+        self.apple = AppleService(self.prefs, self.approvals, self.audit)
+        self.push = PushService(self.db, self.prefs, self.audit, settings.secrets_dir)
+        ocr.enabled = bool(self.prefs.get("knowledge.ocr"))
         self.voice = VoiceService(self.prefs, settings.data_dir / "voice")
+        self.model_manager = ModelManager(self)
         self.agents = AgentService(self)
         self.conversations = ConversationService(self)
         self.automations = AutomationService(self)
@@ -79,6 +93,7 @@ class AppState:
             asyncio.create_task(self.automations.run_scheduler(), name="scheduler"),
             asyncio.create_task(self.monitor.run_sampler(), name="sampler"),
             asyncio.create_task(self.updates.run_checker(), name="update-checker"),
+            asyncio.create_task(self.push.run_forwarder(self.bus), name="push-forwarder"),
         ]
 
     async def emergency_stop(self, actor: str = "user") -> dict[str, Any]:

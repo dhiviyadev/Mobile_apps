@@ -38,7 +38,7 @@ class FakeOllama:
         if not self.online:
             raise httpx.ConnectError("connection refused")
         path = request.url.path
-        body = json.loads(request.content or b"{}") if request.method == "POST" else {}
+        body = json.loads(request.content or b"{}") if request.method in ("POST", "DELETE") else {}
         self.requests.append({"path": path, "body": body})
         if path == "/api/version":
             return httpx.Response(200, json={"version": "0.12.0-fake"})
@@ -54,6 +54,24 @@ class FakeOllama:
                 size = next(m["size"] for m in self.models if m["name"] == name)
                 self.running.append({"name": name, "size": size, "size_vram": size})
             return httpx.Response(200, json={"model": name, "done": True, "load_duration": 1_500_000_000})
+        if path == "/api/show":
+            name = body["model"]
+            caps = ["completion", "tools"] + (["vision"] if "gemma" in name or "vision" in name else [])
+            return httpx.Response(200, json={"capabilities": caps})
+        if path == "/api/pull":
+            name = body["model"]
+            if name.startswith("missing"):
+                return httpx.Response(200, content=b'{"error":"pull model manifest: file does not exist"}\n')
+            lines = [{"status": "pulling manifest"},
+                     {"status": "pulling abc", "digest": "sha256:abc", "total": 1000, "completed": 250},
+                     {"status": "pulling abc", "digest": "sha256:abc", "total": 1000, "completed": 1000},
+                     {"status": "success"}]
+            self.models.append({"name": name, "size": 1000, "details": {"families": ["test"]}})
+            return httpx.Response(200, content="\n".join(json.dumps(x) for x in lines).encode())
+        if path == "/api/delete":
+            name = json.loads(request.content)["model"]
+            self.models = [m for m in self.models if m["name"] != name]
+            return httpx.Response(200)
         if path == "/api/embed":
             inputs = body["input"]
             vecs = [[float(len(t) % 7), float("invoice" in t.lower()), 1.0] for t in inputs]

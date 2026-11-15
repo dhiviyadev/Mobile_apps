@@ -118,6 +118,39 @@ class OllamaClient:
         return {"model": model, "load_ms": _ns_to_ms(data.get("load_duration")),
                 "wall_ms": round((time.perf_counter() - started) * 1000, 1)}
 
+    async def pull_stream(self, model: str) -> AsyncIterator[dict[str, Any]]:
+        """Download a model. Yields Ollama's progress objects: {status, digest?, total?, completed?}."""
+        try:
+            async with self._client.stream("POST", "/api/pull", json={"model": model, "stream": True},
+                                            timeout=httpx.Timeout(None, connect=5.0)) as resp:
+                if resp.status_code >= 400:
+                    await resp.aread()
+                    raise OllamaError(_error_text(resp))
+                async for line in resp.aiter_lines():
+                    if not line.strip():
+                        continue
+                    chunk = json.loads(line)
+                    if chunk.get("error"):
+                        raise OllamaError(str(chunk["error"]))
+                    yield chunk
+        except httpx.HTTPError as exc:
+            raise OllamaUnavailable(f"Ollama is not reachable at {self.base_url}: {exc.__class__.__name__}") from exc
+
+    async def delete(self, model: str) -> None:
+        try:
+            r = await self._client.request("DELETE", "/api/delete", json={"model": model}, timeout=60)
+        except httpx.HTTPError as exc:
+            raise OllamaUnavailable(f"Ollama is not reachable at {self.base_url}: {exc.__class__.__name__}") from exc
+        if r.status_code >= 400:
+            raise OllamaError(_error_text(r))
+
+    async def capabilities(self, model: str) -> list[str]:
+        """e.g. ["completion", "tools", "vision"]. Empty when Ollama doesn't report them."""
+        try:
+            return list((await self.show(model)).get("capabilities") or [])
+        except OllamaError:
+            return []
+
     async def unload(self, model: str) -> None:
         await self._post("/api/generate", {"model": model, "keep_alive": 0}, timeout=60)
 

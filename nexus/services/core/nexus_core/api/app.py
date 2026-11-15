@@ -71,6 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         path = request.url.path
         request.state.actor = "user"
         request.state.remote = False
+        request.state.device_id = None
         if request.method == "OPTIONS" or path in PUBLIC_PATHS or path == MOBILE_PREFIX or path.startswith(MOBILE_PREFIX + "/"):
             return await call_next(request)
         if settings.require_auth and (path.startswith("/api") or path in ("/docs", "/openapi.json")):
@@ -87,6 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     return JSONResponse({"detail": "This action is only available on your Mac."}, status_code=403)
                 request.state.actor = f"device:{device['name']}"
                 request.state.remote = True
+                request.state.device_id = device["id"]
         return await call_next(request)
 
     app.add_middleware(

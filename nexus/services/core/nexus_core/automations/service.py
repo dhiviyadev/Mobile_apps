@@ -126,12 +126,12 @@ class AutomationService:
         aid = new_id("aut")
         ts = now_iso()
         self.state.db.execute(
-            "INSERT INTO automations(id, name, description, trigger, conditions, actions, enabled, requires_approval, failure_policy, template, created_at, updated_at, next_run_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO automations(id, name, description, trigger, conditions, actions, enabled, requires_approval, failure_policy, template, created_at, updated_at, next_run_at, project_id) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (aid, data["name"], data.get("description", ""), dumps(data["trigger"]), dumps(data.get("conditions") or []),
              dumps(data["actions"]), int(bool(data.get("enabled", False))), int(bool(data.get("requires_approval", True))),
              dumps(data.get("failure_policy") or {"retries": 0, "notify": True}), data.get("template"), ts, ts,
-             self._next_run(data["trigger"])),
+             self._next_run(data["trigger"]), data.get("project_id") or None),
         )
         self.state.audit.record("user", "automation.create", data["name"], "created", id=aid)
         auto = self.get(aid)
@@ -146,10 +146,11 @@ class AutomationService:
         self.validate(merged)
         self.state.db.execute(
             "UPDATE automations SET name=?, description=?, trigger=?, conditions=?, actions=?, enabled=?, requires_approval=?, "
-            "failure_policy=?, updated_at=?, next_run_at=? WHERE id=?",
+            "failure_policy=?, updated_at=?, next_run_at=?, project_id=? WHERE id=?",
             (merged["name"], merged.get("description", ""), dumps(merged["trigger"]), dumps(merged.get("conditions") or []),
              dumps(merged["actions"]), int(bool(merged["enabled"])), int(bool(merged["requires_approval"])),
-             dumps(merged.get("failure_policy") or {}), now_iso(), self._next_run(merged["trigger"]), aid),
+             dumps(merged.get("failure_policy") or {}), now_iso(), self._next_run(merged["trigger"]),
+             merged.get("project_id") or None, aid),
         )
         if "enabled" in data:
             self.state.audit.record("user", "automation.enable" if data["enabled"] else "automation.disable", merged["name"], "updated")
@@ -284,7 +285,7 @@ class AutomationService:
             tm.add_event(task_id, "automation.step", f"Step {i}: {kind.replace('_', ' ')}", data={"step": i, "action": kind})
             if kind == "agent_task":
                 sub = await st.agents.run_now(action["agent_id"], render(action["prompt"], ctx), automation_run_id=run_id,
-                                              title=f"{auto['name']} · step {i}")
+                                              title=f"{auto['name']} · step {i}", project_id=auto.get("project_id"))
                 if sub["status"] != "completed":
                     raise AutomationError(f"Agent step failed: {sub.get('error')}")
                 output = sub.get("result") or ""

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import mimetypes
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from ..agents.hermes import HermesUnavailable
@@ -57,6 +58,35 @@ async def models(st: AppState = Depends(get_state)) -> dict[str, Any]:
     return {"online": online, "version": await st.ollama.version(), "installed": out, "routing": st.router.routing_table(),
             "categories": MODEL_CATEGORIES, "default": st.prefs.get("models.default"),
             "single_model_mode": st.prefs.get("models.single_model_mode"), "stats": st.router.inference_stats()}
+
+
+@router.get("/models/catalog")
+async def model_catalog(st: AppState = Depends(get_state)) -> dict[str, Any]:
+    import psutil
+
+    return {"suggested": await st.model_manager.catalog(), "pulls": list(st.model_manager.pulls.values()),
+            "memory_bytes": psutil.virtual_memory().total}
+
+
+class PullBody(BaseModel):
+    model: str = Field(..., min_length=1, max_length=200)
+
+
+@router.post("/models/pull")
+async def pull_model(body: PullBody, st: AppState = Depends(get_state)) -> dict[str, Any]:
+    try:
+        return st.model_manager.start_pull(body.model)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.delete("/models/{name:path}")
+async def delete_model(name: str, st: AppState = Depends(get_state)) -> dict[str, Any]:
+    try:
+        await st.model_manager.delete(name)
+    except Exception as exc:  # noqa: BLE001
+        raise _http(exc) from exc
+    return {"deleted": name}
 
 
 @router.post("/models/{name:path}/load")
@@ -129,16 +159,18 @@ class ConversationBody(BaseModel):
     title: str | None = None
     agent_id: str | None = None
     model: str | None = None
+    project_id: str | None = None
 
 
 @router.get("/conversations")
-def list_conversations(q: str | None = None, limit: int = 50, st: AppState = Depends(get_state)) -> list[dict[str, Any]]:
-    return st.conversations.list(limit=limit, query=q)
+def list_conversations(q: str | None = None, limit: int = 50, project_id: str | None = None,
+                       st: AppState = Depends(get_state)) -> list[dict[str, Any]]:
+    return st.conversations.list(limit=limit, query=q, project_id=project_id)
 
 
 @router.post("/conversations")
 def create_conversation(body: ConversationBody, st: AppState = Depends(get_state)) -> dict[str, Any]:
-    return st.conversations.create(body.title, body.agent_id, body.model)
+    return st.conversations.create(body.title, body.agent_id, body.model, body.project_id)
 
 
 @router.get("/conversations/{cid}")
@@ -154,6 +186,7 @@ class ConversationPatch(BaseModel):
     model: str | None = None
     agent_id: str | None = None
     archived: bool | None = None
+    project_id: str | None = None  # "" removes the conversation from its project
 
 
 @router.patch("/conversations/{cid}")
@@ -264,7 +297,36 @@ async def upload_attachment(file: UploadFile = File(...), st: AppState = Depends
     st.db.execute("INSERT INTO attachments(id, filename, path, mime, size, text, created_at) VALUES (?,?,?,?,?,?,?)",
                   (aid, safe, str(dest), mime, len(data), text, now_iso()))
     return {"id": aid, "filename": safe, "size": len(data), "mime": mime, "preview": (text or "")[:4000],
-            "has_text": bool(text and not text.startswith("(could not"))}
+            "has_text": bool(text and not text.startswith("(could not")), "image": bool(mime and mime.startswith("image/"))}
+
+
+@router.get("/attachments/{aid}/file")
+def attachment_file(aid: str, st: AppState = Depends(get_state)) -> FileResponse:
+    row = st.db.query_one("SELECT path, mime, filename FROM attachments WHERE id = ?", (aid,))
+    if not row or not Path(row["path"]).is_file():
+        raise not_found("Attachment")
+    return FileResponse(row["path"], media_type=row["mime"] or "application/octet-stream", filename=row["filename"])
+
+
+@router.post("/screen/capture")
+async def capture_screen(st: AppState = Depends(get_state)) -> dict[str, Any]:
+    """Take a screenshot of the Mac's screen (user-initiated only) and return it as an image attachment."""
+    from ..config import IS_MACOS
+
+    if not IS_MACOS:
+        raise HTTPException(400, "Screen capture is only available on macOS")
+    aid = new_id("att")
+    dest = st.settings.uploads_dir / f"{aid}-screen.png"
+    proc = await asyncio.create_subprocess_exec("/usr/sbin/screencapture", "-x", "-t", "png", str(dest),
+                                                stderr=asyncio.subprocess.PIPE)
+    _, err = await asyncio.wait_for(proc.communicate(), timeout=20)
+    if proc.returncode != 0 or not dest.is_file() or dest.stat().st_size < 1000:
+        raise HTTPException(400, "Couldn't capture the screen. Allow NEXUS in System Settings → Privacy & Security → "
+                                 f"Screen & System Audio Recording, then try again. {err.decode(errors='replace')[:120]}")
+    st.db.execute("INSERT INTO attachments(id, filename, path, mime, size, text, created_at) VALUES (?,?,?,?,?,?,?)",
+                  (aid, "Screen.png", str(dest), "image/png", dest.stat().st_size, None, now_iso()))
+    st.audit.record("user", "screen.capture", str(dest), "executed")
+    return {"id": aid, "filename": "Screen.png", "size": dest.stat().st_size, "mime": "image/png", "preview": "", "has_text": False, "image": True}
 
 
 @router.get("/attachments/{aid}")

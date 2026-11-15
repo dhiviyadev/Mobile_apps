@@ -10,7 +10,9 @@ import csv
 import json
 from pathlib import Path
 
-SUPPORTED = {".txt", ".md", ".markdown", ".csv", ".json", ".pdf", ".docx", ".xlsx", ".rst", ".log", ".tsv"}
+from . import ocr
+
+SUPPORTED = {".txt", ".md", ".markdown", ".csv", ".json", ".pdf", ".docx", ".xlsx", ".rst", ".log", ".tsv"} | ocr.IMAGE_EXTS
 
 Section = tuple[str | None, str]
 
@@ -32,6 +34,8 @@ def extract(path: Path, max_chars: int = 2_000_000) -> list[Section]:
             return _json(path, max_chars)
         if ext == ".pdf":
             return _pdf(path, max_chars)
+        if ext in ocr.IMAGE_EXTS:
+            return _image(path)
         if ext == ".docx":
             return _docx(path, max_chars)
         if ext == ".xlsx":
@@ -108,8 +112,24 @@ def _pdf(path: Path, max_chars: int) -> list[Section]:
         if total > max_chars:
             break
     if not sections:
-        raise ExtractionError("No extractable text (the PDF may be scanned images; OCR is not yet supported)")
+        # Scanned PDF: recognise the page images locally.
+        try:
+            sections = ocr.ocr_file(path)
+        except ocr.OcrUnavailable as exc:
+            raise ExtractionError(f"No text layer (scanned PDF) and OCR is unavailable: {exc}") from exc
+        if not sections:
+            raise ExtractionError("No text found, even with OCR")
     return sections
+
+
+def _image(path: Path) -> list[Section]:
+    try:
+        sections = ocr.ocr_file(path)
+    except ocr.OcrUnavailable as exc:
+        raise ExtractionError(str(exc)) from exc
+    if not sections:
+        raise ExtractionError("No text found in image")
+    return [("image text", text) for _, text in sections]
 
 
 def _docx(path: Path, max_chars: int) -> list[Section]:

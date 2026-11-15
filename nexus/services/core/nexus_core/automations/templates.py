@@ -14,6 +14,7 @@ TEMPLATES: list[dict[str, Any]] = [
         "actions": [
             {"type": "agent_task", "agent_id": "chief",
              "prompt": "Prepare my morning briefing for {{date}}. Review my recent tasks and reviewed memories (projects, open tasks, decisions). "
+                       "If the calendar and reminders tools work, include today's events and reminders that are due; if they are turned off, skip them silently. "
                        "Give: 1) top 3 priorities, 2) anything blocked or failed, 3) a suggested plan for the day. Keep it under 250 words."},
             {"type": "write_file", "path": "briefings/{{date}}-morning.md", "content": "{{previous.output}}"},
             {"type": "notify", "title": "Morning briefing ready", "body": "{{previous.output|truncate:180}}"},
