@@ -378,12 +378,14 @@ class TaskBody(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=50_000)
     runtime: str | None = None
     conversation_id: str | None = None
+    project_id: str | None = None
 
 
 @router.post("/agents/{agent_id}/tasks")
 async def submit_task(agent_id: str, body: TaskBody, st: AppState = Depends(get_state)) -> dict[str, Any]:
     try:
-        return st.agents.submit(agent_id, body.prompt, runtime=body.runtime, conversation_id=body.conversation_id)
+        return st.agents.submit(agent_id, body.prompt, runtime=body.runtime, conversation_id=body.conversation_id,
+                                project_id=body.project_id)
     except Exception as exc:  # noqa: BLE001
         raise _http(exc) from exc
 

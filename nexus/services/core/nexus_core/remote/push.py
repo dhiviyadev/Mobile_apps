@@ -70,6 +70,7 @@ class PushService:
         self.key_path = secrets_dir / "vapid_private.pem"
         self._vapid: Any = None
         self.deliver: Callable[[dict[str, Any], str, Any], int] = _deliver  # tests replace this
+        self._announced: dict[str, None] = {}  # finished tasks already pushed (a task can be updated again later)
 
     @property
     def enabled(self) -> bool:
@@ -165,6 +166,11 @@ class PushService:
             await self.send(d.get("title") or "NEXUS", d.get("body") or "", tag=d.get("id"))
         elif topic == "task.updated" and d.get("kind") == "agent" and d.get("status") in ("completed", "failed") \
                 and not d.get("automation_run_id"):
+            if d.get("id") in self._announced:
+                return
+            self._announced[d.get("id") or ""] = None
+            while len(self._announced) > 500:
+                self._announced.pop(next(iter(self._announced)))
             done = d["status"] == "completed"
             await self.send("Task finished" if done else "Task failed", d.get("title") or "", url="/m/#tasks", tag=d.get("id"))
 

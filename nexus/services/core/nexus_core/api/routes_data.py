@@ -154,17 +154,19 @@ class MemoryBody(BaseModel):
     category: str
     content: str = Field(..., min_length=1, max_length=4000)
     pinned: bool = False
+    project_id: str | None = None
 
 
 @router.get("/memories")
-def list_memories(category: str | None = None, status: str | None = None, st: AppState = Depends(get_state)) -> list[dict[str, Any]]:
-    return st.memory.list(category=category, status=status)
+def list_memories(category: str | None = None, status: str | None = None, project_id: str | None = None,
+                  st: AppState = Depends(get_state)) -> list[dict[str, Any]]:
+    return st.memory.list(category=category, status=status, project_id=project_id)
 
 
 @router.post("/memories")
 def create_memory(body: MemoryBody, st: AppState = Depends(get_state)) -> dict[str, Any]:
     try:
-        return st.memory.create(body.category, body.content, source_type="user", pinned=body.pinned)
+        return st.memory.create(body.category, body.content, source_type="user", pinned=body.pinned, project_id=body.project_id)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -175,6 +177,7 @@ class MemoryPatch(BaseModel):
     status: str | None = None
     pinned: bool | None = None
     relevance: float | None = None
+    project_id: str | None = None  # "" removes the memory from its project
 
 
 @router.patch("/memories/{memory_id}")
@@ -230,6 +233,7 @@ class AutomationBody(BaseModel):
     requires_approval: bool | None = None
     failure_policy: dict[str, Any] | None = None
     template: str | None = None
+    project_id: str | None = None
 
 
 @router.post("/automations")

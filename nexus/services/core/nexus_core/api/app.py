@@ -19,7 +19,7 @@ from ..app_state import AppState
 from ..config import Settings
 from ..remote.service import remote_denied
 from ..security import host_allowed, token_matches
-from . import routes_ai, routes_data, routes_devices, routes_system
+from . import routes_ai, routes_data, routes_devices, routes_extras, routes_system
 
 log = logging.getLogger(__name__)
 
@@ -107,6 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(routes_ai.router)
     app.include_router(routes_data.router)
     app.include_router(routes_devices.router)
+    app.include_router(routes_extras.router)
 
     # The phone app (built separately). Static, public: it holds no data; the API still needs a device token.
     if settings.mobile_dist.is_dir():
