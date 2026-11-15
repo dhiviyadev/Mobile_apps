@@ -21,6 +21,7 @@ from .integrations.notifications import NotificationService
 from .integrations.web import WebService
 from .knowledge import ocr
 from .knowledge.service import KnowledgeService
+from .markets.service import MarketService
 from .memory.service import MemoryService
 from .models.cloud import CloudAdapter
 from .native import helpers as native_helpers
@@ -75,6 +76,7 @@ class AppState:
         ocr.enabled = bool(self.prefs.get("knowledge.ocr"))
         self.voice = VoiceService(self.prefs, settings.data_dir / "voice")
         self.model_manager = ModelManager(self)
+        self.markets = MarketService(self)
         self.agents = AgentService(self)
         self.conversations = ConversationService(self)
         self.automations = AutomationService(self)
@@ -94,6 +96,7 @@ class AppState:
             asyncio.create_task(self.monitor.run_sampler(), name="sampler"),
             asyncio.create_task(self.updates.run_checker(), name="update-checker"),
             asyncio.create_task(self.push.run_forwarder(self.bus), name="push-forwarder"),
+            asyncio.create_task(self.markets.run_alerts(), name="price-alerts"),
         ]
 
     async def emergency_stop(self, actor: str = "user") -> dict[str, Any]:

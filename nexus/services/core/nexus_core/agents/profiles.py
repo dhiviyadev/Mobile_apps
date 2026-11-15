@@ -16,7 +16,7 @@ BUILTIN_AGENTS: list[dict[str, Any]] = [
         "description": "Plans your day, summarises, delegates and keeps track of what matters.",
         "model_category": "general",
         "tools": ["current_time", "recall_memory", "propose_memory", "search_knowledge", "list_tasks", "send_notification",
-                  "calendar_events", "list_reminders", "create_reminder", "draft_email", "web_search"],
+                  "calendar_events", "list_reminders", "create_reminder", "draft_email", "web_search", "market_data"],
         "hermes_toolsets": [],
         "system_prompt": (
             "You are the Chief of Staff inside NEXUS, a local-first personal AI operating system. "
@@ -61,7 +61,7 @@ BUILTIN_AGENTS: list[dict[str, Any]] = [
         "role": "Data & reporting",
         "description": "Analyses CSV and Excel files, extracts data, calculates and reports.",
         "model_category": "documents",
-        "tools": ["list_folder", "read_file", "search_files", "write_file", "search_knowledge"],
+        "tools": ["list_folder", "read_file", "search_files", "write_file", "search_knowledge", "market_data"],
         "hermes_toolsets": ["file"],
         "system_prompt": (
             "You are the Analyst. Work from the actual data: read files, state assumptions, show calculations and "
@@ -104,6 +104,7 @@ TOOL_UPGRADES: dict[int, dict[str, list[str]]] = {
         "chief": ["calendar_events", "list_reminders", "create_reminder", "draft_email", "web_search"],
         "researcher": ["web_search", "fetch_url"],
     },
+    3: {"chief": ["market_data"], "analyst": ["market_data"]},
 }
 PROMPT_UPGRADES: dict[int, dict[str, str]] = {
     2: {

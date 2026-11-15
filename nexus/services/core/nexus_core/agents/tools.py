@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from ..integrations.apple import AppleUnavailable
 from ..integrations.web import WebBlocked, WebDisabled
+from ..markets.service import MarketError
 from ..util import truncate
 
 if TYPE_CHECKING:
@@ -160,6 +161,13 @@ async def _draft_email(ctx: ToolContext, args: dict[str, Any]) -> Any:
         return {"error": str(exc)}
 
 
+async def _market_data(ctx: ToolContext, args: dict[str, Any]) -> Any:
+    try:
+        return await ctx.state.markets.summary(args["symbol"], args.get("range") or "6mo")
+    except MarketError as exc:
+        return {"error": str(exc)}
+
+
 TOOLS: dict[str, Tool] = {
     t.name: t
     for t in [
@@ -203,6 +211,10 @@ TOOLS: dict[str, Tool] = {
         Tool("fetch_url", "Read the text of a public web page (http/https). Only works when the user has turned web access on.",
              _obj({"url": {"type": "string"}, "max_chars": {"type": "integer"}}, ["url"]), "network", _fetch_url,
              lambda a: f"Reading {str(a.get('url', ''))[:80]}"),
+        Tool("market_data", "Look up a share, fund, index or crypto price by ticker symbol (e.g. AAPL, BTC-USD): latest price, "
+             "change, period high/low and recent closes. Read-only; you cannot place trades. Needs Markets turned on.",
+             _obj({"symbol": {"type": "string"}, "range": {"type": "string", "enum": ["1d", "5d", "1mo", "6mo", "1y", "5y"]}}, ["symbol"]),
+             "network", _market_data, lambda a: f"Checking the price of {a.get('symbol')}"),
         Tool("calendar_events", "List the user's calendar events for today and the next days (1-14). Needs Calendar access turned on.",
              _obj({"days": {"type": "integer", "description": "How many days from today, default 1"}}, []), "read", _calendar_events,
              lambda a: "Checking the calendar"),

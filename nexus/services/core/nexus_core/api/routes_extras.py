@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from ..app_state import AppState
 from ..integrations.apple import AppleUnavailable
 from ..integrations.web import WebBlocked, WebDisabled
+from ..markets.service import MarketError
 from ..permissions.approvals import EmergencyStopActive
 from ..permissions.policy import PermissionDenied
 from ..remote.push import PushError
@@ -176,3 +177,113 @@ async def add_reminder(body: ReminderBody, st: AppState = Depends(get_state)) ->
         return await st.apple.create_reminder(body.title, body.notes, body.due, actor="user", require_approval=False)
     except (AppleUnavailable, ValueError, PermissionDenied, EmergencyStopActive) as exc:
         raise _apple_error(exc) from exc
+
+
+# -- markets ----------------------------------------------------------------------
+def _market(exc: MarketError) -> HTTPException:
+    return HTTPException(400, str(exc))
+
+
+@router.get("/markets")
+async def markets_overview(st: AppState = Depends(get_state)) -> dict[str, Any]:
+    """Watchlist with latest quotes, the practice account and alerts, in one call."""
+    watch = st.markets.watchlist()
+    quotes: dict[str, Any] = {}
+    if st.markets.enabled and watch:
+        quotes = await st.markets.quotes([w["symbol"] for w in watch])
+    return {"enabled": st.markets.enabled, "watchlist": [{**w, "quote": quotes.get(w["symbol"])} for w in watch],
+            "portfolio": await st.markets.portfolio(), "alerts": st.markets.alerts(),
+            "source": "Yahoo Finance (unofficial, may be delayed)"}
+
+
+@router.get("/markets/search")
+async def markets_search(q: str, st: AppState = Depends(get_state)) -> list[dict[str, Any]]:
+    try:
+        return await st.markets.search(q)
+    except MarketError as exc:
+        raise _market(exc) from exc
+
+
+@router.get("/markets/history/{symbol}")
+async def markets_history(symbol: str, range: str = "6mo", st: AppState = Depends(get_state)) -> dict[str, Any]:  # noqa: A002
+    try:
+        return await st.markets.history(symbol, range)
+    except MarketError as exc:
+        raise _market(exc) from exc
+
+
+class WatchBody(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=15)
+
+
+@router.post("/markets/watchlist")
+async def markets_watch(body: WatchBody, st: AppState = Depends(get_state)) -> dict[str, Any]:
+    try:
+        return await st.markets.watch(body.symbol)
+    except MarketError as exc:
+        raise _market(exc) from exc
+
+
+@router.delete("/markets/watchlist/{symbol}")
+def markets_unwatch(symbol: str, st: AppState = Depends(get_state)) -> dict[str, Any]:
+    try:
+        st.markets.unwatch(symbol)
+    except MarketError as exc:
+        raise _market(exc) from exc
+    return {"removed": symbol.upper()}
+
+
+class OrderBody(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=15)
+    side: str
+    quantity: float
+
+
+@router.post("/markets/orders")
+async def markets_order(body: OrderBody, st: AppState = Depends(get_state)) -> dict[str, Any]:
+    """A practice order: pretend money, filled at the latest real price. Never a real trade."""
+    try:
+        st.approvals.ensure_not_halted()
+        return await st.markets.order(body.symbol, body.side, body.quantity)
+    except MarketError as exc:
+        raise _market(exc) from exc
+    except EmergencyStopActive as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@router.get("/markets/orders")
+def markets_orders(limit: int = 50, st: AppState = Depends(get_state)) -> list[dict[str, Any]]:
+    return st.markets.orders(limit)
+
+
+class ResetBody(BaseModel):
+    cash: float = 100_000
+    currency: str = "USD"
+
+
+@router.post("/markets/account/reset")
+def markets_reset(body: ResetBody, st: AppState = Depends(get_state)) -> dict[str, Any]:
+    try:
+        return st.markets.reset_account(body.cash, body.currency)
+    except MarketError as exc:
+        raise _market(exc) from exc
+
+
+class AlertBody(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=15)
+    direction: str
+    price: float
+
+
+@router.post("/markets/alerts")
+def markets_add_alert(body: AlertBody, st: AppState = Depends(get_state)) -> dict[str, Any]:
+    try:
+        return st.markets.add_alert(body.symbol, body.direction, body.price)
+    except MarketError as exc:
+        raise _market(exc) from exc
+
+
+@router.delete("/markets/alerts/{alert_id}")
+def markets_remove_alert(alert_id: str, st: AppState = Depends(get_state)) -> dict[str, Any]:
+    st.markets.remove_alert(alert_id)
+    return {"removed": alert_id}

@@ -60,6 +60,7 @@ async def bootstrap(st: AppState = Depends(get_state)) -> dict[str, Any]:
         "cloud": st.cloud.status(),
         "projects": st.projects.list(),
         "web": {"enabled": st.web.enabled},
+        "markets": {"enabled": st.markets.enabled},
         "apple": st.apple.status(),
         # People who already use NEXUS never see the first-run guide.
         "onboarding": {"completed": bool(st.prefs.get("onboarding.completed"))
@@ -181,7 +182,7 @@ def patch_settings(body: SettingsPatch, st: AppState = Depends(get_state)) -> di
         from ..knowledge import ocr
 
         ocr.enabled = bool(body.values["knowledge.ocr"])
-    sensitive = [k for k in body.values if k.startswith(("cloud.", "web.", "integrations.", "remote.push"))]
+    sensitive = [k for k in body.values if k.startswith(("cloud.", "web.", "integrations.", "remote.push", "markets."))]
     if sensitive:
         st.audit.record("user", "settings.cloud", ",".join(sensitive), "updated", values={k: body.values[k] for k in sensitive})
     st.bus.publish("settings.updated", {"keys": list(body.values)})

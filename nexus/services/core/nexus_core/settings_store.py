@@ -55,6 +55,8 @@ DEFAULTS: dict[str, Any] = {
     "integrations.calendar": False,
     "integrations.reminders": False,
     "integrations.mail": False,
+    # Markets: price data from a public service (off: nothing is requested)
+    "markets.enabled": False,
     # First-run setup
     "onboarding.completed": False,
     # In-app updates (checking only; installing always needs a click)
