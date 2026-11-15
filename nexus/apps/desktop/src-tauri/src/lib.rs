@@ -263,6 +263,7 @@ pub fn run() {
             let handle = app.handle().clone();
             let state = app.state::<CoreProcess>();
             *state.launcher.lock().unwrap() = core::load_launcher(app.path().app_config_dir().ok());
+            *state.resources.lock().unwrap() = app.path().resource_dir().ok();
             core::ensure_running(&state);
             register_shortcuts(&handle)?;
             build_tray(&handle)?;

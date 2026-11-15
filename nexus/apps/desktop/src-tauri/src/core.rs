@@ -3,6 +3,9 @@
 //! * If the core is already running (e.g. via the LaunchAgent), the shell just connects.
 //! * Otherwise it starts `python -m nexus_core` using the paths recorded by
 //!   `scripts/setup.sh` in `<app config dir>/launcher.json`, and stops it on quit.
+//! * A self-contained build carries the core inside the app (`Resources/core/nexus-core`,
+//!   made by `scripts/build-standalone.sh`); that copy is used when present, so the
+//!   app needs no Python, checkout or setup on the Mac it runs on.
 //! * The API token is read from `<data dir>/secrets/api_token` (0600) and handed
 //!   only to this app's own webviews.
 
@@ -32,6 +35,14 @@ pub struct CoreProcess {
     pub child: Mutex<Option<Child>>,
     pub launcher: Mutex<Launcher>,
     pub last_error: Mutex<Option<String>>,
+    /// The app's resource directory (where a bundled core and phone app live in a self-contained build).
+    pub resources: Mutex<Option<PathBuf>>,
+}
+
+/// The core shipped inside the app, if this is a self-contained build.
+pub fn bundled_core(resources: &Option<PathBuf>) -> Option<PathBuf> {
+    let exe = resources.as_ref()?.join("core").join("nexus-core");
+    exe.is_file().then_some(exe)
 }
 
 #[derive(Serialize)]
@@ -122,18 +133,32 @@ pub fn healthy() -> bool {
 
 pub fn spawn(state: &CoreProcess) -> Result<(), String> {
     let l = state.launcher.lock().unwrap().clone();
-    let python = l.python.clone().ok_or_else(|| {
-        "No Python interpreter configured. Run scripts/setup.sh once, or start the core with scripts/dev.sh.".to_string()
-    })?;
-    let repo = l.repo_dir.clone().ok_or("repo_dir missing from launcher.json")?;
+    let resources = state.resources.lock().unwrap().clone();
     let data = data_dir(&l);
     let logs = data.join("logs");
     fs::create_dir_all(&logs).map_err(|e| e.to_string())?;
     let out = fs::File::create(logs.join("core-stdout.log")).map_err(|e| e.to_string())?;
     let err = out.try_clone().map_err(|e| e.to_string())?;
-    let child = Command::new(&python)
-        .args(["-m", "nexus_core"])
-        .current_dir(repo.join("services/core"))
+    let mut cmd;
+    let what;
+    if let (Some(exe), true) = (bundled_core(&resources), std::env::var_os("NEXUS_PYTHON").is_none()) {
+        // Self-contained build: run the core that ships inside the app.
+        what = exe.display().to_string();
+        cmd = Command::new(&exe);
+        cmd.current_dir(&data);
+        if let Some(mobile) = resources.as_ref().map(|r| r.join("mobile")).filter(|m| m.is_dir()) {
+            cmd.env("NEXUS_MOBILE_DIST", mobile);
+        }
+    } else {
+        let python = l.python.clone().ok_or_else(|| {
+            "No Python interpreter configured. Run scripts/setup.sh once, or start the core with scripts/dev.sh.".to_string()
+        })?;
+        let repo = l.repo_dir.clone().ok_or("repo_dir missing from launcher.json")?;
+        what = python.display().to_string();
+        cmd = Command::new(&python);
+        cmd.args(["-m", "nexus_core"]).current_dir(repo.join("services/core"));
+    }
+    let child = cmd
         // Apps opened from Finder get a minimal PATH; add the usual tool locations so the core can
         // find hermes, ffmpeg, whisper-cli, piper and tailscale like it does from Terminal.
         .env("PATH", tool_path())
@@ -145,7 +170,7 @@ pub fn spawn(state: &CoreProcess) -> Result<(), String> {
         .stdout(Stdio::from(out))
         .stderr(Stdio::from(err))
         .spawn()
-        .map_err(|e| format!("Failed to start core with {}: {e}", python.display()))?;
+        .map_err(|e| format!("Failed to start core with {what}: {e}"))?;
     *state.child.lock().unwrap() = Some(child);
     Ok(())
 }

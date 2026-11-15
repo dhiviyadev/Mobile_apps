@@ -16,6 +16,7 @@ import asyncio
 import logging
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -63,6 +64,10 @@ class UpdateService:
     async def check(self, fetch: bool = True) -> dict[str, Any]:
         st: dict[str, Any] = {"supported": False, "checked_at": time.time(), "applying": self.applying,
                               "launched_by_app": self.state.settings.launched_by_app}
+        if getattr(sys, "frozen", False):
+            st["error"] = "This is the self-contained NEXUS app. To update it, install a newer build."
+            self.status = st
+            return st
         try:
             await self._git("rev-parse", "--is-inside-work-tree", timeout=10)
         except (UpdateError, OSError) as exc:

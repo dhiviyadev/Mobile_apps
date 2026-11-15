@@ -9,6 +9,8 @@ __pycache__/
 # Node / build
 node_modules/
 dist/
+/build/
+apps/desktop/src-tauri/resources/
 apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/
 apps/desktop/src-tauri/binaries/
