@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity, ArrowUpCircle, Bell, Loader2, Bot, BookOpen, Command, Home, MessageSquare, OctagonX, Play, Search, Settings, Sparkles, Workflow,
+  Activity, ArrowUpCircle, Bell, Loader2, Bot, BookOpen, Command, FolderKanban, Home, MessageSquare, OctagonX, Play, Search, Settings, Sparkles, Workflow,
 } from "lucide-react";
 import { useCore, activeTasks, EMPTY } from "@/stores/core";
 import { useChat } from "@/stores/chat";
@@ -10,14 +10,16 @@ import type { Workspace } from "@/lib/types";
 import { cls, relTime } from "@/lib/format";
 import { Badge, Button, Dot, IconButton, Kbd } from "./ui";
 import { Orb, useOrbState } from "./Orb";
+import { PROJECT_COLORS } from "@/lib/projectColors";
 
 export const NAV: { id: Workspace; label: string; icon: typeof Home; key: string }[] = [
   { id: "home", label: "Home", icon: Home, key: "1" },
   { id: "chat", label: "Chat", icon: MessageSquare, key: "2" },
-  { id: "agents", label: "Agents", icon: Bot, key: "3" },
-  { id: "knowledge", label: "Knowledge", icon: BookOpen, key: "4" },
-  { id: "automations", label: "Automations", icon: Workflow, key: "5" },
-  { id: "system", label: "System", icon: Activity, key: "6" },
+  { id: "projects", label: "Projects", icon: FolderKanban, key: "3" },
+  { id: "agents", label: "Agents", icon: Bot, key: "4" },
+  { id: "knowledge", label: "Knowledge", icon: BookOpen, key: "5" },
+  { id: "automations", label: "Automations", icon: Workflow, key: "6" },
+  { id: "system", label: "System", icon: Activity, key: "7" },
 ];
 
 export function Sidebar() {
@@ -84,15 +86,32 @@ export function Sidebar() {
 }
 
 function RecentChats() {
-  const conversations = useChat((s) => s.conversations);
+  const all = useChat((s) => s.conversations);
+  const projectId = useCore((s) => s.projectId);
+  const project = useCore((s) => s.boot?.projects?.find((p) => p.id === s.projectId));
+  const setProject = useCore((s) => s.setProject);
+  const conversations = projectId ? all.filter((c) => c.project_id === projectId) : all;
   const open = useChat((s) => s.open);
   const activeId = useChat((s) => s.activeId);
   const setWorkspace = useCore((s) => s.setWorkspace);
   const workspace = useCore((s) => s.workspace);
-  if (!conversations.length) return null;
+  if (!conversations.length && !project) return null;
   return (
     <div className="mt-5 min-h-0 flex-1 overflow-y-auto px-2.5">
-      <p className="px-2.5 pb-1.5 text-[10.5px] font-medium uppercase tracking-[0.1em] text-muted">Recent</p>
+      {project ? (
+        <div className="mb-1.5 flex items-center gap-2 px-2.5">
+          <span className="h-2 w-2 flex-none rounded-full" style={{ background: PROJECT_COLORS[project.color] ?? PROJECT_COLORS.silver }} />
+          <button className="min-w-0 flex-1 truncate text-left text-[11.5px] font-medium text-fg-2 hover:text-fg" title="Open project" onClick={() => setWorkspace("projects")}>
+            {project.name}
+          </button>
+          <button className="text-[10.5px] text-muted hover:text-fg-2" title="Show all chats" onClick={() => setProject(null)}>
+            All chats
+          </button>
+        </div>
+      ) : (
+        <p className="px-2.5 pb-1.5 text-[10.5px] font-medium uppercase tracking-[0.1em] text-muted">Recent</p>
+      )}
+      {project && !conversations.length && <p className="px-3 text-[11.5px] text-muted">No chats in this project yet.</p>}
       {conversations.slice(0, 12).map((c) => (
         <button
           key={c.id}

@@ -102,6 +102,12 @@ export const api = {
     if (!res.ok) throw new ApiError(res.status, detailMessage(safeJson(await res.text()), res.status));
     return res.blob();
   },
+  getBlob: async (path: string): Promise<Blob> => {
+    const c = await connection();
+    const res = await fetch(`${c.baseUrl}${path}`, { headers: await headers(false) });
+    if (!res.ok) throw new ApiError(res.status, `Request failed (${res.status})`);
+    return res.blob();
+  },
   text: async (path: string): Promise<string> => {
     const c = await connection();
     const res = await fetch(`${c.baseUrl}${path}`, { headers: await headers(false) });

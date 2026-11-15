@@ -61,7 +61,10 @@ async def bootstrap(st: AppState = Depends(get_state)) -> dict[str, Any]:
         "projects": st.projects.list(),
         "web": {"enabled": st.web.enabled},
         "apple": st.apple.status(),
-        "onboarding": {"completed": bool(st.prefs.get("onboarding.completed"))},
+        # People who already use NEXUS never see the first-run guide.
+        "onboarding": {"completed": bool(st.prefs.get("onboarding.completed"))
+                       or bool(st.db.query_one("SELECT 1 AS x FROM conversations LIMIT 1"))
+                       or bool(st.db.query_one("SELECT 1 AS x FROM folders LIMIT 1"))},
         "update": {"available": bool(st.updates.status.get("available")), "behind": st.updates.status.get("behind", 0),
                    "applying": st.updates.applying},
     }

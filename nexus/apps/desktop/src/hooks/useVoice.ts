@@ -6,7 +6,7 @@ import { useCore } from "@/stores/core";
 export type VoicePhase = "idle" | "recording" | "transcribing" | "error";
 
 /** Push-to-talk: start() opens the mic, stop() closes it and returns the local transcription. */
-export function useVoice(onTranscript: (text: string) => void) {
+export function useVoice(onTranscript: (text: string) => void, onEmpty?: () => void) {
   const [phase, setPhase] = useState<VoicePhase>("idle");
   const [level, setLevel] = useState(0);
   const [wave, setWave] = useState<Uint8Array | null>(null);
@@ -16,17 +16,24 @@ export function useVoice(onTranscript: (text: string) => void) {
   const setListening = useCore((s) => s.setListening);
   const cb = useRef(onTranscript);
   cb.current = onTranscript;
+  const emptyCb = useRef(onEmpty);
+  emptyCb.current = onEmpty;
+  const stopRef = useRef<() => Promise<void>>(async () => undefined);
 
   useEffect(() => () => rec.current?.cancel(), []);
 
-  const start = useCallback(async () => {
+  /** @param autoStop hands-free: stop by itself when the speaker goes quiet */
+  const start = useCallback(async (autoStop = false) => {
     setError(null);
     setPreview("");
     stopPlayback();
-    const r = new Recorder((l, w) => {
-      setLevel(l);
-      setWave(w);
-    });
+    const r = new Recorder(
+      (l, w) => {
+        setLevel(l);
+        setWave(w);
+      },
+      autoStop ? () => void stopRef.current() : undefined,
+    );
     rec.current = r;
     try {
       await r.start();
@@ -46,6 +53,7 @@ export function useVoice(onTranscript: (text: string) => void) {
     rec.current = null;
     if (!out) {
       setPhase("idle");
+      emptyCb.current?.();
       return;
     }
     setPhase("transcribing");
@@ -54,6 +62,7 @@ export function useVoice(onTranscript: (text: string) => void) {
       setPreview(res.text);
       setPhase("idle");
       if (res.text.trim()) cb.current(res.text.trim());
+      else emptyCb.current?.();
     } catch (e) {
       setPhase("error");
       setError((e as Error).message);
@@ -67,6 +76,7 @@ export function useVoice(onTranscript: (text: string) => void) {
     setPhase("idle");
   }, [setListening]);
 
+  stopRef.current = stop;
   const toggle = useCallback(() => (phase === "recording" ? stop() : start()), [phase, start, stop]);
 
   return { phase, level, wave, error, preview, start, stop, cancel, toggle };

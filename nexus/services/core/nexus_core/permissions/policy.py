@@ -143,9 +143,14 @@ class PermissionService:
     def update_folder(self, folder_id: str, **fields: Any) -> dict[str, Any]:
         allowed = {"label", "project", "can_read", "can_write", "can_execute", "index_enabled"}
         sets = {k: (int(v) if isinstance(v, bool) else v) for k, v in fields.items() if k in allowed and v is not None}
+        if "project" in sets:
+            sets["project"] = str(sets["project"]).strip() or None  # "" unlinks the folder from its project
         if sets:
             cols = ", ".join(f"{k} = ?" for k in sets)
             self.db.execute(f"UPDATE folders SET {cols} WHERE id = ?", (*sets.values(), folder_id))
+            if "project" in sets:
+                # Already-indexed documents follow their folder straight away (no re-index needed).
+                self.db.execute("UPDATE documents SET project = ? WHERE folder_id = ?", (sets["project"], folder_id))
             folder = self.get_folder(folder_id)
             self.audit.record("user", "folder.update", folder["path"] if folder else folder_id, "updated", **sets)
         folder = self.get_folder(folder_id)

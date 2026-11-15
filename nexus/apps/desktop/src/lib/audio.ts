@@ -1,6 +1,10 @@
 /** Push-to-talk recording with a live level meter, and interruptible playback.
  * The microphone is opened only while recording and released immediately after. */
 
+const SPEECH_LEVEL = 0.12; // above typical room noise after the browser's noise suppression
+const END_OF_SPEECH_MS = 1500;
+const NO_SPEECH_MS = 8000;
+
 export class Recorder {
   private stream: MediaStream | null = null;
   private recorder: MediaRecorder | null = null;
@@ -8,8 +12,20 @@ export class Recorder {
   private ctx: AudioContext | null = null;
   private raf = 0;
   private cancelled = false;
+  private startedAt = 0;
+  private lastVoice = 0;
+  private fired = false;
+  /** True once something louder than room noise was picked up. */
+  heardSpeech = false;
 
-  constructor(private onLevel: (level: number, waveform: Uint8Array) => void) {}
+  /**
+   * @param onLevel live level (0..1) and waveform for the meter
+   * @param onSilence hands-free mode: called once when the speaker stops talking (or never starts)
+   */
+  constructor(
+    private onLevel: (level: number, waveform: Uint8Array) => void,
+    private onSilence?: () => void,
+  ) {}
 
   get active(): boolean {
     return this.recorder?.state === "recording";
@@ -26,12 +42,29 @@ export class Recorder {
     source.connect(analyser);
     const data = new Uint8Array(analyser.frequencyBinCount);
     const wave = new Uint8Array(analyser.fftSize);
+    this.startedAt = this.lastVoice = performance.now();
+    this.heardSpeech = false;
+    this.fired = false;
     const tick = () => {
       analyser.getByteFrequencyData(data);
       analyser.getByteTimeDomainData(wave);
       let sum = 0;
       for (const v of data) sum += v;
-      this.onLevel(Math.min(1, sum / data.length / 90), wave);
+      const level = Math.min(1, sum / data.length / 90);
+      this.onLevel(level, wave);
+      if (this.onSilence && !this.fired) {
+        const now = performance.now();
+        if (level > SPEECH_LEVEL) {
+          this.heardSpeech = true;
+          this.lastVoice = now;
+        }
+        const finished = this.heardSpeech && now - this.lastVoice > END_OF_SPEECH_MS;
+        const nothing = !this.heardSpeech && now - this.startedAt > NO_SPEECH_MS;
+        if (finished || nothing) {
+          this.fired = true;
+          this.onSilence();
+        }
+      }
       this.raf = requestAnimationFrame(tick);
     };
     tick();
@@ -51,7 +84,8 @@ export class Recorder {
         const type = rec.mimeType || "audio/webm";
         const blob = new Blob(this.chunks, { type });
         this.release();
-        resolve(this.cancelled || blob.size < 800 ? null : { blob, filename: type.includes("mp4") ? "speech.m4a" : "speech.webm" });
+        const silent = Boolean(this.onSilence) && !this.heardSpeech; // hands-free: nothing was said
+        resolve(this.cancelled || silent || blob.size < 800 ? null : { blob, filename: type.includes("mp4") ? "speech.m4a" : "speech.webm" });
       };
       rec.stop();
     });

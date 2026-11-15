@@ -9,18 +9,20 @@ import { Orb } from "@/components/Orb";
 import { QRCode } from "@/components/QRCode";
 import { applyAppearance, DEFAULT_TRANSPARENCY, type Material, type Motion } from "@/components/Ambient";
 import { HermesCard } from "./Agents";
+import { GetModels, WebAndApps } from "./SettingsExtras";
 import { speak } from "@/hooks/useVoice";
 import { invoke, isTauri } from "@/lib/tauri";
 import { bytes, cls, relTime } from "@/lib/format";
 
 type Values = Record<string, unknown>;
-type Section = "general" | "appearance" | "phone" | "updates" | "models" | "hermes" | "cloud" | "voice" | "scripts" | "security" | "backup";
+type Section = "general" | "appearance" | "web" | "phone" | "updates" | "models" | "hermes" | "cloud" | "voice" | "scripts" | "security" | "backup";
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: "general", label: "General" },
   { id: "appearance", label: "Appearance" },
-  { id: "phone", label: "Phone" },
   { id: "models", label: "Models" },
+  { id: "web", label: "Web & apps" },
+  { id: "phone", label: "Phone" },
   { id: "hermes", label: "Hermes" },
   { id: "cloud", label: "Cloud (optional)" },
   { id: "voice", label: "Voice" },
@@ -67,7 +69,8 @@ export function Settings() {
         <SectionTitle title={SECTIONS.find((s) => s.id === section)!.label} />
         {section === "general" && <General values={values} set={set} stat={stat} />}
         {section === "appearance" && <Appearance values={values} set={set} />}
-        {section === "phone" && <Phone />}
+        {section === "web" && <WebAndApps values={values} set={set} />}
+        {section === "phone" && <Phone values={values} set={set} />}
         {section === "updates" && <Updates values={values} set={set} />}
         {section === "models" && <Models values={values} set={set} />}
         {section === "hermes" && <Hermes />}
@@ -212,7 +215,7 @@ interface RemoteStatus {
   devices: { id: string; name: string; created_at: string; last_seen_at: string | null; last_ip: string | null; revoked: number }[];
 }
 
-function Phone() {
+function Phone({ values, set }: { values: Values; set: SetFn }) {
   const [st, setSt] = useState<RemoteStatus | null>(null);
   const [host, setHost] = useState("");
   const [code, setCode] = useState<{ code: string; expires_in: number } | null>(null);
@@ -293,6 +296,14 @@ function Phone() {
             </Button>
           </div>
         )}
+      </Card>
+      <Card title="Notifications on your phone">
+        <Row
+          label="Allow phone notifications"
+          hint="When a paired phone turns notifications on, it is told about approvals, finished tasks and alerts. Messages are short and encrypted so only your phone can read them; they travel through Apple's or Google's notification service."
+        >
+          <Toggle checked={values["remote.push"] !== false} onChange={(v) => void set("remote.push", v)} />
+        </Row>
       </Card>
       <Card title="Paired devices">
         {st.devices.length === 0 && <p className="text-[12.5px] text-muted">No phones paired yet.</p>}
@@ -473,6 +484,7 @@ function Models({ values, set }: { values: Values; set: SetFn }) {
   return (
     <div className="space-y-4">
       {!m.online && <Card><p className="text-[12.5px] text-danger">{m.error}</p><p className="mt-1 text-[12px] text-muted">Start Ollama (open the Ollama app or run `ollama serve`).</p></Card>}
+      <GetModels onChanged={load} />
       <Card title="Installed models (read from Ollama)">
         {m.installed.map((x) => (
           <div key={x.name} className="flex items-center gap-3 border-b border-line-soft py-2 last:border-0">

@@ -155,7 +155,8 @@ export function MiniApp() {
             onSend={async (text, opts) => {
               if (!expanded) setExp(true);
               const msg = await send(text, opts);
-              if (msg && ttsEnabled) void speak(msg.content).catch(() => undefined);
+              if (msg && ttsEnabled && !opts.handsFree) void speak(msg.content).catch(() => undefined);
+              return msg;
             }}
           />
         </div>

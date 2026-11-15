@@ -20,10 +20,12 @@ import { Knowledge } from "@/workspaces/Knowledge";
 import { Automations } from "@/workspaces/Automations";
 import { System } from "@/workspaces/System";
 import { Settings } from "@/workspaces/Settings";
+import { Projects } from "@/workspaces/Projects";
+import { Onboarding } from "@/workspaces/Onboarding";
 import type { Workspace } from "@/lib/types";
 
 const TITLES: Record<Workspace, string> = {
-  home: "Command Centre", chat: "Chat", agents: "Agents", knowledge: "Knowledge", automations: "Automations", system: "System", settings: "Settings",
+  home: "Command Centre", chat: "Chat", projects: "Projects", agents: "Agents", knowledge: "Knowledge", automations: "Automations", system: "System", settings: "Settings",
 };
 
 export function App() {
@@ -112,6 +114,7 @@ export function App() {
             <ErrorBoundary area={`workspace:${workspace}`}>
               {workspace === "home" && <Home />}
               {workspace === "chat" && <Chat />}
+              {workspace === "projects" && <Projects />}
               {workspace === "agents" && <Agents />}
               {workspace === "knowledge" && <Knowledge />}
               {workspace === "automations" && <Automations />}
@@ -124,6 +127,7 @@ export function App() {
       <TaskDrawer />
       <ApprovalStack />
       <CommandPalette />
+      <Onboarding />
     </div>
     </>
   );

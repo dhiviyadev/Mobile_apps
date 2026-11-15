@@ -54,6 +54,50 @@ export interface Conversation {
   updated_at: string;
   archived: number;
   message_count?: number;
+  project_id?: string | null;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  color: string;
+  archived: boolean;
+  created_at: string;
+  updated_at: string;
+  counts: { conversations: number; memories: number; automations: number; folders: number; documents: number };
+}
+
+export interface CatalogModel {
+  name: string;
+  label: string;
+  size_gb: number;
+  role: string;
+  note: string;
+  vision?: boolean;
+  installed: boolean;
+  fit: "fits" | "tight" | "too_big";
+}
+
+export interface ModelPull {
+  model: string;
+  status: string;
+  percent: number | null;
+  completed?: number;
+  total?: number;
+  error?: string | null;
+  done?: boolean;
+  task_id?: string;
+}
+
+export interface CalendarEvent {
+  title: string;
+  start: string;
+  end: string;
+  all_day: boolean;
+  calendar: string;
+  location: string;
 }
 
 export interface Source {
@@ -261,6 +305,10 @@ export interface Bootstrap {
   memory: { proposed: number };
   voice: VoiceStatus;
   update: { available: boolean; behind: number; applying: boolean };
+  projects?: Project[];
+  web?: { enabled: boolean };
+  apple?: { available: boolean; calendar: boolean; reminders: boolean; mail: boolean };
+  onboarding?: { completed: boolean };
   cloud: { enabled: boolean; provider: string; model: string; has_key: boolean; allow_documents: boolean; keychain_available: boolean };
 }
 
@@ -291,4 +339,4 @@ export interface SystemSnapshot {
   history: { ts: number; cpu_percent: number; memory_percent: number; memory_used: number; swap_used: number; pressure: string | null }[];
 }
 
-export type Workspace = "home" | "chat" | "agents" | "knowledge" | "automations" | "system" | "settings";
+export type Workspace = "home" | "chat" | "projects" | "agents" | "knowledge" | "automations" | "system" | "settings";

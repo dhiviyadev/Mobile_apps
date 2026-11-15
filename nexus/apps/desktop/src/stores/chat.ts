@@ -10,6 +10,10 @@ export interface Attachment {
   size: number;
   preview: string;
   has_text: boolean;
+  image?: boolean;
+  mime?: string;
+  /** Local preview for images (object URL), never sent to the core. */
+  thumb?: string;
 }
 
 interface Streaming {
@@ -31,6 +35,8 @@ export interface SendOptions {
   attachments?: Attachment[];
   allowCloud?: boolean;
   useKnowledge?: boolean;
+  /** Sent from hands-free voice: the composer reads the reply aloud itself. */
+  handsFree?: boolean;
 }
 
 interface ChatState {
@@ -40,6 +46,8 @@ interface ChatState {
   streaming: Streaming | null;
   pendingTask: Record<string, string>; // conversationId -> running agent task id
   error: string | null;
+  /** A non-fatal note about the last reply (e.g. the model can't see images). */
+  notice: string | null;
   lastMetrics: Metrics | null;
   loadList: (q?: string) => Promise<void>;
   open: (id: string | null) => Promise<void>;
@@ -91,6 +99,7 @@ export const useChat = create<ChatState>((set, get) => {
     controller = new AbortController();
     set({
       error: null,
+      notice: null,
       streaming: { conversationId: cid, generationId: null, text: "", thinking: "", status: "starting", model: null, sources: [], memories: [], userText },
     });
     let final: Message | null = null;
@@ -127,6 +136,9 @@ export const useChat = create<ChatState>((set, get) => {
               final = ev.message as Message;
               set({ lastMetrics: (ev.metrics as Metrics) ?? null });
               break;
+            case "warning":
+              set({ notice: ev.text as string });
+              break;
             case "error":
               set({ error: ev.error as string });
               break;
@@ -152,6 +164,7 @@ export const useChat = create<ChatState>((set, get) => {
     streaming: null,
     pendingTask: {},
     error: null,
+    notice: null,
     lastMetrics: null,
 
     loadList: async (q) => {
@@ -166,12 +179,12 @@ export const useChat = create<ChatState>((set, get) => {
 
     open: async (id) => {
       wire();
-      set({ activeId: id, error: null });
+      set({ activeId: id, error: null, notice: null });
       if (id) await reload(id).catch((e: ApiError) => set({ error: e.message }));
     },
 
     newConversation: async () => {
-      const conv = await api.post<Conversation>("/api/conversations", {});
+      const conv = await api.post<Conversation>("/api/conversations", { project_id: useCore.getState().projectId });
       set((s) => ({ conversations: [conv, ...s.conversations], activeId: conv.id, messages: { ...s.messages, [conv.id]: [] } }));
       return conv.id;
     },

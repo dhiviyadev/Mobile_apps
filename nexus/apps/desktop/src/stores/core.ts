@@ -22,6 +22,9 @@ interface CoreState {
   paletteOpen: boolean;
   listening: boolean;
   speaking: boolean;
+  /** The project new conversations are filed under (null = no project). */
+  projectId: string | null;
+  setProject: (id: string | null) => void;
   setWorkspace: (w: Workspace) => void;
   openSettings: (section: string) => void;
   setPalette: (open: boolean) => void;
@@ -37,6 +40,14 @@ interface CoreState {
 }
 
 let initialised = false;
+
+function storedProject(): string | null {
+  try {
+    return localStorage.getItem("nexus.project");
+  } catch {
+    return null;
+  }
+}
 
 export const useCore = create<CoreState>((set, get) => ({
   status: "connecting",
@@ -55,6 +66,16 @@ export const useCore = create<CoreState>((set, get) => ({
   paletteOpen: false,
   listening: false,
   speaking: false,
+  projectId: storedProject(),
+  setProject: (projectId) => {
+    try {
+      if (projectId) localStorage.setItem("nexus.project", projectId);
+      else localStorage.removeItem("nexus.project");
+    } catch {
+      /* storage unavailable */
+    }
+    set({ projectId });
+  },
   setWorkspace: (workspace) => set({ workspace }),
   openSettings: (settingsSection) => set({ workspace: "settings", settingsSection }),
   setPalette: (paletteOpen) => set({ paletteOpen }),
@@ -94,7 +115,7 @@ export const useCore = create<CoreState>((set, get) => ({
     bus.on<Notification>("notification.created", (e) => set((s) => ({ notifications: [e.data, ...s.notifications].slice(0, 30) })));
     bus.on<{ halted: boolean }>("system.halted", (e) => set({ halted: e.data.halted }));
     bus.on("system.update", () => scheduleRefresh(get));
-    for (const t of ["automation", "agent", "conversation", "knowledge", "memory", "settings"]) bus.on(t, () => scheduleRefresh(get));
+    for (const t of ["automation", "agent", "conversation", "knowledge", "memory", "settings", "project"]) bus.on(t, () => scheduleRefresh(get));
     await get().refresh();
     void bus.connect();
   },
@@ -104,7 +125,10 @@ export const useCore = create<CoreState>((set, get) => ({
       const boot = await api.get<Bootstrap>("/api/bootstrap");
       const tasks: Record<string, Task> = { ...get().tasks };
       for (const t of [...boot.tasks.recent, ...boot.tasks.active]) tasks[t.id] = t;
-      set({ boot, status: "online", error: null, halted: boot.halted, approvals: boot.approvals, notifications: boot.notifications, tasks });
+      // A project that was deleted elsewhere can no longer be the current one.
+      const pid = get().projectId;
+      const projectId = pid && boot.projects && !boot.projects.some((p) => p.id === pid) ? null : pid;
+      set({ boot, status: "online", error: null, halted: boot.halted, approvals: boot.approvals, notifications: boot.notifications, tasks, projectId });
     } catch (e) {
       const err = e as ApiError;
       if (err.status === 401) set({ status: "unauthorized", error: "The local API token was rejected." });
