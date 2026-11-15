@@ -21,15 +21,18 @@ workflow automations and controlled macOS integration — with no cloud dependen
 | Area | What you get |
 |---|---|
 | **Home** | Contextual greeting, ambient orb, central prompt with voice, recent tasks, active agents, scheduled automations, folders, service health |
-| **Chat** | Streaming Markdown with code highlighting, attachments with text extraction, persistent history & search, model picker, stop / regenerate / copy / export, read-aloud, source citations, live agent execution timeline |
+| **Chat** | Streaming Markdown with code highlighting, attachments with text extraction, pictures and screenshots (analysed by a vision model, or read with on-device OCR), persistent history & search, model picker, stop / regenerate / copy / export, read-aloud, source citations, live agent execution timeline |
+| **Projects** | A space per client, course or area of life: its own instructions, chats, memories and linked folders, so answers stay on topic and searches stay inside that project's documents |
 | **Agents** | Six specialists (Chief of Staff, Researcher, Developer, Analyst, Knowledge, Automation) — configurations, not daemons. Runs on Hermes (API server or CLI) with a NEXUS-native Ollama tool-calling fallback. Status, history, tool usage, per-agent tool permissions |
-| **Knowledge** | Explicitly approved folders only; PDF, DOCX, TXT, Markdown, CSV, XLSX, JSON; SQLite FTS5 keyword search + optional local embeddings (hybrid); citations with page/sheet/line; projects; search history; re-index |
+| **Knowledge** | Explicitly approved folders only; PDF, DOCX, TXT, Markdown, CSV, XLSX, JSON, plus scanned PDFs and photos through on-device OCR; SQLite FTS5 keyword search + optional local embeddings (hybrid); citations with page/sheet/line; projects; search history; re-index |
 | **Memory** | Six categories with provenance; automatic suggestions are proposals until you approve; credential-like content is flagged; review / pin / archive / delete |
-| **Automations** | Manual, cron schedule and new-file triggers; conditions; multi-step actions (agent task, prompt, write/append file, notify, re-index, approved script); approvals, retries, history, notifications; templates (morning briefing, weekly summary, document classification, invoice extraction…) |
+| **Automations** | Manual, cron schedule and new-file triggers; conditions; multi-step actions (agent task, prompt, write/append file, notify, re-index, approved script); approvals, retries, history, notifications; templates (morning briefing, weekly summary, document classification, invoice extraction…); visual flow builder with drag-to-reorder steps |
+| **Web & apps** *(off until you switch them on)* | Agents can search and read the public web; read your Calendar and Reminders, add reminders and prepare Mail drafts (changes always ask first; NEXUS never sends email) |
+| **Models** | Download, switch and delete local models inside the app with live progress and a "will it fit this Mac" hint |
 | **System** | CPU, memory, macOS memory pressure, swap, disk, loaded models with VRAM residency, inference tok/s and TTFT from Ollama's own counters, service health, on-device model benchmark (load time, speed, tool-calling reliability) |
-| **Phone app** | Installable companion for iPhone/Android (Add to Home Screen): chat, run agents, approve or deny actions, review memories, run automations, emergency stop. Connects to your Mac over Tailscale; off until you enable it; per-device revocable keys |
-| **Floating assistant** | Separate always-on-top window, ⌥Space to toggle, ⌥⇧Space push-to-talk, expand/collapse, shares conversations and tasks with the main window |
-| **Voice** | Push-to-talk with live waveform, local transcription (MLX Whisper or whisper.cpp), local speech (macOS `say` or Piper), interrupt playback |
+| **Phone app** | Installable companion for iPhone/Android (Add to Home Screen): chat, run agents, approve or deny actions, review memories, run automations, emergency stop, optional notifications for approvals and finished tasks. Connects to your Mac over Tailscale; off until you enable it; per-device revocable keys |
+| **Floating assistant** | Separate always-on-top window, ⌥Space to toggle, ⌥⇧Space push-to-talk, ⌥⇧Q quick actions on copied text (summarise, explain, rewrite, fix grammar, translate, draft a reply), expand/collapse, shares conversations and tasks with the main window |
+| **Voice** | Hands-free conversation (talk, it answers aloud, keeps listening until you stop it) and push-to-talk with live waveform, local transcription (MLX Whisper or whisper.cpp), local speech (macOS `say` or Piper), interrupt playback |
 | **Security** | Loopback-only API with per-install token, DNS-rebinding guard, folder allowlist with separate read/write/execute, no general shell for agents, approvals for destructive actions, emergency stop, Keychain secrets, audit log, cloud off by default |
 
 ## Quick start (macOS, Apple Silicon)
@@ -41,14 +44,15 @@ git clone https://github.com/dhiviyadev/Mobile_apps.git && cd Mobile_apps/nexus
 ./scripts/dev.sh          # core service + desktop app with hot reload
 ```
 
-Then pull a model if you don't have one (see [SETUP.md](SETUP.md#choosing-models-for-24-gb)):
-
-```bash
-ollama pull qwen3:14b && ollama pull nomic-embed-text
-```
+The first time it opens, a short guide asks your name, helps you download a model (or use
+**Settings → Models → Get models** later) and lets you approve a first folder.
+See [SETUP.md](SETUP.md#choosing-models-for-24-gb) for which model to pick.
 
 Install it as a normal Mac app (appears in Applications, Launchpad and Spotlight; starts and stops
-the NEXUS core by itself): `./scripts/install-app.sh`. A distributable `.dmg`: `./scripts/build.sh`.
+the NEXUS core by itself): `./scripts/install-app.sh`.
+
+A fully self-contained app — the core and its Python runtime live inside `NEXUS.app`, so the Mac that
+runs it needs nothing but Ollama: `./scripts/build-standalone.sh` (add `--install` to put it in Applications).
 
 ## Repository layout
 
@@ -61,7 +65,7 @@ nexus/
 │   ├── nexus_core/        api, agents (Hermes adapter, native runtime), models, knowledge,
 │   │                      memory, automations, voice, permissions, integrations, tasks, system
 │   └── tests/             pytest suite
-├── scripts/               audit, setup, dev, build, restore, launchagent, dev/fake_ollama.py
+├── scripts/               audit, setup, dev, build, build-standalone, install-app, update, restore, launchagent
 ├── docs/                  audit reports, screenshots
 └── data/                  runtime data (gitignored): database, workspace, logs, secrets, backups
 ```

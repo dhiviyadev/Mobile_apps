@@ -128,3 +128,16 @@ SQLite in `data/database/nexus.db` (WAL). Migrations: numbered SQL files in
 `nexus_core/db/migrations`, tracked in `schema_migrations`. FTS5 virtual tables with triggers index
 chunks and memories. Embeddings are float32 blobs on `chunks`; `SQLiteVectorStore` implements the
 `VectorStore` protocol that a Qdrant store can replace.
+
+## Added subsystems
+
+| Module | Role |
+|---|---|
+| `models/manager.py`, `models/catalog.py` | Pull/delete models through Ollama with progress on the event bus; suggestions with a memory-fit verdict |
+| `knowledge/ocr.py`, `native/*.swift` | OCR through an Apple Vision helper (compiled once, or bundled) with a Tesseract fallback; EventKit calendar helper |
+| `integrations/web.py` | Opt-in search/fetch with SSRF checks and connection pinning |
+| `integrations/apple.py` | Opt-in Calendar/Reminders/Mail through the helper or AppleScript; approvals for anything that changes state |
+| `projects/service.py` | Projects; conversations, memories and automations carry `project_id`, folders link by project name |
+| `remote/push.py` | Web Push (VAPID) for paired phones; forwards approvals, notifications and finished agent tasks |
+| `api/routes_extras.py` | REST surface for the above |
+| Shell (`src-tauri`) | ⌥⇧Q quick actions; starts a bundled core (`Resources/core/nexus-core`) when present |

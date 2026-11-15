@@ -164,3 +164,15 @@ Static settings are environment variables (see `.env.example`); runtime preferen
 | `NEXUS_WHISPER_MODEL` | path to a ggml model for whisper.cpp |
 | `NEXUS_PIPER_VOICE` | path to a Piper `.onnx` voice |
 | `NEXUS_MOBILE_DIST` | built phone app (default `apps/desktop/dist-mobile`, served at `/m`) |
+
+## New in this version
+
+- **Models without the Terminal** — Settings → Models → *Get models*. Pick a suggestion or type any Ollama model name.
+- **Pictures** — attach or paste an image in chat. For the model to actually *see* it, choose a vision model (e.g. Gemma 4); otherwise NEXUS reads any text in the picture.
+- **Screenshot button** (next to the paperclip) — macOS will ask once for *Screen & System Audio Recording* permission.
+- **Web & apps** — Settings → Web & apps. Each switch is off by default. The first time Calendar, Reminders or Mail is used, macOS asks whether NEXUS may control that app; you can change it later in System Settings → Privacy & Security → Automation.
+- **Projects** — sidebar → Projects. Link an approved folder to a project to keep its questions inside its documents.
+- **Phone notifications** — on the phone: *Mac* tab → Notifications → Turn on. On iPhone, NEXUS must be on the Home Screen first (Share → Add to Home Screen), iOS 16.4 or later.
+- **Quick actions** — copy text anywhere (⌘C), press ⌥⇧Q, choose an action.
+- **Hands-free** — the wave button in the message box. Needs a local speech engine (Settings → Voice).
+- **Self-contained app** — `./scripts/build-standalone.sh --install` builds a NEXUS.app that carries the core inside it. Its data lives in `~/Library/Application Support/NEXUS` unless you already have a NEXUS data folder, which it keeps using.

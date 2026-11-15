@@ -66,3 +66,14 @@ agree. In browser dev mode, open `http://127.0.0.1:1420/?token=$(cat data/secret
 * Database issues: quit NEXUS, restore with `./scripts/restore.sh <backup.tar.gz>` (previous data is
   moved aside, not deleted).
 * Emergency stop stuck on? Press **Resume NEXUS** in the title bar.
+
+## Newer features
+
+- **"This model can't see images"** — pick a vision model in the chat's model menu (Settings → Models → Get models has one marked *Sees images*).
+- **Screenshot fails** — System Settings → Privacy & Security → Screen & System Audio Recording → allow NEXUS (or Terminal when running `dev.sh`), then restart NEXUS.
+- **Calendar/Reminders say macOS hasn't allowed NEXUS** — System Settings → Privacy & Security → Automation (and Calendars) → allow NEXUS. Repeating events missing? That happens when the calendar helper couldn't be built; install Xcode's command-line tools (`xcode-select --install`) and restart.
+- **Scanned PDFs still show "no text"** — OCR needs Xcode's command-line tools to build its helper once. Check `data/logs/core.log` for "could not build nexus-ocr".
+- **Web search returns nothing** — the search page layout may have changed, or the network blocks it. Agents can still read a page when given its address.
+- **No notifications on iPhone** — NEXUS must be opened from the Home Screen icon (not Safari), iOS 16.4+, and allowed in Settings → Notifications → NEXUS. Then *Mac* tab → Notifications → Turn off and on again.
+- **⌥⇧Q does nothing** — another app may own that shortcut; the shortcut works on text you've copied first.
+- **Hands-free stops by itself** — it pauses after hearing nothing twice in a row, so the microphone is never left open in a quiet room. Press the wave button again.

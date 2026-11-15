@@ -94,3 +94,20 @@ backups, emergency stop blocking chat/agents/files and denying pending approvals
 cloud disabled by default, agents unable to use tools outside their profile, and the remote-access rules (off by default, single-use/rate-limited pairing, hashed tokens, restricted role, host/origin checks, revocation).
 
 Report a vulnerability privately to the repository owner.
+
+## Web access, Apple apps, pictures and phone notifications
+
+All of these are **off until you switch them on** in Settings, and a paired phone can never switch them on.
+
+| Feature | What leaves the Mac | Safeguards |
+|---|---|---|
+| Web search / reading pages | The search phrase an agent writes (to DuckDuckGo) and requests for public pages. Never files, memories or chat history. | Only http/https on standard ports; loopback, private, link-local, Tailscale and metadata addresses are refused; the connection is pinned to the address that was checked (no DNS-rebinding window); redirects are re-checked; 2 MB cap; text only; every call is in the audit log; page text is labelled untrusted for the model. |
+| Calendar, Reminders, Mail | Nothing. | Separate switch per app plus macOS's own permission prompt. Adding a reminder and opening a draft each need your approval. There is no code path that sends email. Your text is passed to AppleScript as arguments, never pasted into script source. |
+| Pictures and screenshots | Nothing (local model). With cloud chat allowed for a message, attachments follow the existing cloud rules. | Screenshots are only taken when you press the button on the Mac; phones can't trigger them. |
+| OCR | Nothing. Runs with Apple Vision (or Tesseract). | Can be turned off in Settings → Web & apps. |
+| Phone notifications | A short title and one line, **encrypted end to end** (RFC 8291) so Apple/Google only see that a notification was sent. | Only after the phone itself turns notifications on; Mac-side master switch; subscriptions accepted only for Apple, Google, Mozilla and Microsoft push services; signing key stored 0600 in `data/secrets`. |
+| Quick actions | Nothing. | The clipboard is read only when you press ⌥⇧Q. |
+| Hands-free voice | Nothing (local transcription). | The microphone is open only while the visible hands-free indicator is on; it switches itself off after two silent listens. No wake word, no background listening. |
+
+Known limits: text from web pages can still try to mislead a model (prompt injection). NEXUS's tools
+that change things require approval regardless of what a page says, which is the real protection.

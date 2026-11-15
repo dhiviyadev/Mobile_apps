@@ -69,3 +69,11 @@ blocking `approval.request` behaviour, Hermes `stream-json` CLI output). Highlig
 `dist/`, Cargo builds the shell with LTO). Output: `NEXUS.app` and a `.dmg`. Builds are unsigned;
 sign/notarise with your Developer ID for distribution. The app starts the Python core from the
 checkout recorded in `launcher.json` (bundling Python into the `.app` is on the roadmap).
+
+## Notes for the newer subsystems
+
+- `integrations/web.py` and `integrations/apple.py` take an injectable transport / runner; tests never touch the network or macOS.
+- `remote/push.py` has an injectable `deliver`; `tests/test_upgrades.py` also encrypts a real payload with `pywebpush`.
+- Built-in agent tools added after release go in `TOOL_UPGRADES` (`agents/profiles.py`) so existing installs gain them once.
+- `scripts/dev/fake_ollama.py` supports `/api/pull`, `/api/delete` and `/api/show` for driving the model manager in a browser.
+- `scripts/build-core-binary.sh` works on Linux too and self-checks that the frozen core answers `/health`.

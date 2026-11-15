@@ -3,12 +3,29 @@
 Legend: ✅ done and tested · 🟡 implemented, needs verification on the target Mac · ⏳ pending · ⛔ blocked (reason given)
 
 > **Where this was built.** NEXUS was developed in a Linux cloud container (x86_64, no GPU, no
-> macOS). Everything marked ✅ was run and tested there: the 49-test backend suite, the frontend
+> macOS). Everything marked ✅ was run and tested there: the backend test suite (103 tests today), the frontend
 > unit tests and type checks, the Rust shell compiled with zero warnings, and the **native Tauri app
 > launched under a virtual display** — the global shortcut opened the floating assistant, a message
 > sent from it streamed a reply, and the main window updated live. Things that only exist on your
 > Mac (Apple Silicon performance, memory pressure readings, Keychain, `say`, microphone permission,
 > macOS packaging) are 🟡 until you run them there.
+
+## Upgrade set (models, vision, web, Apple apps, projects, push, hands-free, flow builder, self-contained app)
+Backend suite is now 103 tests; every ✅ below was exercised in the build environment, most of them
+also in a real browser against the running core.
+- ✅ **Model manager** — download with live progress, delete (clears routing), failed downloads reported, memory-fit hints; phones can't download or delete
+- ✅ **Pictures in chat** — image attachments, paste, thumbnails; sent to the model only when it reports vision support, otherwise a clear note and OCR text is used
+- 🟡 **Screenshot button** — uses macOS `screencapture`; needs your Mac and the Screen Recording permission
+- ✅ **OCR** — scanned PDFs and photos become searchable (tested with Tesseract on Linux) · 🟡 the Apple Vision helper (`nexus-ocr.swift`) is compiled on first use on your Mac and has **not been compiled or run yet**
+- ✅ **Web search for agents** — off by default; private/loopback/Tailscale addresses refused, connection pinned to the checked address, redirects re-checked, size caps, audited (22 tests incl. 15 blocked-target cases) · 🟡 the search-results parser was tested against a saved sample of DuckDuckGo's page layout, **not the live site** (it's blocked in the build environment)
+- ✅ **Calendar / Reminders / Mail** — off by default; reading, approval before adding a reminder or opening a draft, user text passed as arguments (never into script source), no send path at all · 🟡 the AppleScript and the EventKit helper (`nexus-cal.swift`) are **untested on macOS** — first use on your Mac is the real test
+- ✅ **Projects** — instructions, scoped memory and knowledge, rename/delete keep data, agent tasks inherit the project; UI verified end to end
+- ✅ **Phone notifications** — VAPID keys (0600), subscribe/unsubscribe, allow-listed push services only, dead subscriptions removed, Mac-side switch; real payload encryption verified · 🟡 delivery to a **real phone** (needs your iPhone with NEXUS on the Home Screen, iOS 16.4+)
+- ✅ **Quick actions (⌥⇧Q)** — shell compiles and registers the shortcut; works on text you've **copied** (reading the current selection directly would need Accessibility access, deliberately not requested) · 🟡 on macOS
+- 🟡 **Hands-free conversation** — listen → send → speak → listen loop with end-of-speech detection and auto-off after silence; needs a real microphone and speech engine, so **untested with real audio**
+- ✅ **Visual flow builder** — drag-to-reorder nodes, step palette, inline editor (drag verified in a browser)
+- ✅ **First-run guide** — name → model → folder; skipped for existing installs
+- ✅ **Self-contained app** — core frozen with PyInstaller, starts by itself, and the native desktop binary was run here and found/started the bundled core with data in Application Support · 🟡 `scripts/build-standalone.sh` on macOS (bundling, helpers, dmg). The bundled core does not include MLX Whisper; voice uses whisper.cpp if installed. Updating a self-contained app = installing a newer build.
 
 ## Phase 0 — Environment audit
 - ✅ Read-only audit script `scripts/audit.sh` (hardware, memory pressure, tools, Ollama models, Hermes config summary without secrets, ports, LaunchAgents, nearby projects) — tested on Linux
@@ -41,7 +58,7 @@ Legend: ✅ done and tested · 🟡 implemented, needs verification on the targe
 - ✅ Remote access off by default; Tailscale-served HTTPS; pairing codes (single use, 5 min, rate-limited) → per-device hashed, revocable tokens; restricted remote role; audit trail (11 tests)
 - ✅ Verified end-to-end in an emulated iPhone 15 Pro against the real core: pair → approve an automation from the phone → it ran on the Mac → its timeline shown on the phone
 - 🟡 On a real phone over Tailscale (needs your devices); iOS microphone permission and home-screen install
-- ⏳ Push notifications for pending approvals (Web Push on iOS 16.4+ home-screen apps) · native wrapper via Tauri mobile if you want App Store distribution
+- ⏳ Native wrapper via Tauri mobile if you want App Store distribution
 
 ## Phase 3 — Backend foundation
 - ✅ FastAPI core, SQLite (WAL) + migrations, REST + SSE + WebSocket events, task manager, config, rotating logs
@@ -65,26 +82,26 @@ Legend: ✅ done and tested · 🟡 implemented, needs verification on the targe
 - ✅ Local embeddings + hybrid search (SQLite vector store behind a `VectorStore` seam)
 - ✅ Memory: categories, provenance, proposals → review, sensitive-content guard, pin/archive/delete, recall into chat & agents
 - ⏳ Qdrant vector store (after validating retrieval quality on your documents)
-- ⏳ OCR for scanned PDFs; conversation auto-summaries into memory (currently on demand via the brain icon)
+- ⏳ Conversation auto-summaries into memory (currently on demand via the brain icon)
 
 ## Phase 7 — Voice
 - ✅ Push-to-talk capture with level meter/waveform, cancel, transcription preview, TTS playback with interrupt, voice selection, engine detection
 - 🟡 MLX Whisper / whisper.cpp transcription and macOS `say` — code paths need your Mac (engines not available in the build environment)
-- ⏳ Continuous conversation mode (off by design until requested)
+- ⏳ Wake word (would need an always-on microphone; not planned without an explicit request)
 
 ## Phase 8 — Automations
 - ✅ Manual / cron / file triggers, conditions, 8 action types, templating, approvals, retries with backoff, failure notifications, history, templates, structured step editor
-- ⏳ Visual drag-and-drop workflow builder (milestone after real-world use of the step editor)
+- ⏳ Branching flows (the builder is visual, the engine still runs steps top to bottom)
 
 ## Phase 9 — macOS integrations
 - ✅ Approved-folder file ops with atomic writes, backups and trash; filename search; open/reveal in Finder; launch apps (validated names, approval); approved scripts (no shell, timeout); Shortcuts list/run (approval); native notifications via `osascript` argv
 - 🟡 These macOS-specific calls were written for macOS and are untested off it
-- ⏳ Calendar, browser automation, email, clipboard workflows
+- ⏳ Browser automation; sending email (deliberately draft-only)
 
 ## Phase 10 — Production polish
 - ✅ Menu-bar tray (open, assistant, new conversation, emergency stop, quit), close-to-tray, single instance, launch-at-login toggle, app icon, backup/restore, documentation set, security review (SECURITY.md)
 - 🟡 `scripts/build.sh` → `NEXUS.app` + `.dmg` on Apple Silicon (Rust shell compiles; macOS bundling must run on a Mac)
-- ⏳ Bundle the Python core inside the `.app` (today the app runs the core from your checkout via `launcher.json`)
+- ⏳ In-app updates for the self-contained build (needs a signed download channel)
 - ⏳ Code signing & notarisation (needs your Apple Developer ID)
 
 ## Known limitations
