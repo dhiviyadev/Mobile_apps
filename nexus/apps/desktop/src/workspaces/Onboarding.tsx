@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Check, FolderPlus, ShieldCheck } from "lucide-react";
 import { api } from "@/lib/api";
@@ -12,19 +12,23 @@ const STEPS = ["Welcome", "Your assistant's brain", "Your documents", "Ready"] a
 
 /** First-run guide: name → local model → an approved folder. Shown once; every step can be skipped. */
 export function Onboarding() {
-  const done = useCore((s) => s.boot?.onboarding?.completed ?? true);
+  const completed = useCore((s) => s.boot?.onboarding?.completed);
+  // Decided once, when the app first loads: finishing a step must not close the guide half-way.
+  const [show, setShow] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (show === null && completed !== undefined) setShow(!completed);
+  }, [completed, show]);
   const boot = useCore((s) => s.boot);
   const refresh = useCore((s) => s.refresh);
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
   const [folderMsg, setFolderMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [closing, setClosing] = useState(false);
 
-  if (done || closing) return null;
+  if (!show) return null;
 
   const finish = async () => {
-    setClosing(true);
+    setShow(false);
     await api.patch("/api/settings", { values: { "onboarding.completed": true } }).catch(() => undefined);
     void refresh();
   };

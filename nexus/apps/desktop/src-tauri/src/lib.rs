@@ -69,7 +69,30 @@ fn show_main_window(app: &AppHandle, route: Option<String>) {
     }
 }
 
+/// Plain text currently on the clipboard (read only when the user presses the quick-actions shortcut
+/// or asks for it). Uses the system's own tool, so no extra permissions are involved.
+fn clipboard_text() -> String {
+    #[cfg(target_os = "macos")]
+    let attempts: &[(&str, &[&str])] = &[("/usr/bin/pbpaste", &[])];
+    #[cfg(not(target_os = "macos"))]
+    let attempts: &[(&str, &[&str])] = &[("wl-paste", &["--no-newline"]), ("xclip", &["-o", "-selection", "clipboard"])];
+    for (bin, args) in attempts {
+        if let Ok(out) = std::process::Command::new(bin).args(*args).output() {
+            if out.status.success() {
+                let text = String::from_utf8_lossy(&out.stdout);
+                return text.chars().take(20_000).collect();
+            }
+        }
+    }
+    String::new()
+}
+
 // -- commands -------------------------------------------------------------------
+
+#[tauri::command]
+fn read_clipboard() -> String {
+    clipboard_text()
+}
 
 #[tauri::command]
 async fn core_info(app: AppHandle) -> Result<CoreInfo, String> {
@@ -150,8 +173,9 @@ fn launch_at_login_status(app: AppHandle) -> bool {
 fn register_shortcuts(app: &AppHandle) -> tauri::Result<()> {
     let toggle = Shortcut::new(Some(Modifiers::ALT), Code::Space);
     let ptt = Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::Space);
+    let quick = Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::KeyQ);
     let gs = app.global_shortcut();
-    let result = gs.on_shortcuts([toggle, ptt], move |app, shortcut, event| {
+    let result = gs.on_shortcuts([toggle, ptt, quick], move |app, shortcut, event| {
         if event.state() != ShortcutState::Pressed {
             return;
         }
@@ -162,6 +186,13 @@ fn register_shortcuts(app: &AppHandle) -> tauri::Result<()> {
             show_mini(app, false);
             if let Some(w) = mini(app) {
                 let _ = w.emit("nexus://ptt", ());
+            }
+        } else if shortcut == &quick {
+            // Quick actions on whatever text the user last copied (⌘C, then ⌥⇧Q).
+            let text = clipboard_text();
+            show_mini(app, true);
+            if let Some(w) = mini(app) {
+                let _ = w.emit("nexus://quick", text);
             }
         }
     });
@@ -225,7 +256,8 @@ pub fn run() {
             set_mini_always_on_top,
             pick_folder,
             set_launch_at_login,
-            launch_at_login_status
+            launch_at_login_status,
+            read_clipboard
         ])
         .setup(|app| {
             let handle = app.handle().clone();

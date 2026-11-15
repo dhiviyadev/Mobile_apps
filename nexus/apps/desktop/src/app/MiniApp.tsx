@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Maximize2, Pin, PinOff, Plus, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, Maximize2, Pin, PinOff, Plus, X } from "lucide-react";
 import { useCore } from "@/stores/core";
 import { useChat } from "@/stores/chat";
 import { Composer } from "@/components/Composer";
@@ -12,6 +12,20 @@ import { motion } from "framer-motion";
 import { IconButton } from "@/components/ui";
 import { listen, shell } from "@/lib/tauri";
 import { speak } from "@/hooks/useVoice";
+
+/** Quick actions on copied text (⌥⇧Q). Each one becomes an ordinary local chat message. */
+export const QUICK_ACTIONS: { id: string; label: string; prompt: string }[] = [
+  { id: "summarise", label: "Summarise", prompt: "Summarise the text below in a few clear bullet points." },
+  { id: "explain", label: "Explain", prompt: "Explain the text below in plain language, as if to someone new to the subject." },
+  { id: "rewrite", label: "Rewrite clearly", prompt: "Rewrite the text below so it is clearer and more concise. Keep the meaning and tone. Reply with the rewritten text only." },
+  { id: "grammar", label: "Fix grammar", prompt: "Correct the spelling and grammar of the text below. Change nothing else. Reply with the corrected text only." },
+  { id: "translate", label: "Translate to English", prompt: "Translate the text below into natural English. Reply with the translation only." },
+  { id: "reply", label: "Draft a reply", prompt: "Write a polite, concise reply to the message below. Reply with the draft only." },
+];
+
+export function quickPrompt(action: { prompt: string }, text: string): string {
+  return `${action.prompt}\n\n"""\n${text.trim()}\n"""`;
+}
 
 /**
  * Floating mini assistant (separate Tauri window). It shares all state with the
@@ -29,6 +43,8 @@ export function MiniApp() {
   const [level, setLevel] = useState(0);
   const [wave, setWave] = useState<Uint8Array | null>(null);
   const [ptt, setPtt] = useState(0);
+  const [quick, setQuick] = useState<string | null>(null); // copied text waiting for an action ("" = nothing copied)
+  const [copied, setCopied] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const header = useRef<HTMLDivElement>(null);
   const footer = useRef<HTMLDivElement>(null);
@@ -70,8 +86,13 @@ export function MiniApp() {
         setPtt((n) => n + 1);
       }),
       listen("nexus://mini-shown", () => document.querySelector<HTMLTextAreaElement>("textarea")?.focus()),
+      listen<string>("nexus://quick", (text) => setQuick((text ?? "").trim())),
     ];
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !useCore.getState().listening && void shell.hideMini();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || useCore.getState().listening) return;
+      setQuick(null);
+      void shell.hideMini();
+    };
     window.addEventListener("keydown", onKey);
     return () => {
       offs.forEach((p) => void p.then((off) => off()));
@@ -82,6 +103,28 @@ export function MiniApp() {
   const list = activeId ? (messages[activeId] ?? []).slice(-8) : [];
   const live = streaming && streaming.conversationId === activeId ? streaming : null;
   const pending = activeId ? pendingTask[activeId] : undefined;
+  const lastReply = [...list].reverse().find((m) => m.role === "assistant" && m.content);
+
+  const runQuick = async (action: (typeof QUICK_ACTIONS)[number]) => {
+    if (!quick) return;
+    const text = quick;
+    setQuick(null);
+    setExp(true);
+    await newConversation();
+    const msg = await send(quickPrompt(action, text), { mode: "chat", useKnowledge: false });
+    if (msg && ttsEnabled) void speak(msg.content).catch(() => undefined);
+  };
+
+  const copyReply = async () => {
+    if (!lastReply) return;
+    try {
+      await navigator.clipboard.writeText(lastReply.content);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
@@ -135,12 +178,38 @@ export function MiniApp() {
                 {live.text ? <Markdown text={live.text} streaming /> : <p className="shimmer text-[12.5px]">Thinking…</p>}
               </>
             )}
+            {lastReply && !live && (
+              <button onClick={() => void copyReply()} className="press inline-flex h-6 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-2.5 text-[11px] text-fg-2 hover:text-fg">
+                {copied ? <Check size={11} className="text-ok" /> : <Copy size={11} />} {copied ? "Copied" : "Copy answer"}
+              </button>
+            )}
             {pending && <Timeline taskId={pending} compact />}
             <ApprovalStack compact />
           </div>
         )}
 
         <div ref={footer} className="flex-none p-2">
+          {quick !== null && (
+            <div className="rise mb-2 rounded-2xl border border-white/10 bg-white/[0.05] p-2.5">
+              {quick ? (
+                <>
+                  <p className="line-clamp-2 text-[11.5px] leading-snug text-fg-2">“{quick.slice(0, 220)}{quick.length > 220 ? "…" : ""}”</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {QUICK_ACTIONS.map((a) => (
+                      <button key={a.id} onClick={() => void runQuick(a)} className="press glass-inset h-7 rounded-full px-2.5 text-[11.5px] text-fg hover:bg-white/[0.12]">
+                        {a.label}
+                      </button>
+                    ))}
+                    <button aria-label="Dismiss" onClick={() => setQuick(null)} className="ml-auto grid h-7 w-7 place-items-center text-muted hover:text-fg">
+                      <X size={12} />
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="text-[11.5px] text-muted">Copy some text first (⌘C), then press ⌥⇧Q.</p>
+              )}
+            </div>
+          )}
           <Composer
             compact
             autoFocus

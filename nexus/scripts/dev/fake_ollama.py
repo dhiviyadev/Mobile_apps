@@ -90,7 +90,40 @@ async def chat(req: Request) -> StreamingResponse:
     return StreamingResponse(gen(), media_type="application/x-ndjson")
 
 
+async def show(req: Request) -> JSONResponse:
+    name = (await req.json())["model"]
+    return JSONResponse({"capabilities": ["completion", "tools"] + (["vision"] if "gemma" in name else [])})
+
+
+async def pull(req: Request) -> StreamingResponse:
+    name = (await req.json())["model"]
+
+    async def gen():
+        if name.startswith("missing"):
+            yield json.dumps({"error": "pull model manifest: file does not exist"}) + "\n"
+            return
+        total = 9_300_000_000
+        yield json.dumps({"status": "pulling manifest"}) + "\n"
+        for i in range(1, 41):
+            await asyncio.sleep(0.15)
+            yield json.dumps({"status": "pulling 5ee4f07cdb9b", "digest": "sha256:5ee4f07cdb9b", "total": total, "completed": total * i // 40}) + "\n"
+        yield json.dumps({"status": "verifying sha256 digest"}) + "\n"
+        MODELS.append({"name": name, "size": total, "details": {"family": name.split(":")[0], "parameter_size": "14B", "quantization_level": "Q4_K_M"}})
+        yield json.dumps({"status": "success"}) + "\n"
+
+    return StreamingResponse(gen(), media_type="application/x-ndjson")
+
+
+async def delete(req: Request) -> JSONResponse:
+    name = (await req.json())["model"]
+    MODELS[:] = [m for m in MODELS if m["name"] != name]
+    RUNNING.pop(name, None)
+    return JSONResponse({})
+
+
 app = Starlette(routes=[
+    Route("/api/show", show, methods=["POST"]), Route("/api/pull", pull, methods=["POST"]),
+    Route("/api/delete", delete, methods=["DELETE"]),
     Route("/api/tags", tags), Route("/api/ps", ps), Route("/api/version", version),
     Route("/api/generate", generate, methods=["POST"]), Route("/api/embed", embed, methods=["POST"]),
     Route("/api/chat", chat, methods=["POST"]),

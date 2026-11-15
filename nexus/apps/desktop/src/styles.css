@@ -635,6 +635,20 @@ html[data-motion="calm"] .page-enter { animation-duration: 1ms; }
 }
 
 /* Liquid-glass range slider */
+/* Automation flow: a soft line joining the nodes, with a light travelling down it */
+.flow-line {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.08));
+  background-size: 100% 200%;
+  animation: flow-run 2.4s linear infinite;
+}
+@keyframes flow-run {
+  from { background-position: 0 100%; }
+  to { background-position: 0 -100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flow-line { animation: none; }
+}
+
 .glass-range {
   -webkit-appearance: none;
   appearance: none;

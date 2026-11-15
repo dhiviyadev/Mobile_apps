@@ -1,6 +1,6 @@
 // NEXUS phone app service worker: caches the app shell only.
 // Never caches /api or /ws — your data always comes live from your Mac.
-const CACHE = "nexus-shell-v1";
+const CACHE = "nexus-shell-v2";
 const SHELL = ["/m/", "/m/manifest.webmanifest", "/m/icons/icon-192.png"];
 
 self.addEventListener("install", (e) => {
@@ -31,4 +31,39 @@ self.addEventListener("fetch", (e) => {
       })),
     );
   }
+});
+
+// Notifications from your Mac. The payload is encrypted end to end; only this phone can read it.
+self.addEventListener("push", (e) => {
+  let data = {};
+  try {
+    data = e.data ? e.data.json() : {};
+  } catch {
+    data = { title: "NEXUS", body: e.data ? e.data.text() : "" };
+  }
+  e.waitUntil(
+    self.registration.showNotification(data.title || "NEXUS", {
+      body: data.body || "",
+      icon: "/m/icons/icon-192.png",
+      badge: "/m/icons/icon-192.png",
+      tag: data.tag || undefined,
+      data: { url: data.url || "/m/" },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || "/m/";
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+      for (const w of wins) {
+        if (new URL(w.url).pathname.startsWith("/m/")) {
+          w.navigate(url).catch(() => undefined);
+          return w.focus();
+        }
+      }
+      return self.clients.openWindow(url);
+    }),
+  );
 });

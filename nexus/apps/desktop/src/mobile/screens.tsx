@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { PushToggle } from "./push";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BookOpen, Bot, Brain, Calendar, Check, ChevronLeft, ChevronRight, CircleAlert, Clock, Code2, Cpu, Database, FileText,
@@ -496,6 +497,10 @@ export function MMore() {
         ) : (
           <Loader2 size={16} className="animate-spin text-muted" />
         )}
+      </Section>
+
+      <Section title="Notifications" i={1}>
+        <PushToggle />
       </Section>
 
       <Section title="Automations" i={1}>

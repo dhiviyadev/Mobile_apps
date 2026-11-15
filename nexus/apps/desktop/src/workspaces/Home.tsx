@@ -4,6 +4,7 @@ import { ArrowRight, BookOpen, Bot, Calendar, CheckCircle2, CircleAlert, Clock, 
 import { useCore, activeTasks } from "@/stores/core";
 import { useChat } from "@/stores/chat";
 import { Composer } from "@/components/Composer";
+import { TodayCard } from "@/components/TodayCard";
 import { Orb, useOrbState } from "@/components/Orb";
 import { Badge, Dot, Empty } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -135,6 +136,7 @@ export function Home() {
       </div>
 
       <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <TodayCard />
         <section className="surface glass-hover rise p-3" style={{ ["--i" as string]: 6 }}>
           <Header title="Recent tasks" onMore={() => setWorkspace("agents")} />
           {recent.length ? recent.map((t) => <TaskRow key={t.id} task={t} onClick={() => focusTask(t.id)} />) : <Empty title="No tasks yet" body="Ask an agent to do something and its execution timeline appears here." />}

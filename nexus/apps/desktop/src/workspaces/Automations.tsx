@@ -1,25 +1,15 @@
 import { useEffect, useState } from "react";
-import { ArrowDown, Clock, FolderSearch, Hand, Play, Plus, ShieldCheck, Trash2, X } from "lucide-react";
+import { Clock, FolderSearch, Hand, Play, Plus, ShieldCheck, X } from "lucide-react";
+import { FlowBuilder, stripKeys, withKeys, type FlowAction } from "@/components/FlowBuilder";
 import { api } from "@/lib/api";
 import { bus } from "@/lib/events";
 import { useCore, EMPTY } from "@/stores/core";
 import type { Automation, AutomationRun, Folder } from "@/lib/types";
-import { Badge, Button, Card, Empty, IconButton, Input, SectionTitle, Select, Textarea, Toggle } from "@/components/ui";
+import { Badge, Button, Card, Empty, IconButton, Input, SectionTitle, Select, Toggle } from "@/components/ui";
 import { Timeline } from "@/components/Timeline";
 import { cls, duration, relTime } from "@/lib/format";
 
 type Template = Omit<Automation, "id" | "enabled" | "last_run_at" | "next_run_at"> & { template: string };
-
-const ACTION_TYPES: { value: string; label: string }[] = [
-  { value: "agent_task", label: "Run an agent task" },
-  { value: "prompt", label: "Ask the local model" },
-  { value: "write_file", label: "Write a file (workspace)" },
-  { value: "append_file", label: "Append to a file (workspace)" },
-  { value: "notify", label: "Send a notification" },
-  { value: "reindex_folder", label: "Re-index a folder" },
-  { value: "reindex_all", label: "Re-index all folders" },
-  { value: "run_script", label: "Run an approved script" },
-];
 
 function triggerText(a: Pick<Automation, "trigger" | "schedule_text">, folders: Folder[]): string {
   if (a.trigger.type === "manual") return "Manual";
@@ -136,17 +126,16 @@ export function Automations() {
 }
 
 function Editor({ initial, folders, onClose, onSaved }: { initial: Partial<Automation>; folders: Folder[]; onClose: () => void; onSaved: () => void }) {
-  const [a, setA] = useState<Partial<Automation>>(initial);
+  const [a, setA] = useState<Partial<Automation>>({ ...initial, actions: withKeys(initial.actions ?? []) });
   const [err, setErr] = useState<string | null>(null);
   const agents = useCore((s) => s.boot?.agents ?? EMPTY);
   const trig = a.trigger ?? { type: "manual" };
-  const actions = a.actions ?? [];
-  const setAction = (i: number, patch: Record<string, unknown>) => setA({ ...a, actions: actions.map((x, j) => (j === i ? { ...x, ...patch } : x)) });
+  const actions = (a.actions ?? []) as FlowAction[];
 
   const save = async () => {
     setErr(null);
     try {
-      const body = { name: a.name, description: a.description, trigger: a.trigger, conditions: a.conditions ?? [], actions, requires_approval: a.requires_approval, failure_policy: a.failure_policy, template: a.template ?? null };
+      const body = { name: a.name, description: a.description, trigger: a.trigger, conditions: a.conditions ?? [], actions: stripKeys(actions), requires_approval: a.requires_approval, failure_policy: a.failure_policy, template: a.template ?? null };
       if (a.id) await api.patch(`/api/automations/${a.id}`, body);
       else await api.post("/api/automations", body);
       onSaved();
@@ -186,42 +175,8 @@ function Editor({ initial, folders, onClose, onSaved }: { initial: Partial<Autom
         )}
       </div>
 
-      <p className="mb-1.5 mt-4 text-[11px] font-medium uppercase tracking-[0.1em] text-muted">Steps</p>
-      <div className="space-y-2">
-        {actions.map((act, i) => (
-          <div key={i}>
-            {i > 0 && <ArrowDown size={12} className="mx-auto mb-2 text-muted" />}
-            <div className="rounded-xl border border-line bg-black/20 p-3">
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-muted">{i + 1}</span>
-                <Select value={act.type} onChange={(v) => setA({ ...a, actions: actions.map((x, j) => (j === i ? { type: v } : x)) })} options={ACTION_TYPES} />
-                {act.type === "agent_task" && <Select value={String(act.agent_id ?? "chief")} onChange={(v) => setAction(i, { agent_id: v })} options={agents.map((g) => ({ value: g.id, label: g.name }))} />}
-                {act.type === "reindex_folder" && <Select value={String(act.folder_id ?? "")} onChange={(v) => setAction(i, { folder_id: v })} placeholder="Folder" options={folders.map((f) => ({ value: f.id, label: f.label }))} />}
-                {act.type === "run_script" && <Input value={String(act.name ?? "")} onChange={(e) => setAction(i, { name: e.target.value })} placeholder="Script name" className="w-48" />}
-                <IconButton label="Remove step" className="ml-auto" onClick={() => setA({ ...a, actions: actions.filter((_, j) => j !== i) })}>
-                  <Trash2 size={13} />
-                </IconButton>
-              </div>
-              {(act.type === "agent_task" || act.type === "prompt") && <Textarea rows={2} className="mt-2" value={String(act.prompt ?? "")} onChange={(e) => setAction(i, { prompt: e.target.value })} placeholder="Instructions. Variables: {{date}}, {{trigger.path}}, {{previous.output}}" />}
-              {(act.type === "write_file" || act.type === "append_file") && (
-                <div className="mt-2 grid grid-cols-[1fr_2fr] gap-2">
-                  <Input value={String(act.path ?? "")} onChange={(e) => setAction(i, { path: e.target.value })} placeholder="reports/{{date}}.md" className="font-mono text-[12px]" />
-                  <Input value={String(act.content ?? "{{previous.output}}")} onChange={(e) => setAction(i, { content: e.target.value })} className="font-mono text-[12px]" />
-                </div>
-              )}
-              {act.type === "notify" && (
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <Input value={String(act.title ?? "")} onChange={(e) => setAction(i, { title: e.target.value })} placeholder="Title" />
-                  <Input value={String(act.body ?? "")} onChange={(e) => setAction(i, { body: e.target.value })} placeholder="Body, e.g. {{previous.output|truncate:120}}" />
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-        <Button size="sm" variant="ghost" icon={<Plus size={12} />} onClick={() => setA({ ...a, actions: [...actions, { type: "notify", title: "", body: "" }] })}>
-          Add step
-        </Button>
-      </div>
+      <p className="mb-1.5 mt-4 text-[11px] font-medium uppercase tracking-[0.1em] text-muted">Flow — drag steps to reorder</p>
+      <FlowBuilder trigger={triggerText({ trigger: trig, schedule_text: undefined }, folders)} actions={actions} onChange={(next) => setA({ ...a, actions: next })} agents={agents} folders={folders} />
 
       <div className="mt-4 flex flex-wrap items-center gap-6 border-t border-line-soft pt-4">
         <label className="flex items-center gap-2 text-[12.5px] text-fg-2">
