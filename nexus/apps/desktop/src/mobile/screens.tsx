@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { PushToggle } from "./push";
+import { MMarkets } from "./markets";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BookOpen, Bot, Brain, Calendar, Check, ChevronLeft, ChevronRight, CircleAlert, Clock, Code2, Cpu, Database, FileText,
@@ -194,6 +195,7 @@ export function MHome({ go }: { go: (t: Tab) => void }) {
             {active.map((t) => <TaskLine key={t.id} t={t} onClick={() => setSheet(t.id)} />)}
           </Section>
         )}
+        <MMarkets />
         <Section title="Your Mac" i={4}>
           <div className="grid grid-cols-2 gap-y-2.5 text-[13px]">
             <span className="flex items-center gap-2 text-fg-2"><Dot tone={boot?.ollama.online ? "ok" : "danger"} /> {boot?.ollama.online ? boot.ollama.running[0] ?? boot.ollama.default_model ?? "No model" : "Ollama offline"}</span>

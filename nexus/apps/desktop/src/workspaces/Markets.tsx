@@ -323,6 +323,7 @@ function SymbolPanel({ symbol, portfolio, alerts, onChanged }: { symbol: string;
   const [mode, setMode] = useState<"candles" | "line">("candles");
   const [sma20, setSma20] = useState(true);
   const [sma50, setSma50] = useState(false);
+  const [showRsi, setShowRsi] = useState(false);
   const [table, setTable] = useState(false);
   const [h, setH] = useState<History | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -371,6 +372,9 @@ function SymbolPanel({ symbol, portfolio, alerts, onChanged }: { symbol: string;
             <label className="flex items-center gap-1.5 text-[11.5px] text-fg-2">
               <Toggle checked={sma50} onChange={setSma50} label="50-bar average" /> Avg 50
             </label>
+            <label className="flex items-center gap-1.5 text-[11.5px] text-fg-2" title="Relative Strength Index: a 0–100 gauge of recent momentum">
+              <Toggle checked={showRsi} onChange={setShowRsi} label="RSI momentum gauge" /> RSI
+            </label>
             <IconButton label={table ? "Show the chart" : "Show the numbers as a table"} active={table} onClick={() => setTable(!table)}>
               <Table2 size={14} />
             </IconButton>
@@ -392,7 +396,7 @@ function SymbolPanel({ symbol, portfolio, alerts, onChanged }: { symbol: string;
                   <ChartLegend mode={mode} showSma20={sma20} showSma50={sma50} />
                 </div>
                 <div className={cls("transition-opacity", loading && "opacity-60")}>
-                  <PriceChart candles={h.candles} range={range} mode={mode} showSma20={sma20} showSma50={sma50} label={q?.name ?? symbol} />
+                  <PriceChart candles={h.candles} range={range} mode={mode} showSma20={sma20} showSma50={sma50} showRsi={showRsi} label={q?.name ?? symbol} />
                 </div>
               </>
             )

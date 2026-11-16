@@ -34,7 +34,9 @@ also in a real browser against the running core.
 - ✅ Price alerts with notifications (checked every 3 minutes while NEXUS runs)
 - ✅ Agents (Chief of Staff, Analyst) can look up prices; there is deliberately **no** tool that trades
 - 🟡 **Live data has not been fetched yet**: Yahoo Finance is blocked in the build environment, so browser checks used generated sample prices (the screenshots in `docs/screenshots/markets*.png` show sample data, not real quotes). The service is unofficial; if its format differs from what the tests assume, the first chart on your Mac will show an error — tell me what it says.
-- ⏳ Real-money trading through a broker (needs your broker account, its API keys in the Keychain, and an approval step per order) · more indicators (RSI, MACD) · markets on the phone app
+- ✅ RSI (14) momentum panel under the chart (checked against Wilder's published worked example)
+- ✅ Markets on the phone app: watchlist, tap-to-read charts, practice account summary — view only; trading and edits stay on the Mac (verified in an emulated iPhone)
+- ⏳ Real-money trading through a broker (needs your broker account, its API keys in the Keychain, and an approval step per order) · MACD and drawing tools
 
 ## Phase 0 — Environment audit
 - ✅ Read-only audit script `scripts/audit.sh` (hardware, memory pressure, tools, Ollama models, Hermes config summary without secrets, ports, LaunchAgents, nearby projects) — tested on Linux

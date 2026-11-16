@@ -19,6 +19,31 @@ const PAD = { top: 10, right: 58, bottom: 22, left: 6 };
 const PRICE_H = 300;
 const GAP = 14;
 const VOL_H = 56;
+const RSI_H = 64;
+
+/** Relative Strength Index (Wilder's smoothing): 0–100, where above 70 is often read as stretched up and below 30 as stretched down. */
+export function rsi(candles: Candle[], period = 14): (number | null)[] {
+  const out: (number | null)[] = candles.map(() => null);
+  if (candles.length <= period) return out;
+  let gain = 0;
+  let loss = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = candles[i]!.c - candles[i - 1]!.c;
+    if (d >= 0) gain += d;
+    else loss -= d;
+  }
+  gain /= period;
+  loss /= period;
+  const value = () => (loss === 0 ? 100 : 100 - 100 / (1 + gain / loss));
+  out[period] = value();
+  for (let i = period + 1; i < candles.length; i++) {
+    const d = candles[i]!.c - candles[i - 1]!.c;
+    gain = (gain * (period - 1) + Math.max(d, 0)) / period;
+    loss = (loss * (period - 1) + Math.max(-d, 0)) / period;
+    out[i] = value();
+  }
+  return out;
+}
 
 export function sma(candles: Candle[], period: number): (number | null)[] {
   const out: (number | null)[] = [];
@@ -72,12 +97,13 @@ function timeLabel(t: number, range: ChartRange, long = false): string {
  * panel underneath — two panels sharing the time axis rather than two scales on one plot.
  * Hover or use ← → to read any bar.
  */
-export function PriceChart({ candles, range, mode, showSma20, showSma50, label }: {
+export function PriceChart({ candles, range, mode, showSma20, showSma50, showRsi = false, label }: {
   candles: Candle[];
   range: ChartRange;
   mode: "candles" | "line";
   showSma20: boolean;
   showSma50: boolean;
+  showRsi?: boolean;
   label: string;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
@@ -99,6 +125,7 @@ export function PriceChart({ candles, range, mode, showSma20, showSma50, label }
     const plotW = width - PAD.left - PAD.right;
     const s20 = showSma20 ? sma(candles, 20) : [];
     const s50 = showSma50 ? sma(candles, 50) : [];
+    const r14 = showRsi ? rsi(candles, 14) : [];
     let lo = Infinity;
     let hi = -Infinity;
     for (const c of candles) {
@@ -134,10 +161,19 @@ export function PriceChart({ candles, range, mode, showSma20, showSma50, label }
     const tickEvery = Math.max(1, Math.round(n / Math.max(2, Math.floor(plotW / 110))));
     const xTicks: number[] = [];
     for (let i = Math.floor(tickEvery / 2); i < n; i += tickEvery) xTicks.push(i);
-    return { n, plotW, step, x, y, s20, s50, yTicks: niceTicks(y0, y1, 5).filter((v) => v > y0 && v < y1), vTop, vMax, hasVolume, line, xTicks };
-  }, [candles, width, mode, showSma20, showSma50]);
+    const rTop = vTop + (hasVolume ? VOL_H + GAP : 0);
+    const ry = (v: number) => rTop + (1 - v / 100) * RSI_H;
+    let rsiPath = "";
+    let pen = false;
+    r14.forEach((v, i) => {
+      if (v == null) return void (pen = false);
+      rsiPath += `${pen ? "L" : "M"}${x(i).toFixed(1)},${ry(v).toFixed(1)}`;
+      pen = true;
+    });
+    return { n, plotW, step, x, y, s20, s50, r14, rTop, ry, rsiPath, yTicks: niceTicks(y0, y1, 5).filter((v) => v > y0 && v < y1), vTop, vMax, hasVolume, line, xTicks };
+  }, [candles, width, mode, showSma20, showSma50, showRsi]);
 
-  const height = PAD.top + PRICE_H + (m.hasVolume ? GAP + VOL_H : 0) + PAD.bottom;
+  const height = PAD.top + PRICE_H + (m.hasVolume ? GAP + VOL_H : 0) + (showRsi ? GAP + RSI_H : 0) + PAD.bottom;
   const bodyW = Math.max(1, Math.min(14, m.step * 0.62));
   const active = hover != null && candles[hover] ? hover : null;
   const cur = active != null ? candles[active]! : null;
@@ -173,8 +209,11 @@ export function PriceChart({ candles, range, mode, showSma20, showSma50, label }
         tabIndex={0}
         aria-label={`${label} price chart. Use the left and right arrow keys to read each bar.`}
         className="block rounded-xl outline-none focus-visible:ring-1 focus-visible:ring-white/30"
+        style={{ touchAction: "pan-y" }}
         onPointerMove={onMove}
-        onPointerLeave={() => setHover(null)}
+        onPointerDown={onMove}
+        // A finger "leaves" as soon as it lifts; keep the read-out on touch so a tap is enough.
+        onPointerLeave={(e) => e.pointerType === "mouse" && setHover(null)}
         onKeyDown={onKey}
       >
         {/* recessive grid + right-hand price axis */}
@@ -241,6 +280,25 @@ export function PriceChart({ candles, range, mode, showSma20, showSma50, label }
           </>
         )}
 
+        {/* RSI: a third panel on its own fixed 0–100 scale, with the usual 30 / 70 guides */}
+        {showRsi && (
+          <>
+            <rect x={PAD.left} y={m.ry(70)} width={width - PAD.left - PAD.right} height={m.ry(30) - m.ry(70)} fill="rgba(255,255,255,0.035)" />
+            {[70, 30].map((v) => (
+              <g key={v}>
+                <line x1={PAD.left} x2={width - PAD.right} y1={m.ry(v)} y2={m.ry(v)} stroke="rgba(255,255,255,0.14)" strokeDasharray="2 4" />
+                <text x={width - PAD.right + 8} y={m.ry(v) + 3.5} fontSize="10.5" fill="#7a808c" fontFamily="var(--font-mono)">
+                  {v}
+                </text>
+              </g>
+            ))}
+            <text x={PAD.left + 2} y={m.rTop + 9} fontSize="10" fill="#7a808c" letterSpacing="0.08em">
+              RSI (14)
+            </text>
+            <path d={m.rsiPath} fill="none" stroke="#e8eaee" strokeWidth={1.5} strokeLinejoin="round" />
+          </>
+        )}
+
         {active != null && cur && (
           <g pointerEvents="none">
             <line x1={m.x(active)} x2={m.x(active)} y1={PAD.top} y2={height - PAD.bottom} stroke="rgba(255,255,255,0.35)" strokeDasharray="3 3" />
@@ -272,6 +330,7 @@ export function PriceChart({ candles, range, mode, showSma20, showSma50, label }
           {showSma20 && m.s20[active] != null && <Row k="Average (20)" v={formatPrice(m.s20[active]!)} line="solid" />}
           {showSma50 && m.s50[active] != null && <Row k="Average (50)" v={formatPrice(m.s50[active]!)} line="dashed" />}
           {m.hasVolume && <Row k="Volume" v={formatVolume(cur.v)} />}
+          {showRsi && m.r14[active] != null && <Row k="RSI (14)" v={m.r14[active]!.toFixed(1)} />}
         </div>
       )}
     </div>
