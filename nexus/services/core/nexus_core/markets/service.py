@@ -55,7 +55,15 @@ ALERT_INTERVAL_S = 180
 
 
 class MarketError(Exception):
-    pass
+    """kind: not_found | refused (the data service turned us away) | network | other"""
+
+    def __init__(self, message: str, kind: str = "other"):
+        super().__init__(message)
+        self.kind = kind
+
+
+REFUSED = ("Yahoo Finance is turning away automated requests right now, so prices can't be loaded. "
+           "Charts still work: switch the chart to TradingView. Prices here will return when Yahoo allows it.")
 
 
 class MarketsDisabled(MarketError):
@@ -124,6 +132,8 @@ class MarketService:
     def __init__(self, state: "AppState"):
         self.state = state
         self._cache: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
+        self.retry_delay = 1.5
+        self._refused_until = 0.0  # after a refusal, stop asking for a while instead of knocking repeatedly
 
     # -- switches -----------------------------------------------------------------
     @property
@@ -136,17 +146,27 @@ class MarketService:
 
     # -- data ---------------------------------------------------------------------
     async def _json(self, url: str, params: dict[str, str]) -> dict[str, Any]:
-        try:
-            _, _, body = await self.state.web._get(url, params)  # noqa: SLF001 - shared guarded fetcher
-        except WebBlocked as exc:
-            msg = str(exc)
-            if "(404)" in msg:
-                raise MarketError("That symbol wasn't found.") from exc
-            if "(429)" in msg:
-                raise MarketError("The market data service is busy. Try again in a minute.") from exc
-            raise MarketError(f"Couldn't get market data. {msg}") from exc
-        except httpx.HTTPError as exc:
-            raise MarketError("Couldn't reach the market data service. Check the internet connection.") from exc
+        body = ""
+        if time.time() < self._refused_until:
+            raise MarketError(REFUSED, "refused")
+        for attempt in (1, 2):
+            try:
+                _, _, body = await self.state.web._get(url, params)  # noqa: SLF001 - shared guarded fetcher
+                self._refused_until = 0.0
+                break
+            except WebBlocked as exc:
+                msg = str(exc)
+                if "(404)" in msg:
+                    raise MarketError("That symbol wasn't found.", "not_found") from exc
+                if any(code in msg for code in ("(429)", "(401)", "(403)", "(999)")):
+                    if attempt == 1:
+                        await asyncio.sleep(self.retry_delay)  # one polite retry, then give up rather than hammer the service
+                        continue
+                    self._refused_until = time.time() + 120
+                    raise MarketError(REFUSED, "refused") from exc
+                raise MarketError(f"Couldn't get market data. {msg}") from exc
+            except httpx.HTTPError as exc:
+                raise MarketError("Couldn't reach the market data service. Check the internet connection.", "network") from exc
         try:
             return json.loads(body)
         except ValueError as exc:
@@ -162,7 +182,12 @@ class MarketService:
         hit = self._cache.get(key)
         if hit and not fresh and time.time() - hit[0] < ttl:
             return hit[1]
-        payload = await self._json(CHART_URL + quote(symbol, safe=""), {"range": RANGE_PARAM.get(range_, range_), "interval": interval, "includePrePost": "false"})
+        try:
+            payload = await self._json(CHART_URL + quote(symbol, safe=""), {"range": RANGE_PARAM.get(range_, range_), "interval": interval, "includePrePost": "false"})
+        except MarketError as exc:
+            if hit and exc.kind in ("refused", "network"):
+                return {**hit[1], "stale": True}  # better yesterday's numbers, clearly marked, than nothing
+            raise
         parsed = parse_chart(payload)
         q = quote_from(parsed)
         if range_ != "1d":
@@ -185,7 +210,7 @@ class MarketService:
 
     async def quotes(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
         """Latest quotes for several symbols; a symbol that fails is reported with an error instead of failing all."""
-        sem = asyncio.Semaphore(4)
+        sem = asyncio.Semaphore(2)
 
         async def one(sym: str) -> tuple[str, dict[str, Any]]:
             async with sem:
@@ -216,7 +241,16 @@ class MarketService:
         return self.state.db.query("SELECT * FROM market_watchlist ORDER BY position, added_at")
 
     async def watch(self, symbol: str) -> dict[str, Any]:
-        q = await self.quote(symbol)  # also proves the symbol exists
+        self._require()
+        try:
+            q = await self.quote(symbol)  # also proves the symbol exists
+        except MarketError as exc:
+            if exc.kind not in ("refused", "network"):
+                raise
+            # The price service is unavailable, not the symbol wrong: keep it anyway so it can still be charted.
+            sym = clean_symbol(symbol)
+            q = {"symbol": sym, "name": sym, "exchange": "", "kind": "", "currency": "", "price": None, "change": None,
+                 "change_percent": None, "error": str(exc)}
         db = self.state.db
         if not db.query_one("SELECT symbol FROM market_watchlist WHERE symbol = ?", (q["symbol"],)):
             count = (db.query_one("SELECT COUNT(*) AS n FROM market_watchlist") or {"n": 0})["n"]

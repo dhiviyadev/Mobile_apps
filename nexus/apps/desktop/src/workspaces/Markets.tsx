@@ -7,6 +7,7 @@ import { useCore } from "@/stores/core";
 import { Badge, Button, Card, Empty, IconButton, Input, SectionTitle, Segmented, Select, Toggle } from "@/components/ui";
 import { ChartLegend, DOWN, PriceChart, UP, formatPrice, formatVolume, type Candle, type ChartRange, type PriceLevel } from "@/components/PriceChart";
 import { Ideas, LiveTrading, Scan } from "./Trading";
+import { TradingViewChart } from "@/components/TradingViewChart";
 
 interface Quote {
   symbol: string;
@@ -83,6 +84,7 @@ interface History {
   candles: Candle[];
   fetched_at: string;
   source: string;
+  stale?: boolean;
 }
 
 const RANGES: { value: ChartRange; label: string }[] = [
@@ -143,16 +145,30 @@ export function Markets() {
     };
   }, [load, enabled]);
 
+  const [turningOn, setTurningOn] = useState(false);
   const turnOn = async () => {
-    await api.patch("/api/settings", { values: { "markets.enabled": true } });
-    await refreshCore();
-    void load();
+    setTurningOn(true);
+    setError(null);
+    try {
+      await api.patch("/api/settings", { values: { "markets.enabled": true } });
+      await refreshCore();
+      void load();
+    } catch (e) {
+      const msg = (e as Error).message;
+      setError(
+        msg.includes("Unknown setting")
+          ? "NEXUS's background service is an older version than this app, so it doesn't know about Markets yet. Use “Restart service” in the banner at the top, or quit and reopen NEXUS."
+          : `Couldn't turn Markets on: ${msg}`,
+      );
+    } finally {
+      setTurningOn(false);
+    }
   };
 
   if (!enabled) {
     return (
       <div className="mx-auto max-w-[760px] px-8 py-10">
-        <SectionTitle title="Markets" sub="Follow prices, read charts, set alerts and practise trading — without risking money." />
+        <SectionTitle title="Markets" sub="Follow prices, read charts, get trade ideas, set alerts and practise trading." />
         <Card>
           <div className="flex items-start gap-4">
             <div className="grid h-11 w-11 flex-none place-items-center rounded-full border border-white/15 bg-white/[0.07]">
@@ -164,12 +180,13 @@ export function Markets() {
                 <li>Prices come from Yahoo Finance's public service. Only the ticker symbols you look at are sent; your holdings and orders stay on this Mac.</li>
                 <li>Data can be delayed (often 15 minutes for shares) and is unofficial, so don't rely on it for real decisions.</li>
                 <li>
-                  Trading here is a <b className="text-fg">practice account with pretend money</b>. NEXUS is not connected to any broker and never places real orders.
+                  You start with a <b className="text-fg">practice account with pretend money</b>. Real orders are only possible after you connect Zerodha and switch them on yourself.
                 </li>
               </ul>
-              <Button className="mt-4" variant="primary" onClick={() => void turnOn()}>
+              <Button className="mt-4" variant="primary" disabled={turningOn} icon={turningOn ? <Loader2 size={12} className="animate-spin" /> : undefined} onClick={() => void turnOn()}>
                 Turn on Markets
               </Button>
+              {error && <p className="mt-3 text-[12.5px] leading-snug text-danger">{error}</p>}
             </div>
           </div>
         </Card>
@@ -331,6 +348,12 @@ function SymbolPanel({ symbol, portfolio, alerts, onChanged }: { symbol: string;
   const [h, setH] = useState<History | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const savedChart = useCore((s) => s.boot?.markets?.chart ?? "builtin");
+  const [chart, setChartState] = useState<"builtin" | "tradingview">(savedChart);
+  const setChart = (v: "builtin" | "tradingview") => {
+    setChartState(v);
+    void api.patch("/api/settings", { values: { "markets.chart": v } }).catch(() => undefined);
+  };
 
   const load = useCallback(async () => {
     try {
@@ -367,6 +390,9 @@ function SymbolPanel({ symbol, portfolio, alerts, onChanged }: { symbol: string;
           </div>
           {/* one row of controls above the chart */}
           <div className="flex flex-wrap items-center gap-2">
+            <Segmented value={chart} onChange={setChart} options={[{ value: "builtin", label: "Built-in chart" }, { value: "tradingview", label: "TradingView" }]} />
+            {chart === "builtin" && (
+              <>
             <Segmented value={range} onChange={setRange} options={RANGES} />
             <Segmented value={mode} onChange={setMode} options={[{ value: "candles", label: "Candles" }, { value: "line", label: "Line" }]} />
             <label className="flex items-center gap-1.5 text-[11.5px] text-fg-2">
@@ -381,11 +407,26 @@ function SymbolPanel({ symbol, portfolio, alerts, onChanged }: { symbol: string;
             <IconButton label={table ? "Show the chart" : "Show the numbers as a table"} active={table} onClick={() => setTable(!table)}>
               <Table2 size={14} />
             </IconButton>
+              </>
+            )}
           </div>
         </div>
         <div className="mt-4">
-          {err ? (
-            <p className="py-10 text-center text-[12.5px] text-danger">{err}</p>
+          {chart === "tradingview" ? (
+            <>
+              <TradingViewChart symbol={symbol} />
+              <p className="mt-2 text-[11.5px] leading-snug text-muted">
+                Chart and data by TradingView, shown in an isolated frame: TradingView learns which symbol you view and nothing else. Use its own search to change symbol or add indicators.
+                Trade-idea levels can't be drawn on it — they're listed in the card below.
+              </p>
+            </>
+          ) : err ? (
+            <div className="py-10 text-center">
+              <p className="mx-auto max-w-[520px] text-[12.5px] leading-relaxed text-danger">{err}</p>
+              <Button className="mt-3" variant="primary" onClick={() => setChart("tradingview")}>
+                Show TradingView's chart instead
+              </Button>
+            </div>
           ) : loading && !h ? (
             <div className="grid h-[300px] place-items-center">
               <Loader2 size={18} className="animate-spin text-muted" />
@@ -395,6 +436,9 @@ function SymbolPanel({ symbol, portfolio, alerts, onChanged }: { symbol: string;
           ) : (
             h && (
               <>
+                {h.stale && (
+                  <p className="mb-2 text-[12px] text-warn">Showing the last prices NEXUS has — the price service isn't answering right now.</p>
+                )}
                 <div className="mb-2">
                   <ChartLegend mode={mode} showSma20={sma20} showSma50={sma50} />
                 </div>

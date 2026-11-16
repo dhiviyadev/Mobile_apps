@@ -53,10 +53,19 @@ say "Installing to $DEST"
 ditto "$BUILT" "$DEST"
 xattr -dr com.apple.quarantine "$DEST" 2>/dev/null || true
 
-# Stop a core started by ./scripts/dev.sh so the app manages its own (data is shared).
+# A background service (core) left running from before this install would be the OLD code: the new app
+# would connect to it and new features would silently not work. Stop it; the app starts a fresh one.
 if curl -fsS --max-time 1 http://127.0.0.1:8765/health >/dev/null 2>&1; then
-  echo "Note: a NEXUS core is already running (probably from ./scripts/dev.sh). The app will use it;"
-  echo "      quit dev.sh (Ctrl+C) if you want the app to manage the core itself."
+  say "Stopping the previous NEXUS background service"
+  pkill -TERM -f -- "-m nexus_core" 2>/dev/null || true
+  pkill -TERM -f -- "core/nexus-core" 2>/dev/null || true
+  for _ in $(seq 1 20); do
+    curl -fsS --max-time 1 http://127.0.0.1:8765/health >/dev/null 2>&1 || break
+    sleep 0.5
+  done
+  if curl -fsS --max-time 1 http://127.0.0.1:8765/health >/dev/null 2>&1; then
+    echo "Note: an older NEXUS service is still running and couldn't be stopped. Quit ./scripts/dev.sh if it is open."
+  fi
 fi
 
 cat <<EOF

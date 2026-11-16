@@ -57,6 +57,7 @@ DEFAULTS: dict[str, Any] = {
     "integrations.mail": False,
     # Markets: price data from a public service (off: nothing is requested)
     "markets.enabled": False,
+    "markets.chart": "builtin",  # builtin | tradingview (TradingView's embedded chart; the symbol you view is sent to them)
     # Real-money trading through a broker. Off until switched on; the limits are the user's own guard rails.
     "trading.live_enabled": False,
     "trading.max_order_value": 25000,  # per order, in the account currency (₹); 0 = no limit

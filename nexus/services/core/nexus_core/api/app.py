@@ -17,6 +17,7 @@ from starlette.types import Scope
 from .. import __version__
 from ..app_state import AppState
 from ..config import Settings
+from ..util import build_id
 from ..remote.service import remote_denied
 from ..security import host_allowed, token_matches
 from . import routes_ai, routes_data, routes_devices, routes_extras, routes_system
@@ -25,7 +26,7 @@ log = logging.getLogger(__name__)
 
 # The Zerodha callback is opened by the user's browser after they sign in at Zerodha, so it can't carry the
 # API token; it is protected by a one-time state value instead and only ever accepts a login code.
-PUBLIC_PATHS = {"/health", "/api/devices/claim", "/api/broker/zerodha/callback"}
+PUBLIC_PATHS = {"/health", "/api/devices/claim", "/api/broker/zerodha/callback", "/api/tradingview"}
 MOBILE_PREFIX = "/m"
 
 
@@ -60,6 +61,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         yield
         log.info("NEXUS core shutting down")
         await state.shutdown()
+
+    # Read once, at start: this must describe the code this process loaded, not whatever the folder holds later.
+    build_id(str(settings.nexus_root))
 
     app = FastAPI(title="NEXUS Core", version=__version__, lifespan=lifespan, docs_url="/docs", redoc_url=None)
 
@@ -103,7 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
-        return {"status": "ok", "service": "nexus-core", "version": __version__}
+        return {"status": "ok", "service": "nexus-core", "version": __version__, "build": build_id(str(settings.nexus_root))}
 
     app.include_router(routes_system.router)
     app.include_router(routes_ai.router)

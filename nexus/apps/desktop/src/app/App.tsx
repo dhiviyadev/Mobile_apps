@@ -10,9 +10,9 @@ import { Timeline } from "@/components/Timeline";
 import { Orb, usePauseWhenHidden } from "@/components/Orb";
 import { Ambient } from "@/components/Ambient";
 import { Button, IconButton, Input } from "@/components/ui";
-import { setToken } from "@/lib/api";
+import { api, connection, setToken } from "@/lib/api";
 import { bus } from "@/lib/events";
-import { isTauri, listen } from "@/lib/tauri";
+import { isTauri, listen, shell } from "@/lib/tauri";
 import { Home } from "@/workspaces/Home";
 import { Chat } from "@/workspaces/Chat";
 import { Agents } from "@/workspaces/Agents";
@@ -111,6 +111,7 @@ export function App() {
       <main className="flex min-w-0 flex-1 flex-col">
         <TitleBar title={TITLES[workspace]} />
         <HaltedBanner />
+        <VersionBanner />
         <div className={workspace === "chat" ? "min-h-0 flex-1" : "min-h-0 flex-1 overflow-y-auto"}>
           {/* Keyed page with a CSS entrance: a new page never waits on the old page's exit animation. */}
           <div key={workspace} className="page-enter h-full">
@@ -134,6 +135,65 @@ export function App() {
       <Onboarding />
     </div>
     </>
+  );
+}
+
+const APP_BUILD = typeof __NEXUS_BUILD__ === "string" ? __NEXUS_BUILD__ : "";
+
+/** Is the background service running different code from this window? (A service that reports no build at all predates this check.) */
+export function serviceIsOtherVersion(appBuild: string, coreBuild: string | undefined): boolean {
+  if (!appBuild) return false;
+  if (coreBuild === undefined) return true;
+  return coreBuild !== "" && coreBuild !== appBuild;
+}
+
+/**
+ * After an update the app can end up talking to a background service that is still the previous
+ * version, and new features then quietly fail. Say so, and offer to restart it.
+ */
+function VersionBanner() {
+  const coreBuild = useCore((s) => (s.boot ? s.boot.build : ""));
+  const refresh = useCore((s) => s.refresh);
+  const [state, setState] = useState<"idle" | "restarting" | "still" | "dismissed">("idle");
+  if (state === "dismissed" || !serviceIsOtherVersion(APP_BUILD, coreBuild)) return null;
+
+  const restart = async () => {
+    setState("restarting");
+    try {
+      if (isTauri) {
+        await shell.respawnCore();
+      } else {
+        await api.post("/api/system/shutdown").catch(() => undefined);
+      }
+      await connection(true);
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        await refresh();
+        const s = useCore.getState();
+        if (s.status === "online" && !serviceIsOtherVersion(APP_BUILD, s.boot?.build)) break;
+      }
+      bus.reconnectNow();
+    } finally {
+      setState(serviceIsOtherVersion(APP_BUILD, useCore.getState().boot?.build) ? "still" : "idle");
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-3 border-b border-warn/25 bg-warn/[0.08] px-5 py-2 text-[12.5px] text-fg">
+      <span className="min-w-0 flex-1">
+        {state === "still"
+          ? "The background service is still a different version from this app. Reinstall the app from Settings → Updates, or run ./scripts/install-app.sh."
+          : "NEXUS's background service is a different version from this app (usually left running from before an update), so newer features may not work."}
+      </span>
+      {state !== "still" && (
+        <Button size="sm" variant="primary" disabled={state === "restarting"} icon={state === "restarting" ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} onClick={() => void restart()}>
+          {state === "restarting" ? "Restarting…" : "Restart service"}
+        </Button>
+      )}
+      <IconButton label="Dismiss" onClick={() => setState("dismissed")}>
+        <X size={13} />
+      </IconButton>
+    </div>
   );
 }
 

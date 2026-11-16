@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -421,3 +422,38 @@ async def broker_cancel(order_id: str, variety: str = "regular", st: AppState = 
 @router.get("/broker/history")
 def broker_history(st: AppState = Depends(get_state)) -> list[dict[str, Any]]:
     return st.broker.history()
+
+
+# -- TradingView chart frame ------------------------------------------------------
+_TV_SYMBOL = re.compile(r"^[A-Z0-9][A-Z0-9:._!&\-]{0,39}$")
+_TV_INTERVALS = {"1", "5", "15", "30", "60", "240", "D", "W", "M"}
+_TV_TZ = re.compile(r"^[A-Za-z_]+(/[A-Za-z0-9_+\-]+){1,2}$")
+# TradingView's published embed for its Advanced Chart, exactly as documented. This page is the ONLY place their
+# script runs: it is shown in a sandboxed frame with its own strict policy, so it cannot reach NEXUS's data, token or API.
+_TV_PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>TradingView chart</title>
+<style>html,body{{height:100%;margin:0;background:#14161b}}.tradingview-widget-container,.tradingview-widget-container__widget{{height:100%;width:100%}}</style>
+</head><body><div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div>
+<script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
+{config}
+</script></div></body></html>"""
+_TV_CSP = ("default-src 'none'; script-src https://s3.tradingview.com; style-src 'unsafe-inline'; img-src https: data:; "
+           "frame-src https://www.tradingview-widget.com https://s.tradingview.com https://www.tradingview.com; "
+           "connect-src https://*.tradingview.com https://www.tradingview-widget.com")
+
+
+@router.get("/tradingview", response_class=HTMLResponse)
+def tradingview_frame(symbol: str, interval: str = "D", tz: str = "Etc/UTC") -> HTMLResponse:
+    """A page holding TradingView's own chart widget for one symbol. Public (a frame can't send the API token) and
+    holds nothing private: the only thing sent to TradingView is the symbol being viewed."""
+    import json
+
+    symbol = symbol.upper().strip()
+    if not _TV_SYMBOL.match(symbol):
+        raise HTTPException(400, "Invalid symbol")
+    config = {"autosize": True, "symbol": symbol, "interval": interval if interval in _TV_INTERVALS else "D",
+              "timezone": tz if _TV_TZ.match(tz) else "Etc/UTC", "theme": "dark", "style": "1", "locale": "en",
+              "allow_symbol_change": True, "calendar": False, "withdateranges": True, "hide_side_toolbar": False,
+              "backgroundColor": "rgba(20, 22, 27, 1)", "support_host": "https://www.tradingview.com"}
+    # "</" can't appear (the symbol pattern forbids "<"), so the JSON can't break out of the script element.
+    return HTMLResponse(_TV_PAGE.format(config=json.dumps(config)),
+                        headers={"Content-Security-Policy": _TV_CSP, "Referrer-Policy": "no-referrer", "Cache-Control": "no-store"})

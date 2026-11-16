@@ -113,22 +113,83 @@ fn tool_path() -> String {
     dirs.join(":")
 }
 
-/// Minimal blocking GET /health — avoids pulling an HTTP client into the shell.
-pub fn healthy() -> bool {
+/// The commit this app was built from ("" when git wasn't available at build time).
+pub const APP_BUILD: &str = env!("NEXUS_BUILD");
+
+/// A tiny blocking HTTP exchange with the core — avoids pulling an HTTP client into the shell.
+fn http(request: &str, read_ms: u64) -> Option<String> {
     let addr = SocketAddr::from(([127, 0, 0, 1], CORE_PORT));
-    let Ok(mut s) = TcpStream::connect_timeout(&addr, Duration::from_millis(400)) else {
-        return false;
-    };
-    let _ = s.set_read_timeout(Some(Duration::from_millis(800)));
-    if s
-        .write_all(b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
-        .is_err()
-    {
-        return false;
-    }
+    let mut s = TcpStream::connect_timeout(&addr, Duration::from_millis(400)).ok()?;
+    let _ = s.set_read_timeout(Some(Duration::from_millis(read_ms)));
+    s.write_all(request.as_bytes()).ok()?;
     let mut buf = String::new();
     let _ = s.read_to_string(&mut buf);
-    buf.starts_with("HTTP/1.1 200") && buf.contains("nexus-core")
+    Some(buf)
+}
+
+/// The body of GET /health if a NEXUS core is answering.
+pub fn health() -> Option<String> {
+    let buf = http("GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n", 800)?;
+    (buf.starts_with("HTTP/1.1 200") && buf.contains("nexus-core")).then_some(buf)
+}
+
+pub fn healthy() -> bool {
+    health().is_some()
+}
+
+/// The build the running core reports. None = a core from before builds were reported (so: old).
+fn core_build(health: &str) -> Option<String> {
+    let start = health.find("\"build\":\"")? + 9;
+    let end = health[start..].find('"')? + start;
+    Some(health[start..end].to_string())
+}
+
+/// True when a core is running that was started from different code than this app.
+pub fn core_is_other_version() -> bool {
+    match health() {
+        // A core that reports no build at all predates this check (so it is old); one that reports an
+        // empty build simply doesn't know (not a git checkout) and is left alone.
+        Some(h) => !APP_BUILD.is_empty() && !matches!(core_build(&h).as_deref(), Some("")) && core_build(&h).as_deref() != Some(APP_BUILD),
+        None => false,
+    }
+}
+
+fn wait_until(deadline_s: u64, want_up: bool) -> bool {
+    let deadline = Instant::now() + Duration::from_secs(deadline_s);
+    while Instant::now() < deadline {
+        if healthy() == want_up {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    healthy() == want_up
+}
+
+/// Stop whichever core is answering on the port: ours, or one left running by an earlier version,
+/// ./scripts/dev.sh or a LaunchAgent. Asks politely first; falls back to a normal terminate signal.
+pub fn stop_running(state: &CoreProcess) {
+    stop(state);
+    if !healthy() {
+        return;
+    }
+    let l = state.launcher.lock().unwrap().clone();
+    if let Ok(token) = fs::read_to_string(data_dir(&l).join("secrets/api_token")) {
+        let req = format!(
+            "POST /api/system/shutdown HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            token.trim()
+        );
+        let _ = http(&req, 1500);
+    }
+    if wait_until(5, false) {
+        return;
+    }
+    // Cores older than the shutdown request: end the NEXUS core process the ordinary way (SIGTERM).
+    #[cfg(unix)]
+    {
+        let _ = Command::new("pkill").args(["-TERM", "-f", "--", "-m nexus_core"]).status();
+        let _ = Command::new("pkill").args(["-TERM", "-f", "--", "core/nexus-core"]).status();
+    }
+    wait_until(8, false);
 }
 
 pub fn spawn(state: &CoreProcess) -> Result<(), String> {
@@ -164,6 +225,7 @@ pub fn spawn(state: &CoreProcess) -> Result<(), String> {
         .env("PATH", tool_path())
         .env("NEXUS_DATA_DIR", &data)
         .env("NEXUS_LAUNCHED_BY_APP", "1")
+        .env("NEXUS_BUILD", APP_BUILD)
         .env("NEXUS_HOST", "127.0.0.1")
         .env("NEXUS_PORT", CORE_PORT.to_string())
         .stdin(Stdio::null())
@@ -177,7 +239,16 @@ pub fn spawn(state: &CoreProcess) -> Result<(), String> {
 
 pub fn ensure_running(state: &CoreProcess) {
     if healthy() {
-        return;
+        // An installed app replaces a background service left over from other code (for example the
+        // previous version, still running after an update). Development builds leave it alone.
+        let dev = cfg!(debug_assertions) && std::env::var_os("NEXUS_REPLACE_STALE").is_none();
+        if dev || !core_is_other_version() {
+            return;
+        }
+        stop_running(state);
+        if healthy() {
+            return; // couldn't replace it; the window shows a banner offering to try again
+        }
     }
     if let Err(e) = spawn(state) {
         *state.last_error.lock().unwrap() = Some(e);

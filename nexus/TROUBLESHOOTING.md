@@ -87,3 +87,6 @@ agree. In browser dev mode, open `http://127.0.0.1:1420/?token=$(cat data/secret
 - **"Your Zerodha session has ended"** — normal every morning; Settings → Brokers → Log in to Zerodha.
 - **"Invalid checksum" when logging in** — the API secret saved in NEXUS doesn't match the app's; paste it again.
 - **"NEXUS can't work out what this order is worth"** — market orders need a price to check against your limit, and the free Zerodha plan has no live quotes. Use a limit order, or turn on Markets so the delayed public price can be used.
+- **A button does nothing, or a banner says the background service is a different version** — click *Restart service* in the banner. From Terminal: `pkill -f -- "-m nexus_core"`, then reopen NEXUS. (Installed apps now do this by themselves at launch.)
+- **"Yahoo Finance is turning away automated requests"** — Yahoo blocks programs that aren't web browsers; NEXUS doesn't work around that. Switch the chart to **TradingView** (button above the chart). Prices, practice trading, alerts and trade ideas need a price source and stay unavailable while Yahoo refuses.
+- **The TradingView chart area is blank** — it needs internet access to tradingview.com. If it says a symbol is "only available on TradingView", that exchange doesn't allow embedded charts; use the chart's own search for another listing.

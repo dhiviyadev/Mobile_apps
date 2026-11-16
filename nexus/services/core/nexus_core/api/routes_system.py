@@ -16,6 +16,7 @@ from ..app_state import AppState
 from ..models.ollama import OllamaError
 from ..system.macos_metrics import hardware
 from ..system.updates import UpdateError
+from ..util import build_id
 from .deps import get_state, not_found
 
 router = APIRouter(prefix="/api")
@@ -38,6 +39,7 @@ async def bootstrap(st: AppState = Depends(get_state)) -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             default_model = None
     return {
+        "build": build_id(str(st.settings.nexus_root)),
         "profile": {"name": st.prefs.get("profile.name") or ""},
         "appearance": {"material": st.prefs.get("appearance.material") or "ambient",
                        "motion": st.prefs.get("appearance.motion") or "full",
@@ -60,7 +62,7 @@ async def bootstrap(st: AppState = Depends(get_state)) -> dict[str, Any]:
         "cloud": st.cloud.status(),
         "projects": st.projects.list(),
         "web": {"enabled": st.web.enabled},
-        "markets": {"enabled": st.markets.enabled},
+        "markets": {"enabled": st.markets.enabled, "chart": st.prefs.get("markets.chart") or "builtin"},
         "apple": st.apple.status(),
         # People who already use NEXUS never see the first-run guide.
         "onboarding": {"completed": bool(st.prefs.get("onboarding.completed"))
@@ -97,6 +99,18 @@ async def system_status(st: AppState = Depends(get_state)) -> dict[str, Any]:
 @router.post("/system/emergency-stop")
 async def emergency_stop(request: Request, st: AppState = Depends(get_state)) -> dict[str, Any]:
     return await st.emergency_stop(actor=request.state.actor)
+
+
+@router.post("/system/shutdown")
+async def shutdown(st: AppState = Depends(get_state)) -> dict[str, Any]:
+    """Stop this core cleanly. Used by the app to replace a background service left over from an older version."""
+    import asyncio
+    import os
+    import signal
+
+    st.audit.record("user", "system.shutdown", None, "executed")
+    asyncio.get_running_loop().call_later(0.3, os.kill, os.getpid(), signal.SIGTERM)
+    return {"stopping": True}
 
 
 @router.post("/system/resume")
@@ -168,7 +182,8 @@ class SettingsPatch(BaseModel):
 
 @router.patch("/settings")
 def patch_settings(body: SettingsPatch, st: AppState = Depends(get_state)) -> dict[str, Any]:
-    enums = {"appearance.material": {"ambient", "desktop", "solid"}, "appearance.motion": {"full", "calm"}}
+    enums = {"appearance.material": {"ambient", "desktop", "solid"}, "appearance.motion": {"full", "calm"},
+             "markets.chart": {"builtin", "tradingview"}}
     for k, allowed in enums.items():
         if k in body.values and body.values[k] not in allowed:
             raise HTTPException(400, f"{k} must be one of {sorted(allowed)}")

@@ -76,6 +76,7 @@ export const shell = {
   setAlwaysOnTop: (on: boolean) => invoke("set_mini_always_on_top", { on }),
   pickFolder: () => invoke<string | null>("pick_folder"),
   readClipboard: () => invoke<string>("read_clipboard"),
+  respawnCore: () => invoke<CoreInfo>("respawn_core"),
   startDragging: async () => {
     if (!isTauri) return;
     const { getCurrentWindow } = await import("@tauri-apps/api/window");

@@ -288,6 +288,7 @@ export interface VoiceStatus {
 }
 
 export interface Bootstrap {
+  build?: string;
   profile: { name: string };
   appearance: { material: "ambient" | "desktop" | "solid"; motion: "full" | "calm"; transparency: number };
   hardware: Record<string, unknown>;
@@ -307,7 +308,7 @@ export interface Bootstrap {
   update: { available: boolean; behind: number; applying: boolean; supported?: boolean; error?: string | null; checked_at?: number | null; current?: string | null };
   projects?: Project[];
   web?: { enabled: boolean };
-  markets?: { enabled: boolean };
+  markets?: { enabled: boolean; chart?: "builtin" | "tradingview" };
   apple?: { available: boolean; calendar: boolean; reminders: boolean; mail: boolean };
   onboarding?: { completed: boolean };
   cloud: { enabled: boolean; provider: string; model: string; has_key: boolean; allow_documents: boolean; keychain_available: boolean };

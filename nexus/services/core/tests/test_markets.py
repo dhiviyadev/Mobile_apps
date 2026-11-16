@@ -108,7 +108,8 @@ def test_history_quote_search_and_cache(client, st, yahoo):
     assert client.get("/api/markets/history/NOPE").json()["detail"] == "That symbol wasn't found."
     assert client.get("/api/markets/history/a b").status_code == 400
     yahoo.status = 429
-    assert "busy" in client.get("/api/markets/history/MSFT").json()["detail"]
+    st.markets.retry_delay = 0
+    assert "turning away automated requests" in client.get("/api/markets/history/MSFT").json()["detail"]
 
 
 def test_watchlist(client, yahoo):
@@ -217,3 +218,67 @@ def test_phones_can_look_but_not_trade(client, yahoo):
     assert client.post("/api/markets/orders", json={"symbol": "AAPL", "side": "buy", "quantity": 1}, headers=h).status_code == 403
     assert client.post("/api/markets/account/reset", json={}, headers=h).status_code == 403
     assert client.delete("/api/markets/watchlist/AAPL", headers=h).status_code == 403
+
+
+def test_markets_stay_usable_when_the_price_service_refuses(client, st, yahoo):
+    """Yahoo turns automated clients away with 429. That must be said plainly, and must not make the page useless."""
+    on(client)
+    st.markets.retry_delay = 0
+    client.get("/api/markets/history/AAPL?range=6mo")  # fills the cache while the service still answers
+    yahoo.status = 429
+    st.markets._cache = {k: (0.0, v) for k, (_, v) in st.markets._cache.items()}  # everything is now out of date
+    stale = client.get("/api/markets/history/AAPL?range=6mo").json()
+    assert stale["stale"] is True and len(stale["candles"]) == 4  # last known data, marked as such
+    r = client.get("/api/markets/history/MSFT")
+    assert r.status_code == 400 and "turning away automated requests" in r.json()["detail"] and "TradingView" in r.json()["detail"]
+    calls = len(yahoo.calls)
+    client.get("/api/markets/history/MSFT?range=1mo")
+    assert len(yahoo.calls) == calls  # once refused, NEXUS stops asking for two minutes instead of hammering the service
+    st.markets._refused_until = 0
+    client.get("/api/markets/history/MSFT?range=1mo")
+    assert len(yahoo.calls) - calls == 2  # and when it does ask again: one try plus one polite retry, no more
+    # A symbol can still be added (so it can be charted with TradingView), just without a price.
+    added = client.post("/api/markets/watchlist", json={"symbol": "infy.ns"}).json()
+    assert added["symbol"] == "INFY.NS" and added["price"] is None
+    ov = client.get("/api/markets").json()
+    assert [w["symbol"] for w in ov["watchlist"]] == ["INFY.NS"] and "error" in ov["watchlist"][0]["quote"]
+    assert client.post("/api/markets/watchlist", json={"symbol": "not a symbol"}).status_code == 400
+
+
+def test_tradingview_frame_is_locked_down(client):
+    r = client.get("/api/tradingview?symbol=nse:infy&interval=60&tz=Asia/Kolkata", headers={"Authorization": ""})
+    assert r.status_code == 200  # a frame can't send the API token, so this page is public — and holds nothing private
+    assert '"symbol": "NSE:INFY"' in r.text and '"interval": "60"' in r.text and '"timezone": "Asia/Kolkata"' in r.text
+    assert "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" in r.text
+    csp = r.headers["content-security-policy"]
+    assert "default-src 'none'" in csp and "script-src https://s3.tradingview.com;" in csp and "'unsafe-inline'" not in csp.split("script-src")[1].split(";")[0]
+    for bad in ("</script><script>alert(1)</script>", "A\"B", "A B", ""):
+        assert client.get("/api/tradingview", params={"symbol": bad}).status_code in (400, 422)
+    odd = client.get("/api/tradingview?symbol=AAPL&interval=evil&tz=<x>").text
+    assert '"interval": "D"' in odd and '"timezone": "Etc/UTC"' in odd and "<x>" not in odd
+    assert client.patch("/api/settings", json={"values": {"markets.chart": "tradingview"}}).status_code == 200
+    assert client.patch("/api/settings", json={"values": {"markets.chart": "other"}}).status_code == 400
+    assert client.get("/api/bootstrap").json()["markets"]["chart"] == "tradingview"
+
+
+def test_core_reports_its_build_and_can_be_asked_to_stop(client, st, monkeypatch):
+    import os
+    import signal
+
+    health = client.get("/health", headers={"Authorization": ""}).json()
+    assert "build" in health and health["build"] == client.get("/api/bootstrap").json()["build"]
+    killed = []
+    monkeypatch.setattr(os, "kill", lambda pid, sig: killed.append((pid, sig)))
+    assert client.post("/api/system/shutdown").json() == {"stopping": True}
+    import time
+
+    for _ in range(40):
+        if killed:
+            break
+        time.sleep(0.05)
+    assert killed == [(os.getpid(), signal.SIGTERM)]
+    # A paired phone can't stop the Mac's service.
+    client.patch("/api/devices/remote", json={"enabled": True, "hostnames": ["mac.tail1.ts.net"]})
+    code = client.post("/api/devices/pair").json()["code"]
+    tok = client.post("/api/devices/claim", json={"code": code}).json()["token"]
+    assert client.post("/api/system/shutdown", headers={"Authorization": f"Bearer {tok}", "Host": "mac.tail1.ts.net"}).status_code == 403

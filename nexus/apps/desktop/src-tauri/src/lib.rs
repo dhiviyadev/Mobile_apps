@@ -102,6 +102,25 @@ async fn core_info(app: AppHandle) -> Result<CoreInfo, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Replace the running background service with a fresh one from this app's code (used by the
+/// "different version" banner). Blocks while the old one shuts down, so it runs off the UI thread.
+#[tauri::command]
+async fn respawn_core(app: AppHandle) -> Result<CoreInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<CoreProcess>();
+        core::stop_running(&state);
+        *state.last_error.lock().unwrap() = None;
+        if !core::healthy() {
+            if let Err(e) = core::spawn(&state) {
+                *state.last_error.lock().unwrap() = Some(e);
+            }
+        }
+        core::info(&state)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn show_main(app: AppHandle, route: Option<String>) {
     show_main_window(&app, route);
@@ -250,6 +269,7 @@ pub fn run() {
         .manage(CoreProcess::default())
         .invoke_handler(tauri::generate_handler![
             core_info,
+            respawn_core,
             show_main,
             toggle_mini,
             hide_mini,
