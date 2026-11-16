@@ -104,3 +104,36 @@ def test_not_a_git_checkout(client, st, tmp_path):
     st.updates.nexus_root = tmp_path
     s = arun(client, st.updates.check, False)
     assert s["supported"] is False and "git checkout" in s["error"]
+
+
+def test_generated_lock_files_never_block_an_update(client, st, repos):
+    """npm and cargo rewrite their lock files whenever the app is built; that must not count as a local edit."""
+    for rel in ("nexus/apps/desktop/package-lock.json", "nexus/apps/desktop/src-tauri/Cargo.lock"):
+        _push_change(repos["up"], rel, "v1", f"add {rel}")
+    git(repos["local"], "pull", "-q")
+    st.updates.nexus_root = repos["nexus"]
+    (repos["nexus"] / "apps/desktop/package-lock.json").write_text("rewritten by npm on this Mac")
+    (repos["nexus"] / "apps/desktop/src-tauri/Cargo.lock").write_text("rewritten by cargo on this Mac")
+    _push_change(repos["up"], "nexus/README.md", "v2", "update")
+    status = arun(client, st.updates.check, True)
+    assert status["available"] is True and status["dirty_files"] == []
+    boot = client.get("/api/bootstrap").json()["update"]
+    assert boot["available"] is True and boot["supported"] is True and boot["error"] is None and boot["current"]
+    assert client.post("/api/system/updates/apply").status_code == 200  # not refused
+
+
+def test_update_check_explains_sign_in_problems(client, st, repos, monkeypatch):
+    st.updates.nexus_root = repos["nexus"]
+    real = st.updates._git
+
+    async def failing(*args, **kw):
+        if args[0] == "fetch":
+            from nexus_core.system.updates import UpdateError
+
+            raise UpdateError("fatal: could not read Username for 'https://github.com': terminal prompts disabled")
+        return await real(*args, **kw)
+
+    monkeypatch.setattr(st.updates, "_git", failing)
+    status = arun(client, st.updates.check, True)
+    assert "run `git pull` once" in status["error"]
+    assert "Couldn't check" in client.get("/api/bootstrap").json()["update"]["error"]

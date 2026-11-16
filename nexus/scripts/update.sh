@@ -29,6 +29,15 @@ if ! command -v npm >/dev/null 2>&1 && [[ -s "$HOME/.nvm/nvm.sh" ]]; then
 fi
 
 cd "$ROOT"
+# Building the app rewrites these two generated files on every Mac; they are not your edits, and they
+# are regenerated below, so put them back first — otherwise they would block every update.
+GENERATED=(apps/desktop/package-lock.json apps/desktop/src-tauri/Cargo.lock)
+for f in "${GENERATED[@]}"; do
+  if [[ -n "$(git status --porcelain -- "$f" 2>/dev/null)" ]]; then
+    echo "Restoring generated file $f"
+    git checkout -- "$f"
+  fi
+done
 CURRENT="checking for local changes"; step "$CURRENT"
 if [[ -n "$(git status --porcelain --untracked-files=no -- .)" ]]; then
   echo "Local changes in the NEXUS folder — not updating:"

@@ -46,7 +46,9 @@ export function App() {
     const offs = [
       listen<string | null>("nexus://navigate", (route) => {
         if (!route) return;
-        if (route.startsWith("chat:")) {
+        if (route.startsWith("settings:")) {
+          useCore.getState().openSettings(route.slice(9));
+        } else if (route.startsWith("chat:")) {
           void openConv(route.slice(5));
           setWorkspace("chat");
         } else setWorkspace(route as Workspace);

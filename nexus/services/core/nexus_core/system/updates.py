@@ -27,7 +27,9 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 CHECK_INTERVAL_S = 6 * 3600
-FIRST_CHECK_DELAY_S = 60
+FIRST_CHECK_DELAY_S = 20
+# Rewritten by npm / cargo whenever the app is built; the updater restores them, so they never block an update.
+GENERATED_FILES = ("apps/desktop/package-lock.json", "apps/desktop/src-tauri/Cargo.lock")
 
 
 class UpdateError(Exception):
@@ -89,6 +91,7 @@ class UpdateService:
             commits = [dict(zip(("sha", "date", "subject"), line.split("\x1f"), strict=False)) for line in raw.splitlines() if line]
             latest = (await self._git("rev-parse", upstream, timeout=10)) if commits else h_full
             dirty = [ln[3:] for ln in (await self._git("status", "--porcelain", "--untracked-files=no", "--", ".", timeout=20)).splitlines() if ln]
+            dirty = [f for f in dirty if not f.strip('"').endswith(GENERATED_FILES)]
             st.update({
                 "supported": True, "branch": branch, "upstream": upstream,
                 "current": {"sha": h_short, "date": h_date, "subject": h_subj},
@@ -97,7 +100,18 @@ class UpdateService:
             })
         except (UpdateError, OSError, ValueError) as exc:
             st["supported"] = True
-            st["error"] = f"Couldn't check for updates: {exc}"
+            msg = str(exc)
+            low = msg.lower()
+            if "could not read username" in low or "authentication failed" in low or "terminal prompts disabled" in low:
+                hint = (" GitHub needs your sign-in. Open Terminal, run `git pull` once inside the NEXUS folder and sign in when asked; "
+                        "after that NEXUS can check by itself.")
+            elif "permission denied (publickey)" in low:
+                hint = " Your SSH key isn't available to the app. Run `ssh-add --apple-use-keychain` in Terminal once."
+            elif "could not resolve host" in low or "timed out" in low or "unable to access" in low:
+                hint = " Check the internet connection and try again."
+            else:
+                hint = ""
+            st["error"] = f"Couldn't check for updates: {msg}.{hint}"
         self.status = st
         self.state.bus.publish("system.update", {"available": st.get("available", False), "behind": st.get("behind", 0)})
         if st.get("available") and st.get("latest_sha") != self._notified_sha:

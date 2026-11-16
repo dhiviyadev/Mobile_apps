@@ -207,11 +207,12 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Open NEXUS", true, None::<&str>)?;
     let assistant = MenuItem::with_id(app, "mini", "Floating Assistant    ⌥Space", true, None::<&str>)?;
     let chat = MenuItem::with_id(app, "chat", "New Conversation", true, None::<&str>)?;
+    let updates = MenuItem::with_id(app, "updates", "Check for Updates…", true, None::<&str>)?;
     let stop = MenuItem::with_id(app, "stop", "Emergency Stop", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit NEXUS", true, Some("CmdOrCtrl+Q"))?;
     let menu = Menu::with_items(
         app,
-        &[&open, &assistant, &chat, &PredefinedMenuItem::separator(app)?, &stop, &PredefinedMenuItem::separator(app)?, &quit],
+        &[&open, &assistant, &chat, &updates, &PredefinedMenuItem::separator(app)?, &stop, &PredefinedMenuItem::separator(app)?, &quit],
     )?;
     let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?;
     TrayIconBuilder::with_id("nexus-tray")
@@ -224,6 +225,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             "open" => show_main_window(app, None),
             "mini" => show_mini(app, true),
             "chat" => show_main_window(app, Some("chat".into())),
+            "updates" => show_main_window(app, Some("settings:updates".into())),
             "stop" => {
                 // The main webview owns the authenticated API client; it performs the stop.
                 if let Some(w) = main_window(app) {

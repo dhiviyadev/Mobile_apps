@@ -361,7 +361,8 @@ function Updates({ values, set }: { values: Values; set: SetFn }) {
       setChecking(false);
     }
   };
-  useEffect(() => void check(false), []);
+  // Opening this page always asks GitHub afresh, so what you see is current.
+  useEffect(() => void check(true), []);
   // While updating, follow the updater's log.
   useEffect(() => {
     if (!st?.applying && !log?.applying) return;

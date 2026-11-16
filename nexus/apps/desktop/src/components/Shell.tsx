@@ -80,6 +80,7 @@ export function Sidebar() {
         >
           <Settings size={15} className="text-muted" /> Settings
         </button>
+        <VersionLine />
         <ServiceLine />
       </div>
     </aside>
@@ -132,6 +133,19 @@ function RecentChats() {
   );
 }
 
+function VersionLine() {
+  const update = useCore((s) => s.boot?.update);
+  const openSettings = useCore((s) => s.openSettings);
+  return (
+    <button onClick={() => openSettings("updates")} className="flex w-full items-center justify-between px-3 pt-0.5 text-[10.5px] text-muted hover:text-fg-2">
+      <span>{update?.current ? `Version ${update.current}` : "NEXUS"}</span>
+      <span className={update?.available ? "text-accent-strong" : update?.error ? "text-warn" : ""}>
+        {update?.applying ? "Updating…" : update?.available ? "Update available" : update?.error ? "Couldn't check" : "Check for updates"}
+      </span>
+    </button>
+  );
+}
+
 function ServiceLine() {
   const boot = useCore((s) => s.boot);
   const ws = useCore((s) => s.ws);
@@ -178,8 +192,25 @@ export function TitleBar({ title }: { title: string }) {
           </span>
         </button>
         <AnimatePresence>
+          {!update?.available && !update?.applying && (
+            // Always there, so "is there an update?" never depends on a notification having appeared.
+            <motion.button
+              key="check"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => openSettings("updates")}
+              title={update?.error ?? "Check for updates"}
+              className={cls("press flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11.5px]",
+                update?.error ? "border-warn/40 text-warn" : "border-white/10 text-muted hover:text-fg-2")}
+            >
+              <ArrowUpCircle size={13} />
+              {update?.error ? "Update check failed" : "Updates"}
+            </motion.button>
+          )}
           {(update?.available || update?.applying) && (
             <motion.button
+              key="available"
               initial={{ opacity: 0, scale: 0.8, x: 8 }}
               animate={{ opacity: 1, scale: 1, x: 0 }}
               exit={{ opacity: 0, scale: 0.8 }}

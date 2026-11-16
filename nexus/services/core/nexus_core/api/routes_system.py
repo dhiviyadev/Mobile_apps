@@ -67,7 +67,9 @@ async def bootstrap(st: AppState = Depends(get_state)) -> dict[str, Any]:
                        or bool(st.db.query_one("SELECT 1 AS x FROM conversations LIMIT 1"))
                        or bool(st.db.query_one("SELECT 1 AS x FROM folders LIMIT 1"))},
         "update": {"available": bool(st.updates.status.get("available")), "behind": st.updates.status.get("behind", 0),
-                   "applying": st.updates.applying},
+                   "applying": st.updates.applying, "supported": bool(st.updates.status.get("supported")),
+                   "error": st.updates.status.get("error"), "checked_at": st.updates.status.get("checked_at"),
+                   "current": (st.updates.status.get("current") or {}).get("sha")},
     }
 
 

@@ -304,7 +304,7 @@ export interface Bootstrap {
   folders: Folder[];
   memory: { proposed: number };
   voice: VoiceStatus;
-  update: { available: boolean; behind: number; applying: boolean };
+  update: { available: boolean; behind: number; applying: boolean; supported?: boolean; error?: string | null; checked_at?: number | null; current?: string | null };
   projects?: Project[];
   web?: { enabled: boolean };
   markets?: { enabled: boolean };
