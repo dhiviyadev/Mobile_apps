@@ -113,4 +113,5 @@ class AppState:
             t.cancel()
         await self.tasks.shutdown()
         await self.ollama.close()
+        await self.markets.close()
         self.db.close()

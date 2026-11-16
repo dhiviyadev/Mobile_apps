@@ -201,7 +201,7 @@ class WebService:
         ext = {"sni_hostname": host} if parts.scheme == "https" else None
         return target, host, ext
 
-    async def _get(self, url: str, params: dict[str, str] | None = None) -> tuple[str, str, str]:
+    async def _get(self, url: str, params: dict[str, str] | None = None, user_agent: str | None = None) -> tuple[str, str, str]:
         """Fetch with pinning, manual redirects and a size cap. Returns (final url, content type, body text)."""
         if params:
             url += ("&" if "?" in url else "?") + "&".join(f"{k}={quote_plus(v)}" for k, v in params.items())
@@ -209,7 +209,7 @@ class WebService:
                                      timeout=httpx.Timeout(20, connect=10)) as client:
             for _ in range(MAX_REDIRECTS + 1):
                 target, host, ext = await self._pin(url)
-                req = client.build_request("GET", target, headers={"Host": host, "User-Agent": USER_AGENT,
+                req = client.build_request("GET", target, headers={"Host": host, "User-Agent": user_agent or USER_AGENT,
                                                                    "Accept": "text/html,text/plain,application/json;q=0.9,*/*;q=0.5",
                                                                    "Accept-Language": "en"}, extensions=ext or {})
                 resp = await client.send(req, stream=True)

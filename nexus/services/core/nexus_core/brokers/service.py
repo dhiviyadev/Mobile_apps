@@ -273,7 +273,7 @@ class BrokerService:
         if suffix and self.state.markets.enabled:
             try:
                 q = await self.state.markets.quote(order["tradingsymbol"] + suffix, fresh=True)
-                return float(q["price"]), "a delayed public price"
+                return float(q["price"]), "NSE's public price, which can lag a few minutes" if suffix == ".NS" else "a delayed public price"
             except Exception:  # noqa: BLE001 - an estimate is optional
                 pass
         return None, ""
@@ -311,8 +311,8 @@ class BrokerService:
             warnings.append("MTF borrows money from the broker and charges interest.")
         if order["transaction_type"] == "SELL" and order["product"] == "CNC":
             warnings.append("A CNC sell only works for shares you already hold. To short a share, use MIS (intraday) or derivatives.")
-        if source == "a delayed public price":
-            warnings.append("The estimate uses a delayed public price, not Zerodha's live price.")
+        if "public price" in source:
+            warnings.append("The estimate uses a public price that can lag by a few minutes, not Zerodha's live price.")
         expires = int(time.time()) + CONFIRM_TTL_S
         return {"order": order, "estimated_price": price, "estimated_value": value, "price_source": source, "warnings": warnings,
                 "confirm_code": self._sign(order, expires, secrets.token_hex(8)), "expires_in": CONFIRM_TTL_S, "limits": self.limits(), "real_money": True}

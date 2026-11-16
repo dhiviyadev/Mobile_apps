@@ -52,6 +52,7 @@ def configure_logging(settings: Settings) -> None:
         lg = logging.getLogger(name)
         lg.handlers = []
         lg.propagate = True
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # one line per outgoing request would drown the log
     try:
         os.chmod(settings.logs_dir, 0o700)
     except OSError:

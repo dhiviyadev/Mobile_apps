@@ -32,6 +32,8 @@ from urllib.parse import quote
 import httpx
 
 from ..integrations.web import WebBlocked
+from .providers import USER_AGENT as HONEST_AGENT
+from .providers import CoinbaseProvider, NseProvider, ProviderError
 from ..util import new_id, now_iso
 
 if TYPE_CHECKING:
@@ -48,7 +50,7 @@ RANGES: dict[str, tuple[str, int]] = {
     "5yd": ("1d", 3600),  # five years of daily bars: used for analysis and back-tests, not offered as a chart range
 }
 RANGE_PARAM = {"5yd": "5y"}
-_SYMBOL = re.compile(r"^[A-Za-z0-9.\-=^]{1,15}$")
+_SYMBOL = re.compile(r"^[A-Za-z0-9.\-=^&]{1,15}$")  # "&" appears in NSE tickers such as M&M
 DEFAULT_CASH = 100_000.0
 MAX_WATCHLIST = 40
 ALERT_INTERVAL_S = 180
@@ -62,8 +64,10 @@ class MarketError(Exception):
         self.kind = kind
 
 
-REFUSED = ("Yahoo Finance is turning away automated requests right now, so prices can't be loaded. "
-           "Charts still work: switch the chart to TradingView. Prices here will return when Yahoo allows it.")
+REFUSED = ("Yahoo Finance is turning away automated requests, so prices for this symbol can't be loaded. Indian shares (add .NS, "
+           "e.g. INFY.NS) and crypto (e.g. BTC-USD) use other free sources and work. For this symbol, switch the chart to TradingView.")
+SOURCES = "Indian shares: NSE India's official free service · Crypto: Coinbase · Others: Yahoo Finance (often unavailable)"
+DEFAULT_CASH_BY_CURRENCY = {"INR": 1_000_000.0, "USD": 100_000.0, "EUR": 100_000.0, "GBP": 100_000.0}
 
 
 class MarketsDisabled(MarketError):
@@ -132,6 +136,8 @@ class MarketService:
     def __init__(self, state: "AppState"):
         self.state = state
         self._cache: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
+        self.nse = NseProvider(state.db)
+        self.crypto = CoinbaseProvider(state.db, state.web)
         self.retry_delay = 1.5
         self._refused_until = 0.0  # after a refusal, stop asking for a while instead of knocking repeatedly
 
@@ -151,7 +157,7 @@ class MarketService:
             raise MarketError(REFUSED, "refused")
         for attempt in (1, 2):
             try:
-                _, _, body = await self.state.web._get(url, params)  # noqa: SLF001 - shared guarded fetcher
+                _, _, body = await self.state.web._get(url, params, user_agent=HONEST_AGENT)  # noqa: SLF001 - shared guarded fetcher
                 self._refused_until = 0.0
                 break
             except WebBlocked as exc:
@@ -172,11 +178,28 @@ class MarketService:
         except ValueError as exc:
             raise MarketError("The market data service sent an answer NEXUS couldn't read.") from exc
 
+    def _provider(self, symbol: str) -> NseProvider | CoinbaseProvider | None:
+        """Which free official source serves this symbol (None = only Yahoo knows it)."""
+        if self.nse.handles(symbol):
+            return self.nse
+        if self.crypto.handles(symbol):
+            return self.crypto
+        return None
+
+    async def close(self) -> None:
+        await self.nse.close()
+
     async def history(self, symbol: str, range_: str = "6mo", fresh: bool = False) -> dict[str, Any]:
         self._require()
         symbol = clean_symbol(symbol)
         if range_ not in RANGES:
             raise MarketError(f"range must be one of {', '.join(RANGES)}")
+        provider = self._provider(symbol)
+        if provider:
+            try:
+                return await provider.history(symbol, range_, fresh)
+            except ProviderError as exc:
+                raise MarketError(str(exc), exc.kind) from exc
         interval, ttl = RANGES[range_]
         key = (symbol, range_)
         hit = self._cache.get(key)
@@ -206,6 +229,14 @@ class MarketService:
         return out
 
     async def quote(self, symbol: str, fresh: bool = False) -> dict[str, Any]:
+        self._require()
+        symbol = clean_symbol(symbol)
+        provider = self._provider(symbol)
+        if provider:
+            try:
+                return await provider.quote(symbol, fresh)
+            except ProviderError as exc:
+                raise MarketError(str(exc), exc.kind) from exc
         return (await self.history(symbol, "1d", fresh=fresh))["quote"]
 
     async def quotes(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
@@ -222,19 +253,29 @@ class MarketService:
         return dict(await asyncio.gather(*(one(s) for s in symbols)))
 
     async def search(self, query: str) -> list[dict[str, Any]]:
+        """Find symbols by ticker or name: NSE shares first, then crypto, then whatever Yahoo will tell us."""
         self._require()
         query = " ".join(query.split())[:60]
         if not query:
             return []
-        data = await self._json(SEARCH_URL, {"q": query, "quotesCount": "8", "newsCount": "0", "listsCount": "0"})
-        out = []
-        for q in data.get("quotes") or []:
-            sym = str(q.get("symbol") or "").upper()
-            if not _SYMBOL.match(sym):
-                continue
-            out.append({"symbol": sym, "name": q.get("longname") or q.get("shortname") or sym,
-                        "exchange": q.get("exchDisp") or q.get("exchange") or "", "kind": (q.get("typeDisp") or q.get("quoteType") or "").lower()})
-        return out[:8]
+        out: list[dict[str, Any]] = []
+        try:
+            out += await self.nse.search(query)
+        except ProviderError:
+            pass
+        out += await self.crypto.search(query)
+        if time.time() >= self._refused_until:
+            try:
+                data = await self._json(SEARCH_URL, {"q": query, "quotesCount": "8", "newsCount": "0", "listsCount": "0"})
+                for q in data.get("quotes") or []:
+                    sym = str(q.get("symbol") or "").upper()
+                    if _SYMBOL.match(sym) and not any(r["symbol"] == sym for r in out):
+                        out.append({"symbol": sym, "name": q.get("longname") or q.get("shortname") or sym,
+                                    "exchange": q.get("exchDisp") or q.get("exchange") or "", "kind": (q.get("typeDisp") or q.get("quoteType") or "").lower()})
+            except MarketError:
+                if not out:
+                    raise
+        return out[:10]
 
     # -- watchlist ----------------------------------------------------------------
     def watchlist(self) -> list[dict[str, Any]]:
@@ -245,12 +286,20 @@ class MarketService:
         try:
             q = await self.quote(symbol)  # also proves the symbol exists
         except MarketError as exc:
-            if exc.kind not in ("refused", "network"):
-                raise
-            # The price service is unavailable, not the symbol wrong: keep it anyway so it can still be charted.
             sym = clean_symbol(symbol)
-            q = {"symbol": sym, "name": sym, "exchange": "", "kind": "", "currency": "", "price": None, "change": None,
-                 "change_percent": None, "error": str(exc)}
+            q = None
+            if exc.kind in ("refused", "not_found") and "." not in sym and "-" not in sym and not sym.startswith("^"):
+                # A bare ticker Yahoo won't answer for is very likely an Indian share: accept it if NSE itself confirms it.
+                try:
+                    q = await self.quote(f"{sym}.NS")
+                except MarketError:
+                    q = None
+            if q is None:
+                if exc.kind not in ("refused", "network"):
+                    raise
+                # The price service is unavailable, not the symbol wrong: keep it anyway so it can still be charted.
+                q = {"symbol": sym, "name": sym, "exchange": "", "kind": "", "currency": "", "price": None, "change": None,
+                     "change_percent": None, "error": str(exc)}
         db = self.state.db
         if not db.query_one("SELECT symbol FROM market_watchlist WHERE symbol = ?", (q["symbol"],)):
             count = (db.query_one("SELECT COUNT(*) AS n FROM market_watchlist") or {"n": 0})["n"]
@@ -306,6 +355,10 @@ class MarketService:
             raise MarketError("Quantity must be a positive number with at most 6 decimal places.")
         q = await self.quote(symbol, fresh=True)
         acct = self.account()
+        untouched = not self.state.db.query_one("SELECT 1 AS x FROM paper_orders LIMIT 1") and acct["cash"] == acct["starting_cash"]
+        if q["currency"] and q["currency"] != acct["currency"] and untouched and q["currency"] in DEFAULT_CASH_BY_CURRENCY:
+            # Nothing has been traded yet, so simply open the practice account in the currency of the first thing bought.
+            acct = self.reset_account(DEFAULT_CASH_BY_CURRENCY[q["currency"]], q["currency"])
         if q["currency"] and q["currency"] != acct["currency"]:
             raise MarketError(f"{q['symbol']} trades in {q['currency']}, but the practice account is in {acct['currency']}. "
                               f"Reset the account in that currency to practise with it.")

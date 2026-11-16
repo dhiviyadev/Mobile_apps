@@ -117,6 +117,9 @@ def client(settings: Settings, fake_ollama: FakeOllama) -> Iterator[TestClient]:
         st.ollama._client = httpx.AsyncClient(base_url="http://ollama.test", transport=httpx.MockTransport(fake_ollama.handler))
         # Hermes "not running" by default.
         st.hermes.transport = httpx.MockTransport(lambda r: (_ for _ in ()).throw(httpx.ConnectError("refused")))
+        # Tests never touch the internet: NSE's data service is unreachable unless a test installs a stand-in.
+        offline = httpx.MockTransport(lambda r: (_ for _ in ()).throw(httpx.ConnectError("offline in tests")))
+        st.markets.nse.live.transport = st.markets.nse.hist.transport = offline
         c.headers["Authorization"] = f"Bearer {st.token}"
         c.app_state = st  # type: ignore[attr-defined]
         yield c

@@ -238,10 +238,10 @@ def test_markets_stay_usable_when_the_price_service_refuses(client, st, yahoo):
     client.get("/api/markets/history/MSFT?range=1mo")
     assert len(yahoo.calls) - calls == 2  # and when it does ask again: one try plus one polite retry, no more
     # A symbol can still be added (so it can be charted with TradingView), just without a price.
-    added = client.post("/api/markets/watchlist", json={"symbol": "infy.ns"}).json()
-    assert added["symbol"] == "INFY.NS" and added["price"] is None
+    added = client.post("/api/markets/watchlist", json={"symbol": "sap.de"}).json()
+    assert added["symbol"] == "SAP.DE" and added["price"] is None
     ov = client.get("/api/markets").json()
-    assert [w["symbol"] for w in ov["watchlist"]] == ["INFY.NS"] and "error" in ov["watchlist"][0]["quote"]
+    assert [w["symbol"] for w in ov["watchlist"]] == ["SAP.DE"] and "error" in ov["watchlist"][0]["quote"]
     assert client.post("/api/markets/watchlist", json={"symbol": "not a symbol"}).status_code == 400
 
 

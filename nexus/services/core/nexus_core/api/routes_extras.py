@@ -13,7 +13,7 @@ from ..app_state import AppState
 from ..integrations.apple import AppleUnavailable
 from ..integrations.web import WebBlocked, WebDisabled
 from ..brokers.service import BrokerError
-from ..markets.service import MarketError
+from ..markets.service import SOURCES, MarketError
 from ..permissions.approvals import EmergencyStopActive
 from ..permissions.policy import PermissionDenied
 from ..remote.push import PushError
@@ -196,7 +196,7 @@ async def markets_overview(st: AppState = Depends(get_state)) -> dict[str, Any]:
         quotes = await st.markets.quotes([w["symbol"] for w in watch])
     return {"enabled": st.markets.enabled, "watchlist": [{**w, "quote": quotes.get(w["symbol"])} for w in watch],
             "portfolio": await st.markets.portfolio(), "alerts": st.markets.alerts(),
-            "source": "Yahoo Finance (unofficial, may be delayed)"}
+            "source": SOURCES}
 
 
 @router.get("/markets/search")
@@ -433,16 +433,17 @@ _TV_TZ = re.compile(r"^[A-Za-z_]+(/[A-Za-z0-9_+\-]+){1,2}$")
 _TV_PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>TradingView chart</title>
 <style>html,body{{height:100%;margin:0;background:#14161b}}.tradingview-widget-container,.tradingview-widget-container__widget{{height:100%;width:100%}}</style>
 </head><body><div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div>
-<script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
+<script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-{widget}.js" async>
 {config}
 </script></div></body></html>"""
+_TV_WIDGETS = {"advanced-chart", "technical-analysis"}
 _TV_CSP = ("default-src 'none'; script-src https://s3.tradingview.com; style-src 'unsafe-inline'; img-src https: data:; "
            "frame-src https://www.tradingview-widget.com https://s.tradingview.com https://www.tradingview.com; "
            "connect-src https://*.tradingview.com https://www.tradingview-widget.com")
 
 
 @router.get("/tradingview", response_class=HTMLResponse)
-def tradingview_frame(symbol: str, interval: str = "D", tz: str = "Etc/UTC") -> HTMLResponse:
+def tradingview_frame(symbol: str, interval: str = "D", tz: str = "Etc/UTC", widget: str = "advanced-chart") -> HTMLResponse:
     """A page holding TradingView's own chart widget for one symbol. Public (a frame can't send the API token) and
     holds nothing private: the only thing sent to TradingView is the symbol being viewed."""
     import json
@@ -450,10 +451,17 @@ def tradingview_frame(symbol: str, interval: str = "D", tz: str = "Etc/UTC") -> 
     symbol = symbol.upper().strip()
     if not _TV_SYMBOL.match(symbol):
         raise HTTPException(400, "Invalid symbol")
-    config = {"autosize": True, "symbol": symbol, "interval": interval if interval in _TV_INTERVALS else "D",
-              "timezone": tz if _TV_TZ.match(tz) else "Etc/UTC", "theme": "dark", "style": "1", "locale": "en",
-              "allow_symbol_change": True, "calendar": False, "withdateranges": True, "hide_side_toolbar": False,
-              "backgroundColor": "rgba(20, 22, 27, 1)", "support_host": "https://www.tradingview.com"}
+    if widget not in _TV_WIDGETS:
+        raise HTTPException(400, "Unknown widget")
+    if widget == "technical-analysis":
+        # TradingView's own summary of its indicators for the symbol: a gauge from "Strong sell" to "Strong buy".
+        config: dict[str, Any] = {"interval": "1D", "width": "100%", "height": "100%", "isTransparent": False, "symbol": symbol,
+                                  "showIntervalTabs": True, "displayMode": "single", "locale": "en", "colorTheme": "dark"}
+    else:
+        config = {"autosize": True, "symbol": symbol, "interval": interval if interval in _TV_INTERVALS else "D",
+                  "timezone": tz if _TV_TZ.match(tz) else "Etc/UTC", "theme": "dark", "style": "1", "locale": "en",
+                  "allow_symbol_change": True, "calendar": False, "withdateranges": True, "hide_side_toolbar": False,
+                  "backgroundColor": "rgba(20, 22, 27, 1)", "support_host": "https://www.tradingview.com"}
     # "</" can't appear (the symbol pattern forbids "<"), so the JSON can't break out of the script element.
-    return HTMLResponse(_TV_PAGE.format(config=json.dumps(config)),
+    return HTMLResponse(_TV_PAGE.format(config=json.dumps(config), widget=widget),
                         headers={"Content-Security-Policy": _TV_CSP, "Referrer-Policy": "no-referrer", "Cache-Control": "no-store"})

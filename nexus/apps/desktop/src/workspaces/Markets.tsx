@@ -7,7 +7,7 @@ import { useCore } from "@/stores/core";
 import { Badge, Button, Card, Empty, IconButton, Input, SectionTitle, Segmented, Select, Toggle } from "@/components/ui";
 import { ChartLegend, DOWN, PriceChart, UP, formatPrice, formatVolume, type Candle, type ChartRange, type PriceLevel } from "@/components/PriceChart";
 import { Ideas, LiveTrading, Scan } from "./Trading";
-import { TradingViewChart } from "@/components/TradingViewChart";
+import { TradingViewChart, TradingViewRating, isIndianListing } from "@/components/TradingViewChart";
 
 interface Quote {
   symbol: string;
@@ -91,7 +91,7 @@ const RANGES: { value: ChartRange; label: string }[] = [
   { value: "1d", label: "1D" }, { value: "5d", label: "5D" }, { value: "1mo", label: "1M" },
   { value: "6mo", label: "6M" }, { value: "1y", label: "1Y" }, { value: "5y", label: "5Y" },
 ];
-const STARTERS = ["AAPL", "MSFT", "NVDA", "SPY", "BTC-USD"];
+const STARTERS = ["RELIANCE.NS", "INFY.NS", "HDFCBANK.NS", "TCS.NS", "^NSEI", "BTC-USD"];
 
 function money(v: number | null | undefined, currency: string): string {
   if (v == null) return "—";
@@ -177,8 +177,8 @@ export function Markets() {
             <div className="min-w-0 flex-1">
               <p className="text-[14px] font-medium text-fg">Turn on market data</p>
               <ul className="mt-2 list-disc space-y-1 pl-4 text-[12.5px] leading-relaxed text-fg-2">
-                <li>Prices come from Yahoo Finance's public service. Only the ticker symbols you look at are sent; your holdings and orders stay on this Mac.</li>
-                <li>Data can be delayed (often 15 minutes for shares) and is unofficial, so don't rely on it for real decisions.</li>
+                <li>Indian share prices come from NSE India's official free data service, crypto from Coinbase. Only the symbols you look at are sent; your holdings and orders stay on this Mac.</li>
+                <li>Prices can lag a few minutes and history is daily, so check your broker's live price before a real trade. Shares outside India rely on Yahoo Finance, which often refuses.</li>
                 <li>
                   You start with a <b className="text-fg">practice account with pretend money</b>. Real orders are only possible after you connect Zerodha and switch them on yourself.
                 </li>
@@ -271,7 +271,7 @@ function Watchlist({ items, selected, onSelect, onChanged }: { items: WatchItem[
         }}
       >
         <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or symbol" className="pl-8" aria-label="Search markets" />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search — INFY, HDFC Bank, BTC…" className="pl-8" aria-label="Search markets" />
         {busy && <Loader2 size={13} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-muted" />}
       </form>
       {results && (
@@ -416,9 +416,22 @@ function SymbolPanel({ symbol, portfolio, alerts, onChanged }: { symbol: string;
             <>
               <TradingViewChart symbol={symbol} />
               <p className="mt-2 text-[11.5px] leading-snug text-muted">
-                Chart and data by TradingView, shown in an isolated frame: TradingView learns which symbol you view and nothing else. Use its own search to change symbol or add indicators.
-                Trade-idea levels can't be drawn on it — they're listed in the card below.
+                Chart and data by TradingView, kept in its own frame: TradingView learns which symbol you view and nothing else.
+                {isIndianListing(symbol) && " TradingView doesn't allow NSE prices in embedded charts, so this is the same company's BSE listing — prices differ by a few paise."}{" "}
+                Trade-idea levels can't be drawn on it; they're listed in the card below.
               </p>
+              <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]">
+                <TradingViewRating symbol={symbol} />
+                <div className="self-center text-[12.5px] leading-relaxed text-fg-2">
+                  <p className="text-[13.5px] font-medium text-fg">TradingView's rating — a second opinion</p>
+                  <p className="mt-1.5">
+                    The gauge is TradingView's own tally of common indicators (moving averages and oscillators) for this symbol: how many say sell, neutral or buy. Use the tabs on it to change the timeframe.
+                  </p>
+                  <p className="mt-1.5 text-muted">
+                    It is a different method from the Trade idea below, so the two can disagree. Neither is a prediction; when they disagree, that is a reason for caution, not a tie-breaker.
+                  </p>
+                </div>
+              </div>
             </>
           ) : err ? (
             <div className="py-10 text-center">
@@ -511,7 +524,11 @@ function Ticket({ symbol, quote, portfolio, onChanged }: { symbol: string; quote
   const held = portfolio?.positions.find((p) => p.symbol === symbol)?.quantity ?? 0;
   const currency = portfolio?.currency ?? quote?.currency ?? "USD";
   const est = quote && valid ? quote.price * n : null;
-  const mismatch = Boolean(quote?.currency && portfolio && quote.currency !== portfolio.currency);
+  const differs = Boolean(quote?.currency && portfolio && quote.currency !== portfolio.currency);
+  // Nothing traded yet: the practice account simply opens in the currency of the first thing you buy.
+  const untouched = Boolean(portfolio && portfolio.positions.length === 0 && portfolio.cash === portfolio.starting_cash);
+  const willSwitch = differs && untouched && ["INR", "USD", "EUR", "GBP"].includes(quote?.currency ?? "");
+  const mismatch = differs && !willSwitch;
 
   const submit = async () => {
     setBusy(true);
@@ -553,9 +570,14 @@ function Ticket({ symbol, quote, portfolio, onChanged }: { symbol: string; quote
         </div>
         <div className="flex justify-between">
           <dt className="text-muted">{side === "buy" ? "Practice cash" : "You hold"}</dt>
-          <dd className="font-mono text-fg-2">{side === "buy" ? money(portfolio?.cash, currency) : `${held} ${symbol}`}</dd>
+          <dd className="font-mono text-fg-2">{side === "buy" ? (willSwitch ? "—" : money(portfolio?.cash, currency)) : `${held} ${symbol}`}</dd>
         </div>
       </dl>
+      {willSwitch && (
+        <p className="mt-2 text-[12px] text-fg-2">
+          Your practice account will be opened in {quote?.currency} for this first trade ({quote?.currency === "INR" ? "₹10,00,000" : "100,000"} of pretend money).
+        </p>
+      )}
       {mismatch && (
         <p className="mt-2 text-[12px] text-warn">
           {symbol} trades in {quote?.currency}; your practice account is in {portfolio?.currency}. Reset the account in {quote?.currency} to practise with it.
