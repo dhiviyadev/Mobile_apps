@@ -10,6 +10,7 @@ from .agents.hermes import HermesAdapter
 from .agents.profiles import seed_agents
 from .agents.service import AgentService
 from .automations.service import AutomationService
+from .brokers.service import BrokerService
 from .config import Settings
 from .conversations.service import ConversationService
 from .db.database import Database
@@ -77,6 +78,7 @@ class AppState:
         self.voice = VoiceService(self.prefs, settings.data_dir / "voice")
         self.model_manager = ModelManager(self)
         self.markets = MarketService(self)
+        self.broker = BrokerService(self)
         self.agents = AgentService(self)
         self.conversations = ConversationService(self)
         self.automations = AutomationService(self)

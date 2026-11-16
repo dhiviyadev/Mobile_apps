@@ -87,9 +87,9 @@ def test_agent_chat_mode_writes_reply_to_conversation(client, fake_ollama):
     assert msgs[1]["content"] == "Here is your plan." and msgs[1]["task_id"] == r["task"]["id"]
 
 
-def test_agents_list_has_six_specialists(client):
+def test_agents_list_has_the_builtin_specialists(client):
     ids = {a["id"] for a in client.get("/api/agents").json()}
-    assert ids == {"chief", "researcher", "developer", "analyst", "knowledge", "automation"}
+    assert ids == {"chief", "researcher", "developer", "analyst", "knowledge", "automation", "trader"}
 
 
 # -- Hermes adapter ---------------------------------------------------------------

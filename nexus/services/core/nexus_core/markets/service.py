@@ -45,7 +45,9 @@ SEARCH_URL = "https://query2.finance.yahoo.com/v1/finance/search"
 RANGES: dict[str, tuple[str, int]] = {
     "1d": ("5m", 60), "5d": ("30m", 120), "1mo": ("1d", 600), "6mo": ("1d", 900),
     "1y": ("1d", 900), "5y": ("1wk", 3600),
+    "5yd": ("1d", 3600),  # five years of daily bars: used for analysis and back-tests, not offered as a chart range
 }
+RANGE_PARAM = {"5yd": "5y"}
 _SYMBOL = re.compile(r"^[A-Za-z0-9.\-=^]{1,15}$")
 DEFAULT_CASH = 100_000.0
 MAX_WATCHLIST = 40
@@ -160,7 +162,7 @@ class MarketService:
         hit = self._cache.get(key)
         if hit and not fresh and time.time() - hit[0] < ttl:
             return hit[1]
-        payload = await self._json(CHART_URL + quote(symbol, safe=""), {"range": range_, "interval": interval, "includePrePost": "false"})
+        payload = await self._json(CHART_URL + quote(symbol, safe=""), {"range": RANGE_PARAM.get(range_, range_), "interval": interval, "includePrePost": "false"})
         parsed = parse_chart(payload)
         q = quote_from(parsed)
         if range_ != "1d":
@@ -393,6 +395,37 @@ class MarketService:
                 await self.check_alerts()
             except Exception:  # noqa: BLE001 - never let the loop die
                 log.exception("price alert check failed")
+
+    # -- trade ideas --------------------------------------------------------------
+    async def analysis(self, symbol: str) -> dict[str, Any]:
+        """A rule-based view of a symbol with levels and a back-test of the same rules (see markets/analysis.py)."""
+        from . import analysis as ta
+
+        h = await self.history(symbol, "5yd")
+        try:
+            out = ta.analyse(h["candles"], h["quote"])
+        except ValueError as exc:
+            raise MarketError(str(exc)) from exc
+        out["source"] = h["source"]
+        return out
+
+    async def scan(self, symbols: list[str] | None = None) -> list[dict[str, Any]]:
+        """Analyse every watchlist symbol and rank them: strongest long ideas first, strongest short ideas last."""
+        symbols = symbols or [w["symbol"] for w in self.watchlist()]
+        sem = asyncio.Semaphore(3)
+
+        async def one(sym: str) -> dict[str, Any]:
+            async with sem:
+                try:
+                    a = await self.analysis(sym)
+                    return {"symbol": a["symbol"] or sym, "name": a["name"], "price": a["price"], "currency": a["currency"], "bias": a["bias"],
+                            "score": a["score"], "confidence": a["confidence"], "verdict": a["verdict"], "levels": a["levels"],
+                            "rsi14": a["indicators"]["rsi14"], "backtest_total_r": a["backtest"]["total_r"], "backtest_trades": a["backtest"]["trades"]}
+                except MarketError as exc:
+                    return {"symbol": sym, "error": str(exc), "score": 0, "bias": "neutral"}
+
+        rows = await asyncio.gather(*(one(s) for s in symbols[:MAX_WATCHLIST]))
+        return sorted(rows, key=lambda r: -r["score"])
 
     # -- for agents ---------------------------------------------------------------
     async def summary(self, symbol: str, range_: str = "6mo") -> dict[str, Any]:

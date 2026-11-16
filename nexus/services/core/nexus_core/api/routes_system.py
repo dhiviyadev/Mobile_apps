@@ -170,6 +170,11 @@ def patch_settings(body: SettingsPatch, st: AppState = Depends(get_state)) -> di
     for k, allowed in enums.items():
         if k in body.values and body.values[k] not in allowed:
             raise HTTPException(400, f"{k} must be one of {sorted(allowed)}")
+    for k in ("trading.max_order_value", "trading.max_orders_per_day"):
+        if k in body.values:
+            v = body.values[k]
+            if not isinstance(v, (int, float)) or isinstance(v, bool) or v < 0 or v > 1e9:
+                raise HTTPException(400, f"{k} must be a number of zero or more")
     if "appearance.transparency" in body.values:
         t = body.values["appearance.transparency"]
         if not isinstance(t, (int, float)) or isinstance(t, bool) or not 0 <= t <= 100:
@@ -182,14 +187,14 @@ def patch_settings(body: SettingsPatch, st: AppState = Depends(get_state)) -> di
         from ..knowledge import ocr
 
         ocr.enabled = bool(body.values["knowledge.ocr"])
-    sensitive = [k for k in body.values if k.startswith(("cloud.", "web.", "integrations.", "remote.push", "markets."))]
+    sensitive = [k for k in body.values if k.startswith(("cloud.", "web.", "integrations.", "remote.push", "markets.", "trading."))]
     if sensitive:
         st.audit.record("user", "settings.cloud", ",".join(sensitive), "updated", values={k: body.values[k] for k in sensitive})
     st.bus.publish("settings.updated", {"keys": list(body.values)})
     return {"values": values}
 
 
-SECRET_ACCOUNTS = {"hermes.api_key", "cloud.anthropic", "cloud.openai_compatible"}
+SECRET_ACCOUNTS = {"hermes.api_key", "cloud.anthropic", "cloud.openai_compatible", "broker.zerodha.api_key", "broker.zerodha.api_secret"}
 
 
 @router.get("/secrets")

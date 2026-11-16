@@ -168,6 +168,25 @@ async def _market_data(ctx: ToolContext, args: dict[str, Any]) -> Any:
         return {"error": str(exc)}
 
 
+async def _market_analysis(ctx: ToolContext, args: dict[str, Any]) -> Any:
+    try:
+        a = await ctx.state.markets.analysis(args["symbol"])
+    except MarketError as exc:
+        return {"error": str(exc)}
+    a["backtest"] = {k: v for k, v in a["backtest"].items() if k != "recent"}
+    return a
+
+
+async def _market_scan(ctx: ToolContext, args: dict[str, Any]) -> Any:
+    try:
+        ctx.state.markets._require()  # noqa: SLF001
+        rows = await ctx.state.markets.scan()
+    except MarketError as exc:
+        return {"error": str(exc)}
+    return {"watchlist_ranked_from_most_bullish_to_most_bearish": rows,
+            "note": "Rule-based readings of past prices, not predictions."}
+
+
 TOOLS: dict[str, Tool] = {
     t.name: t
     for t in [
@@ -215,6 +234,13 @@ TOOLS: dict[str, Tool] = {
              "change, period high/low and recent closes. Read-only; you cannot place trades. Needs Markets turned on.",
              _obj({"symbol": {"type": "string"}, "range": {"type": "string", "enum": ["1d", "5d", "1mo", "6mo", "1y", "5y"]}}, ["symbol"]),
              "network", _market_data, lambda a: f"Checking the price of {a.get('symbol')}"),
+        Tool("market_analysis", "Technical analysis of one symbol: a rule-based view (long / short / stay out) with its score and reasons, "
+             "entry, stop-loss and target levels, key indicators, and a back-test of the same rules on this symbol. Use these numbers; "
+             "never invent price levels. Read-only; you cannot place trades.",
+             _obj({"symbol": {"type": "string", "description": "Ticker, e.g. AAPL, RELIANCE.NS, BTC-USD"}}, ["symbol"]),
+             "network", _market_analysis, lambda a: f"Analysing {a.get('symbol')}"),
+        Tool("market_scan", "Analyse every symbol on the user's watchlist and rank them from most bullish to most bearish.",
+             _obj({}, []), "network", _market_scan, lambda a: "Scanning the watchlist"),
         Tool("calendar_events", "List the user's calendar events for today and the next days (1-14). Needs Calendar access turned on.",
              _obj({"days": {"type": "integer", "description": "How many days from today, default 1"}}, []), "read", _calendar_events,
              lambda a: "Checking the calendar"),

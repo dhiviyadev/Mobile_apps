@@ -23,7 +23,9 @@ from . import routes_ai, routes_data, routes_devices, routes_extras, routes_syst
 
 log = logging.getLogger(__name__)
 
-PUBLIC_PATHS = {"/health", "/api/devices/claim"}
+# The Zerodha callback is opened by the user's browser after they sign in at Zerodha, so it can't carry the
+# API token; it is protected by a one-time state value instead and only ever accepts a login code.
+PUBLIC_PATHS = {"/health", "/api/devices/claim", "/api/broker/zerodha/callback"}
 MOBILE_PREFIX = "/m"
 
 

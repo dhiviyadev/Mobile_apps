@@ -5,11 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from ..app_state import AppState
 from ..integrations.apple import AppleUnavailable
 from ..integrations.web import WebBlocked, WebDisabled
+from ..brokers.service import BrokerError
 from ..markets.service import MarketError
 from ..permissions.approvals import EmergencyStopActive
 from ..permissions.policy import PermissionDenied
@@ -212,6 +214,23 @@ async def markets_history(symbol: str, range: str = "6mo", st: AppState = Depend
         raise _market(exc) from exc
 
 
+@router.get("/markets/analysis/{symbol}")
+async def markets_analysis(symbol: str, st: AppState = Depends(get_state)) -> dict[str, Any]:
+    try:
+        return await st.markets.analysis(symbol)
+    except MarketError as exc:
+        raise _market(exc) from exc
+
+
+@router.get("/markets/scan")
+async def markets_scan(st: AppState = Depends(get_state)) -> list[dict[str, Any]]:
+    try:
+        st.markets._require()  # noqa: SLF001
+        return await st.markets.scan()
+    except MarketError as exc:
+        raise _market(exc) from exc
+
+
 class WatchBody(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=15)
 
@@ -287,3 +306,118 @@ def markets_add_alert(body: AlertBody, st: AppState = Depends(get_state)) -> dic
 def markets_remove_alert(alert_id: str, st: AppState = Depends(get_state)) -> dict[str, Any]:
     st.markets.remove_alert(alert_id)
     return {"removed": alert_id}
+
+
+# -- broker (real money) ----------------------------------------------------------
+def _broker(exc: Exception) -> HTTPException:
+    return HTTPException(403 if isinstance(exc, EmergencyStopActive) else 400, str(exc))
+
+
+@router.get("/broker")
+async def broker_status(st: AppState = Depends(get_state)) -> dict[str, Any]:
+    return await st.broker.status()
+
+
+@router.post("/broker/zerodha/login")
+async def broker_login(st: AppState = Depends(get_state)) -> dict[str, Any]:
+    """Start a Zerodha login: returns the sign-in address and, on a Mac, opens it in the default browser."""
+    try:
+        url = st.broker.begin_login()
+    except BrokerError as exc:
+        raise _broker(exc) from exc
+    opened = False
+    from ..config import IS_MACOS
+
+    if IS_MACOS:
+        import asyncio
+
+        proc = await asyncio.create_subprocess_exec("/usr/bin/open", url)
+        opened = (await proc.wait()) == 0
+    return {"url": url, "opened": opened}
+
+
+_CALLBACK_PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>NEXUS</title><style>
+body{{font:16px -apple-system,system-ui,sans-serif;background:#14161b;color:#e8eaee;display:grid;place-items:center;height:100vh;margin:0}}
+div{{max-width:420px;text-align:center;line-height:1.5}}h1{{font-size:20px}}p{{color:#aeb3bc}}</style></head>
+<body><div><h1>{title}</h1><p>{body}</p></div></body></html>"""
+
+
+@router.get("/broker/zerodha/callback", response_class=HTMLResponse)
+async def broker_callback(request_token: str = "", state: str = "", status: str = "", st: AppState = Depends(get_state)) -> HTMLResponse:
+    import html
+
+    if status and status != "success":
+        return HTMLResponse(_CALLBACK_PAGE.format(title="Login was cancelled", body="Nothing was connected. You can close this tab."), status_code=400)
+    try:
+        result = await st.broker.complete_login(request_token, state)
+    except BrokerError as exc:
+        return HTMLResponse(_CALLBACK_PAGE.format(title="Couldn't connect Zerodha", body=html.escape(str(exc))), status_code=400)
+    return HTMLResponse(_CALLBACK_PAGE.format(title="Zerodha is connected",
+                                              body=f"Signed in as {html.escape(str(result['user']))}. You can close this tab and go back to NEXUS."))
+
+
+class DisconnectBody(BaseModel):
+    forget_keys: bool = False
+
+
+@router.post("/broker/disconnect")
+async def broker_disconnect(body: DisconnectBody, st: AppState = Depends(get_state)) -> dict[str, Any]:
+    await st.broker.disconnect(body.forget_keys)
+    return {"disconnected": True}
+
+
+@router.get("/broker/account")
+async def broker_account(st: AppState = Depends(get_state)) -> dict[str, Any]:
+    try:
+        return await st.broker.account()
+    except BrokerError as exc:
+        raise _broker(exc) from exc
+
+
+class LiveOrder(BaseModel):
+    exchange: str
+    tradingsymbol: str = Field(..., max_length=40)
+    transaction_type: str
+    quantity: float
+    product: str
+    order_type: str
+    variety: str = "regular"
+    validity: str = "DAY"
+    price: float | None = None
+    trigger_price: float | None = None
+
+
+@router.post("/broker/orders/preview")
+async def broker_preview(body: LiveOrder, st: AppState = Depends(get_state)) -> dict[str, Any]:
+    try:
+        return await st.broker.preview(body.model_dump())
+    except (BrokerError, EmergencyStopActive) as exc:
+        raise _broker(exc) from exc
+
+
+class LiveOrderConfirm(LiveOrder):
+    confirm_code: str = Field(..., max_length=200)
+
+
+@router.post("/broker/orders")
+async def broker_place(body: LiveOrderConfirm, st: AppState = Depends(get_state)) -> dict[str, Any]:
+    """Place a REAL order. Only accepted with the confirmation code from a preview of exactly this order."""
+    data = body.model_dump()
+    code = data.pop("confirm_code")
+    try:
+        return await st.broker.place(data, code)
+    except (BrokerError, EmergencyStopActive) as exc:
+        raise _broker(exc) from exc
+
+
+@router.delete("/broker/orders/{order_id}")
+async def broker_cancel(order_id: str, variety: str = "regular", st: AppState = Depends(get_state)) -> dict[str, Any]:
+    try:
+        return await st.broker.cancel(order_id, variety)
+    except (BrokerError, EmergencyStopActive) as exc:
+        raise _broker(exc) from exc
+
+
+@router.get("/broker/history")
+def broker_history(st: AppState = Depends(get_state)) -> list[dict[str, Any]]:
+    return st.broker.history()

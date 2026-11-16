@@ -57,6 +57,10 @@ DEFAULTS: dict[str, Any] = {
     "integrations.mail": False,
     # Markets: price data from a public service (off: nothing is requested)
     "markets.enabled": False,
+    # Real-money trading through a broker. Off until switched on; the limits are the user's own guard rails.
+    "trading.live_enabled": False,
+    "trading.max_order_value": 25000,  # per order, in the account currency (₹); 0 = no limit
+    "trading.max_orders_per_day": 20,  # 0 = no limit
     # First-run setup
     "onboarding.completed": False,
     # In-app updates (checking only; installing always needs a click)
