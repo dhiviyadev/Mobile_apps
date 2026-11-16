@@ -79,3 +79,11 @@ agree. In browser dev mode, open `http://127.0.0.1:1420/?token=$(cat data/secret
 - **Hands-free stops by itself** — it pauses after hearing nothing twice in a row, so the microphone is never left open in a quiet room. Press the wave button again.
 - **Markets shows "Couldn't get market data"** — check the internet connection; the free data service also rate-limits heavy use ("busy, try again in a minute"). If every symbol fails, the service may have changed its format: please report the exact message.
 - **"trades in EUR, but the practice account is in USD"** — the practice account holds one currency. Markets → Practice account → Reset, and pick that currency.
+
+## Updates and trading
+
+- **No update appears in the app** — the title bar always shows an *Updates* button; click it to check now. If it says the check failed, the message explains why (most often GitHub needs you to sign in once: run `git pull` in Terminal inside the NEXUS folder). If your installed app is older than the in-app updater, update once by hand: `cd ~/Mobile_apps/nexus && git checkout -- apps/desktop/package-lock.json apps/desktop/src-tauri/Cargo.lock && git pull && ./scripts/setup.sh && ./scripts/install-app.sh`.
+- **Zerodha refuses an order mentioning IP** — register your static IP for the app at developers.kite.trade (required since April 2026).
+- **"Your Zerodha session has ended"** — normal every morning; Settings → Brokers → Log in to Zerodha.
+- **"Invalid checksum" when logging in** — the API secret saved in NEXUS doesn't match the app's; paste it again.
+- **"NEXUS can't work out what this order is worth"** — market orders need a price to check against your limit, and the free Zerodha plan has no live quotes. Use a limit order, or turn on Markets so the delayed public price can be used.

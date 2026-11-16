@@ -142,3 +142,5 @@ chunks and memories. Embeddings are float32 blobs on `chunks`; `SQLiteVectorStor
 | `api/routes_extras.py` | REST surface for the above |
 | Shell (`src-tauri`) | ⌥⇧Q quick actions; starts a bundled core (`Resources/core/nexus-core`) when present |
 | `markets/service.py` | Price history/quotes/search via the guarded fetcher, watchlist, price alerts, practice (paper) account; `components/PriceChart.tsx` draws the charts in plain SVG |
+| `markets/analysis.py` | Indicators, scored view, levels and a causal back-test — pure functions, no I/O |
+| `brokers/zerodha.py`, `brokers/service.py` | Kite Connect client and the order safety layer (preview → confirm code → place, limits, audit). Nothing under `agents/` or `automations/` may reference it |

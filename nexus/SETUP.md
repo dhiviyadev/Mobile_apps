@@ -177,3 +177,18 @@ Static settings are environment variables (see `.env.example`); runtime preferen
 - **Hands-free** — the wave button in the message box. Needs a local speech engine (Settings → Voice).
 - **Self-contained app** — `./scripts/build-standalone.sh --install` builds a NEXUS.app that carries the core inside it. Its data lives in `~/Library/Application Support/NEXUS` unless you already have a NEXUS data folder, which it keeps using.
 - **Markets** — sidebar → Markets → *Turn on Markets*. Add symbols to the watchlist (shares like `AAPL`, funds like `SPY`, crypto like `BTC-USD`, non-US listings with their suffix such as `SAP.DE` or `RELIANCE.NS`). The practice account starts with 100,000 USD of pretend money; *Reset* lets you choose another amount and currency. Prices come from Yahoo Finance's public service and can be delayed.
+
+## Real-money trading with Zerodha
+
+1. Create an app at developers.kite.trade (the **Personal** type is free and can place orders).
+2. Set the app's redirect URL to `http://127.0.0.1:8765/api/broker/zerodha/callback`.
+3. Register your **static IP address** for the app — Zerodha has required this for API orders since 1 April 2026. Most home connections change address; your internet provider can give you a static one.
+4. In NEXUS: Settings → Brokers → paste the API key and secret → **Log in to Zerodha**. Zerodha ends every session at 6 AM, so you log in once each trading day.
+5. When you are ready, switch on **Allow real orders** and set your limits (default: ₹25,000 per order, 20 orders a day).
+6. Markets → pick a symbol (Indian shares are `NAME.NS` for NSE, `NAME.BO` for BSE) → **Real money · Zerodha** → fill in the order → **Review order** → tick the box → **Place real order**.
+
+For your first order use a small limit order, then check it in the Kite app. "Sent" is not "filled".
+
+## Trade ideas
+
+Markets → pick a symbol → **Trade idea** shows the view, the reasons and the levels (also drawn on the chart). **Ask the Market Analyst** has the agent explain it in words. **Scan my watchlist** ranks everything you follow. These are readings of past prices with their own track record shown — not predictions.

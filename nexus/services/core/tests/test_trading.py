@@ -166,11 +166,11 @@ class FakeZerodha:
             want = hashlib.sha256(b"key123" + form["request_token"].encode() + b"secret456").hexdigest()
             if form.get("checksum") != want or form.get("api_key") != "key123":
                 return httpx.Response(403, json={"status": "error", "message": "Invalid checksum", "error_type": "TokenException"})
-            return ok({"access_token": "tok789", "user_id": "AB1234", "user_shortname": "Dhiviya"})
+            return ok({"access_token": "tok789", "user_id": "AB1234", "user_shortname": "Asha"})
         if self.expired or request.headers.get("authorization") != "token key123:tok789":
             return httpx.Response(403, json={"status": "error", "message": "Incorrect api_key or access_token", "error_type": "TokenException"})
         if path == "/user/profile":
-            return ok({"user_id": "AB1234", "user_shortname": "Dhiviya", "exchanges": ["NSE", "BSE", "NFO"]})
+            return ok({"user_id": "AB1234", "user_shortname": "Asha", "exchanges": ["NSE", "BSE", "NFO"]})
         if path == "/user/margins":
             return ok({"equity": {"net": 50000.5, "available": {"cash": 50000.5, "live_balance": 48000.0}}})
         if path == "/portfolio/holdings":
@@ -218,7 +218,7 @@ def connect(client, st, live=True):
     assert url.startswith("https://kite.zerodha.com/connect/login?") and q["api_key"] == ["key123"] and q["v"] == ["3"]
     state = parse_qs(q["redirect_params"][0])["state"][0]
     r = client.get(f"/api/broker/zerodha/callback?request_token=reqtok111&action=login&status=success&state={state}", headers={"Authorization": ""})
-    assert r.status_code == 200 and "Zerodha is connected" in r.text and "Dhiviya" in r.text
+    assert r.status_code == 200 and "Zerodha is connected" in r.text and "Asha" in r.text
     if live:
         client.patch("/api/settings", json={"values": {"trading.live_enabled": True}})
     return state
@@ -236,7 +236,7 @@ def test_login_flow_checksum_and_state(client, st, kite):
     assert client.get("/api/broker/zerodha/callback?request_token=reqtok111&state=made-up").status_code == 400
     assert client.get("/api/broker/zerodha/callback?status=cancelled").status_code == 400
     s = client.get("/api/broker").json()
-    assert s["connected"] is True and s["user"] == {"name": "Dhiviya", "id": "AB1234", "exchanges": ["NSE", "BSE", "NFO"]}
+    assert s["connected"] is True and s["user"] == {"name": "Asha", "id": "AB1234", "exchanges": ["NSE", "BSE", "NFO"]}
     assert st.keychain.get("broker.zerodha.access_token") == "tok789"
     # Secrets never appear in API answers or the audit log.
     blob = client.get("/api/broker").text + client.get("/api/audit").text + client.get("/api/settings").text

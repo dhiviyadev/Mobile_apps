@@ -27,6 +27,16 @@ also in a real browser against the running core.
 - ✅ **First-run guide** — name → model → folder; skipped for existing installs
 - ✅ **Self-contained app** — core frozen with PyInstaller, starts by itself, and the native desktop binary was run here and found/started the bundled core with data in Application Support · 🟡 `scripts/build-standalone.sh` on macOS (bundling, helpers, dmg). The bundled core does not include MLX Whisper; voice uses whisper.cpp if installed. Updating a self-contained app = installing a newer build.
 
+## Trade ideas and real-money trading (Zerodha)
+- ✅ Analysis engine: SMA/EMA, RSI, MACD, ATR, swing support/resistance, efficiency ratio; a scored view with reasons; entry / stop / targets from volatility; causal back-test of the same rules (checked against published indicator values; no look-ahead test)
+- ✅ Market Analyst agent + `market_analysis` / `market_scan` tools (read-only); idea card, levels on the chart, position-size helper, watchlist scan — verified in a browser
+- ✅ Zerodha client and order safety layer, 12 tests against a stand-in that follows Kite Connect's documented behaviour: login handshake and checksum, one-time callback state, preview → single-use confirmation code bound to the exact order (2-minute expiry), value and daily limits re-checked at send time, emergency stop, market-protection on market orders, rejection handling, secrets never in API answers or logs, phones refused, no agent/automation path
+- ✅ Review-and-confirm dialog, live account view (funds, holdings, positions, today's orders with cancel, Coin funds) — verified in a browser against the stand-in
+- 🟡 **Never run against the real Zerodha.** No account or network access from the build environment. Login, account reads and — above all — the first real order are untested on the real service. Start with one small limit order (or an after-market order) and check it in Kite.
+- 🟡 Field names for holdings/positions/margins come from Kite Connect's documentation as I know it; the docs site was unreachable for a field-by-field check. If a number shows as "—", that field name needs adjusting.
+- 🟡 Zerodha requires a registered **static IP** for API orders (since 1 April 2026) and a fresh login each trading day; market data (live quotes) needs the paid Connect plan — on the free Personal plan the order estimate uses the delayed public price.
+- ⏳ GTT / bracket orders, option chains, basket orders, MACD panel on the chart · other brokers
+
 ## Markets (charts, alerts, practice trading)
 - ✅ Watchlist, search, price history for six ranges, day change taken from the one-day view, short-lived caching, clear errors (unknown symbol, service busy); 9 backend tests against responses in the data service's documented shape
 - ✅ Charts: candles or line, 20/50-bar averages, volume in its own panel, hover and keyboard read-out, table view; colours checked for colour-blind separation (blue = up, red = down); verified in a browser

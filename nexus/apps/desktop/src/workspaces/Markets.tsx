@@ -5,7 +5,8 @@ import { bus } from "@/lib/events";
 import { cls, relTime } from "@/lib/format";
 import { useCore } from "@/stores/core";
 import { Badge, Button, Card, Empty, IconButton, Input, SectionTitle, Segmented, Select, Toggle } from "@/components/ui";
-import { ChartLegend, DOWN, PriceChart, UP, formatPrice, formatVolume, type Candle, type ChartRange } from "@/components/PriceChart";
+import { ChartLegend, DOWN, PriceChart, UP, formatPrice, formatVolume, type Candle, type ChartRange, type PriceLevel } from "@/components/PriceChart";
+import { Ideas, LiveTrading, Scan } from "./Trading";
 
 interface Quote {
   symbol: string;
@@ -181,13 +182,13 @@ export function Markets() {
     <div className="mx-auto max-w-[1240px] px-8 py-7">
       <SectionTitle
         title="Markets"
-        sub="Real prices, practice trading. Nothing here places a real order."
-        action={<Badge tone="warn">Practice account · pretend money</Badge>}
+        sub="Real prices, trade ideas, a practice account — and real orders through Zerodha when you connect it."
       />
       {error && <p className="mb-3 text-[12.5px] text-danger">{error}</p>}
       <div className="grid grid-cols-[270px_minmax(0,1fr)] gap-5">
         <Watchlist items={watch} selected={symbol} onSelect={setSymbol} onChanged={load} />
         <div className="min-w-0 space-y-4">
+          {watch.length > 0 && <Scan onSelect={setSymbol} />}
           {symbol ? (
             <SymbolPanel key={symbol} symbol={symbol} portfolio={ov?.portfolio ?? null} alerts={ov?.alerts ?? []} onChanged={load} />
           ) : (
@@ -325,6 +326,8 @@ function SymbolPanel({ symbol, portfolio, alerts, onChanged }: { symbol: string;
   const [sma50, setSma50] = useState(false);
   const [showRsi, setShowRsi] = useState(false);
   const [table, setTable] = useState(false);
+  const [levels, setLevels] = useState<PriceLevel[]>([]);
+  const [account, setAccount] = useState<"practice" | "real">("practice");
   const [h, setH] = useState<History | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -396,7 +399,7 @@ function SymbolPanel({ symbol, portfolio, alerts, onChanged }: { symbol: string;
                   <ChartLegend mode={mode} showSma20={sma20} showSma50={sma50} />
                 </div>
                 <div className={cls("transition-opacity", loading && "opacity-60")}>
-                  <PriceChart candles={h.candles} range={range} mode={mode} showSma20={sma20} showSma50={sma50} showRsi={showRsi} label={q?.name ?? symbol} />
+                  <PriceChart candles={h.candles} range={range} mode={mode} showSma20={sma20} showSma50={sma50} showRsi={showRsi} levels={levels} label={q?.name ?? symbol} />
                 </div>
               </>
             )
@@ -404,9 +407,18 @@ function SymbolPanel({ symbol, portfolio, alerts, onChanged }: { symbol: string;
         </div>
       </section>
 
+      <Ideas symbol={symbol} capital={portfolio?.equity ?? null} currency={q?.currency || portfolio?.currency || ""} onLevels={setLevels} />
+
+      <div className="flex items-center gap-3">
+        <Segmented value={account} onChange={setAccount} options={[{ value: "practice", label: "Practice money" }, { value: "real", label: "Real money · Zerodha" }]} />
+        <span className="text-[11.5px] text-muted">{account === "practice" ? "Pretend money — nothing here is a real order." : "Real orders, each after a review and your confirmation."}</span>
+      </div>
+      {account === "real" && <LiveTrading symbol={symbol} />}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Ticket symbol={symbol} quote={q ?? null} portfolio={portfolio} onChanged={onChanged} />
-        <Alerts symbol={symbol} quote={q ?? null} alerts={alerts} onChanged={onChanged} />
+        {account === "practice" && <Ticket symbol={symbol} quote={q ?? null} portfolio={portfolio} onChanged={onChanged} />}
+        <div className={account === "practice" ? "" : "lg:col-span-2"}>
+          <Alerts symbol={symbol} quote={q ?? null} alerts={alerts} onChanged={onChanged} />
+        </div>
       </div>
     </>
   );

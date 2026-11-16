@@ -10,18 +10,20 @@ import { QRCode } from "@/components/QRCode";
 import { applyAppearance, DEFAULT_TRANSPARENCY, type Material, type Motion } from "@/components/Ambient";
 import { HermesCard } from "./Agents";
 import { GetModels, WebAndApps } from "./SettingsExtras";
+import { BrokerSettings } from "./Trading";
 import { speak } from "@/hooks/useVoice";
 import { invoke, isTauri } from "@/lib/tauri";
 import { bytes, cls, relTime } from "@/lib/format";
 
 type Values = Record<string, unknown>;
-type Section = "general" | "appearance" | "web" | "phone" | "updates" | "models" | "hermes" | "cloud" | "voice" | "scripts" | "security" | "backup";
+type Section = "general" | "appearance" | "web" | "brokers" | "phone" | "updates" | "models" | "hermes" | "cloud" | "voice" | "scripts" | "security" | "backup";
 
 const SECTIONS: { id: Section; label: string }[] = [
   { id: "general", label: "General" },
   { id: "appearance", label: "Appearance" },
   { id: "models", label: "Models" },
   { id: "web", label: "Web & apps" },
+  { id: "brokers", label: "Brokers" },
   { id: "phone", label: "Phone" },
   { id: "hermes", label: "Hermes" },
   { id: "cloud", label: "Cloud (optional)" },
@@ -70,6 +72,7 @@ export function Settings() {
         {section === "general" && <General values={values} set={set} stat={stat} />}
         {section === "appearance" && <Appearance values={values} set={set} />}
         {section === "web" && <WebAndApps values={values} set={set} />}
+        {section === "brokers" && <BrokerSettings values={values} set={set} />}
         {section === "phone" && <Phone values={values} set={set} />}
         {section === "updates" && <Updates values={values} set={set} />}
         {section === "models" && <Models values={values} set={set} />}

@@ -97,13 +97,21 @@ function timeLabel(t: number, range: ChartRange, long = false): string {
  * panel underneath — two panels sharing the time axis rather than two scales on one plot.
  * Hover or use ← → to read any bar.
  */
-export function PriceChart({ candles, range, mode, showSma20, showSma50, showRsi = false, label }: {
+export interface PriceLevel {
+  label: string;
+  value: number;
+  kind: "entry" | "stop" | "target";
+}
+
+export function PriceChart({ candles, range, mode, showSma20, showSma50, showRsi = false, levels, label }: {
   candles: Candle[];
   range: ChartRange;
   mode: "candles" | "line";
   showSma20: boolean;
   showSma50: boolean;
   showRsi?: boolean;
+  /** Horizontal guide lines for a trade idea (entry, stop-loss, targets). */
+  levels?: PriceLevel[];
   label: string;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
@@ -136,6 +144,13 @@ export function PriceChart({ candles, range, mode, showSma20, showSma50, showRsi
       if (v != null) {
         lo = Math.min(lo, v);
         hi = Math.max(hi, v);
+      }
+    }
+    for (const lv of levels ?? []) {
+      // Keep idea levels on screen, unless one is absurdly far from the visible prices.
+      if (Number.isFinite(lo) && lv.value > lo * 0.6 && lv.value < hi * 1.6) {
+        lo = Math.min(lo, lv.value);
+        hi = Math.max(hi, lv.value);
       }
     }
     if (!Number.isFinite(lo)) [lo, hi] = [0, 1];
@@ -171,7 +186,7 @@ export function PriceChart({ candles, range, mode, showSma20, showSma50, showRsi
       pen = true;
     });
     return { n, plotW, step, x, y, s20, s50, r14, rTop, ry, rsiPath, yTicks: niceTicks(y0, y1, 5).filter((v) => v > y0 && v < y1), vTop, vMax, hasVolume, line, xTicks };
-  }, [candles, width, mode, showSma20, showSma50, showRsi]);
+  }, [candles, width, mode, showSma20, showSma50, showRsi, levels]);
 
   const height = PAD.top + PRICE_H + (m.hasVolume ? GAP + VOL_H : 0) + (showRsi ? GAP + RSI_H : 0) + PAD.bottom;
   const bodyW = Math.max(1, Math.min(14, m.step * 0.62));
@@ -279,6 +294,22 @@ export function PriceChart({ candles, range, mode, showSma20, showSma50, showRsi
             })}
           </>
         )}
+
+        {/* trade-idea levels: labelled lines; the stop is red, targets blue, the entry neutral */}
+        {(levels ?? []).map((lv) => {
+          const yy = m.y(lv.value);
+          if (yy < PAD.top - 2 || yy > PAD.top + PRICE_H + 2) return null;
+          const color = lv.kind === "stop" ? DOWN : lv.kind === "target" ? UP : "#e8eaee";
+          return (
+            <g key={lv.label} pointerEvents="none">
+              <line x1={PAD.left} x2={width - PAD.right} y1={yy} y2={yy} stroke={color} strokeWidth={1.25} strokeDasharray={lv.kind === "entry" ? undefined : "6 4"} opacity={0.9} />
+              <rect x={PAD.left + 4} y={yy - 9} width={lv.label.length * 6.3 + 12} height={17} rx={5} fill="#14161b" stroke={color} strokeWidth={1} />
+              <text x={PAD.left + 10} y={yy + 3.5} fontSize="10.5" fill="#e8eaee">
+                {lv.label}
+              </text>
+            </g>
+          );
+        })}
 
         {/* RSI: a third panel on its own fixed 0–100 scale, with the usual 30 / 70 guides */}
         {showRsi && (
