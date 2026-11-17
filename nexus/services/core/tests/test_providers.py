@@ -260,3 +260,29 @@ def test_practice_account_alerts_and_agents_run_on_nse_prices(client, st, nse, f
     t = wait_task(client, client.post("/api/agents/trader/tasks", json={"prompt": "INFY?", "runtime": "native"}).json()["id"])
     tool = json.loads([m for m in [r for r in fake_ollama.requests if r["path"] == "/api/chat"][-1]["body"]["messages"] if m["role"] == "tool"][0]["content"])
     assert t["status"] == "completed" and tool["price"] == 1152.0 and tool["currency"] == "INR" and "NSE India" in tool["source"]
+
+
+def test_market_overview(client, st, nse):
+    def movers(self, name, a, orig=FakeNse.tool):
+        if name == "nse_get_market_movers":
+            return {"segment": "NIFTY", "gainersUpdatedAt": "2026-11-17T10:00:00Z",
+                    "gainers": [{"symbol": "ADANIENT", "ltp": 2745.1, "perChange": 3.24, "turnover": "546.66 Cr"}],
+                    "losers": [{"symbol": "HCLTECH", "ltp": 1355.7, "perChange": -2.09, "turnover": "399.80 Cr"}]}
+        return orig(self, name, a)
+
+    FakeNse.tool = movers
+    try:
+        ov = client.get("/api/markets/overview").json()
+    finally:
+        FakeNse.tool = movers.__defaults__[0]
+    assert [i["name"] for i in ov["indices"]] == ["NIFTY 50"] and ov["indices"][0]["symbol"] == "^NSEI"  # unknown indices are skipped
+    assert ov["gainers"] == [{"symbol": "ADANIENT.NS", "name": "ADANIENT", "price": 2745.1, "change_percent": 3.24, "turnover": "546.66 Cr"}]
+    assert ov["losers"][0]["symbol"] == "HCLTECH.NS" and "NSE India" in ov["source"]
+    n = len(nse.calls)
+    client.get("/api/markets/overview")
+    assert len(nse.calls) == n  # cached
+    from nexus_core.automations.templates import TEMPLATES
+
+    tpl = next(t for t in TEMPLATES if t["template"] == "market_close_briefing")
+    assert tpl["actions"][0]["agent_id"] == "trader" and "market_overview" in tpl["actions"][0]["prompt"]
+    assert "market_overview" in st.agents.get("trader")["tools"]

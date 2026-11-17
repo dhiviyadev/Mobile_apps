@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, BookOpen, Bot, Calendar, CheckCircle2, CircleAlert, Clock, FolderOpen, Loader2, MessageSquare, Sun, XCircle } from "lucide-react";
+import { ArrowRight, BookOpen, Bot, Calendar, CheckCircle2, CircleAlert, Clock, FolderOpen, Loader2, MessageSquare, Sun, TrendingUp, XCircle } from "lucide-react";
 import { useCore, activeTasks } from "@/stores/core";
 import { useChat } from "@/stores/chat";
 import { Composer } from "@/components/Composer";
 import { TodayCard } from "@/components/TodayCard";
+import { MarketPulse } from "@/components/MarketPulse";
 import { Orb, useOrbState } from "@/components/Orb";
 import { Badge, Dot, Empty } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -62,6 +63,9 @@ export function Home() {
   const quick = [
     { label: "Plan my day", prompt: "Plan my day: review my open tasks and memories and propose a focused schedule.", agent: "chief", icon: Sun },
     { label: "Summarise recent work", prompt: "Summarise what I worked on recently from my NEXUS task history.", agent: "chief", icon: Calendar },
+    ...(boot?.markets?.enabled
+      ? [{ label: "How's the market?", prompt: "How is the Indian market doing today? Use market_overview, then tell me in a few lines how the Nifty 50 and Bank Nifty are doing, the biggest movers, and anything on my watchlist worth a look.", agent: "trader", icon: TrendingUp }]
+      : []),
     { label: "Search my documents", workspace: "knowledge" as const, icon: BookOpen },
     { label: "Review a folder", prompt: "List my approved folders and summarise what's in the most recently indexed one.", agent: "knowledge", icon: FolderOpen },
   ];
@@ -137,6 +141,9 @@ export function Home() {
 
       <div className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-2">
         <TodayCard />
+        <div className="md:col-span-2">
+          <MarketPulse compact onSelect={(s) => useCore.getState().openMarket(s)} />
+        </div>
         <section className="surface glass-hover rise p-3" style={{ ["--i" as string]: 6 }}>
           <Header title="Recent tasks" onMore={() => setWorkspace("agents")} />
           {recent.length ? recent.map((t) => <TaskRow key={t.id} task={t} onClick={() => focusTask(t.id)} />) : <Empty title="No tasks yet" body="Ask an agent to do something and its execution timeline appears here." />}

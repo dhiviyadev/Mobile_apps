@@ -177,6 +177,13 @@ async def _market_analysis(ctx: ToolContext, args: dict[str, Any]) -> Any:
     return a
 
 
+async def _market_overview(ctx: ToolContext, args: dict[str, Any]) -> Any:
+    try:
+        return await ctx.state.markets.overview()
+    except MarketError as exc:
+        return {"error": str(exc)}
+
+
 async def _market_scan(ctx: ToolContext, args: dict[str, Any]) -> Any:
     try:
         ctx.state.markets._require()  # noqa: SLF001
@@ -239,6 +246,9 @@ TOOLS: dict[str, Tool] = {
              "never invent price levels. Read-only; you cannot place trades.",
              _obj({"symbol": {"type": "string", "description": "Ticker, e.g. AAPL, RELIANCE.NS, BTC-USD"}}, ["symbol"]),
              "network", _market_analysis, lambda a: f"Analysing {a.get('symbol')}"),
+        Tool("market_overview", "How the Indian market is doing today: Nifty 50, Bank Nifty, Nifty IT, Midcap and India VIX, plus the "
+             "Nifty 50's top 5 gainers and losers. From NSE's official free service.",
+             _obj({}, []), "network", _market_overview, lambda a: "Checking today's market"),
         Tool("market_scan", "Analyse every symbol on the user's watchlist and rank them from most bullish to most bearish.",
              _obj({}, []), "network", _market_scan, lambda a: "Scanning the watchlist"),
         Tool("calendar_events", "List the user's calendar events for today and the next days (1-14). Needs Calendar access turned on.",

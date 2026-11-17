@@ -16,7 +16,7 @@ BUILTIN_AGENTS: list[dict[str, Any]] = [
         "description": "Plans your day, summarises, delegates and keeps track of what matters.",
         "model_category": "general",
         "tools": ["current_time", "recall_memory", "propose_memory", "search_knowledge", "list_tasks", "send_notification",
-                  "calendar_events", "list_reminders", "create_reminder", "draft_email", "web_search", "market_data"],
+                  "calendar_events", "list_reminders", "create_reminder", "draft_email", "web_search", "market_data", "market_overview"],
         "hermes_toolsets": [],
         "system_prompt": (
             "You are the Chief of Staff inside NEXUS, a local-first personal AI operating system. "
@@ -74,7 +74,7 @@ BUILTIN_AGENTS: list[dict[str, Any]] = [
         "role": "Trade ideas",
         "description": "Reads charts and indicators and gives a clear view: go long, go short or stay out, with entry, stop and targets.",
         "model_category": "reasoning",
-        "tools": ["market_analysis", "market_scan", "market_data", "web_search", "fetch_url", "current_time", "recall_memory"],
+        "tools": ["market_analysis", "market_scan", "market_overview", "market_data", "web_search", "fetch_url", "current_time", "recall_memory"],
         "hermes_toolsets": [],
         "system_prompt": (
             "You are the Market Analyst inside NEXUS. The user wants a clear, usable view on where to buy, where to sell, "
@@ -132,6 +132,7 @@ TOOL_UPGRADES: dict[int, dict[str, list[str]]] = {
         "researcher": ["web_search", "fetch_url"],
     },
     3: {"chief": ["market_data"], "analyst": ["market_data"]},
+    4: {"trader": ["market_overview"], "chief": ["market_overview"]},
 }
 PROMPT_UPGRADES: dict[int, dict[str, str]] = {
     2: {

@@ -6,6 +6,22 @@ from typing import Any
 
 TEMPLATES: list[dict[str, Any]] = [
     {
+        "template": "market_close_briefing",
+        "name": "Market close briefing",
+        "description": "Each weekday after the Indian market closes: how the indices did, the biggest movers, and a fresh read of your watchlist.",
+        "trigger": {"type": "schedule", "cron": "50 15 * * 1-5"},
+        "conditions": [],
+        "actions": [
+            {"type": "agent_task", "agent_id": "trader",
+             "prompt": "Write my market close briefing for {{date}}. Call market_overview, then market_scan. Give: 1) one line on how the Nifty 50 "
+                       "and Bank Nifty closed, 2) the two biggest gainers and losers, 3) for my watchlist, which symbols lean long, which lean short "
+                       "and which to stay out of, with the key level for each. Under 220 words. Information, not advice."},
+            {"type": "write_file", "path": "markets/{{date}}-close.md", "content": "{{previous.output}}"},
+            {"type": "notify", "title": "Market close briefing", "body": "{{previous.output|truncate:180}}"},
+        ],
+        "requires_approval": False,
+    },
+    {
         "template": "morning_briefing",
         "name": "Morning briefing",
         "description": "Each weekday morning, summarise open tasks, recent activity and what needs attention today.",

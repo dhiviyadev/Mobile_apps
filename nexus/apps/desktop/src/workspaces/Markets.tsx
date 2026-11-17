@@ -7,6 +7,7 @@ import { useCore } from "@/stores/core";
 import { Badge, Button, Card, Empty, IconButton, Input, SectionTitle, Segmented, Select, Toggle } from "@/components/ui";
 import { ChartLegend, DOWN, PriceChart, UP, formatPrice, formatVolume, type Candle, type ChartRange, type PriceLevel } from "@/components/PriceChart";
 import { Ideas, LiveTrading, Scan } from "./Trading";
+import { MarketPulse } from "@/components/MarketPulse";
 import { TradingViewChart, TradingViewRating, isIndianListing } from "@/components/TradingViewChart";
 
 interface Quote {
@@ -121,7 +122,14 @@ export function Markets() {
   const enabled = useCore((s) => Boolean(s.boot?.markets?.enabled));
   const refreshCore = useCore((s) => s.refresh);
   const [ov, setOv] = useState<Overview | null>(null);
-  const [symbol, setSymbol] = useState<string | null>(null);
+  const [symbol, setSymbol] = useState<string | null>(() => useCore.getState().marketSymbol);
+  const asked = useCore((s) => s.marketSymbol);
+  useEffect(() => {
+    if (asked) {
+      setSymbol(asked);
+      useCore.setState({ marketSymbol: null });
+    }
+  }, [asked]);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -205,7 +213,18 @@ export function Markets() {
       <div className="grid grid-cols-[270px_minmax(0,1fr)] gap-5">
         <Watchlist items={watch} selected={symbol} onSelect={setSymbol} onChanged={load} />
         <div className="min-w-0 space-y-4">
+          <MarketPulse onSelect={setSymbol} />
           {watch.length > 0 && <Scan onSelect={setSymbol} />}
+          {symbol && !watch.some((w) => w.symbol === symbol) && (
+            <div className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-4 py-2.5 text-[12.5px] text-fg-2">
+              <span className="flex-1">
+                <span className="font-mono text-fg">{symbol}</span> isn't on your watchlist.
+              </span>
+              <Button size="sm" icon={<Plus size={12} />} onClick={() => void api.post("/api/markets/watchlist", { symbol }).then(load).catch((e: Error) => setError(e.message))}>
+                Add to watchlist
+              </Button>
+            </div>
+          )}
           {symbol ? (
             <SymbolPanel key={symbol} symbol={symbol} portfolio={ov?.portfolio ?? null} alerts={ov?.alerts ?? []} onChanged={load} />
           ) : (

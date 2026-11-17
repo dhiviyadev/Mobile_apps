@@ -25,6 +25,9 @@ interface CoreState {
   /** The project new conversations are filed under (null = no project). */
   projectId: string | null;
   setProject: (id: string | null) => void;
+  /** A symbol another page asked Markets to open. */
+  marketSymbol: string | null;
+  openMarket: (symbol: string) => void;
   setWorkspace: (w: Workspace) => void;
   openSettings: (section: string) => void;
   setPalette: (open: boolean) => void;
@@ -67,6 +70,8 @@ export const useCore = create<CoreState>((set, get) => ({
   listening: false,
   speaking: false,
   projectId: storedProject(),
+  marketSymbol: null,
+  openMarket: (marketSymbol) => set({ marketSymbol, workspace: "markets" }),
   setProject: (projectId) => {
     try {
       if (projectId) localStorage.setItem("nexus.project", projectId);

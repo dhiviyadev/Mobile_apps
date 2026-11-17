@@ -27,6 +27,11 @@ also in a real browser against the running core.
 - ✅ **First-run guide** — name → model → folder; skipped for existing installs
 - ✅ **Self-contained app** — core frozen with PyInstaller, starts by itself, and the native desktop binary was run here and found/started the bundled core with data in Application Support · 🟡 `scripts/build-standalone.sh` on macOS (bundling, helpers, dmg). The bundled core does not include MLX Whisper; voice uses whisper.cpp if installed. Updating a self-contained app = installing a newer build.
 
+## Market overview
+- ✅ "Today's market" on Markets and Home: Nifty 50, Bank Nifty, Nifty IT, Midcap 100, India VIX, and the Nifty 50's top gainers and losers, from NSE's free live service (checked against the real service); click anything to open its chart; "Add to watchlist" for symbols opened that way
+- ✅ `market_overview` agent tool (Market Analyst, Chief of Staff) and a "How's the market?" quick prompt
+- ✅ "Market close briefing" automation template: weekdays 15:50 — index moves, top movers and a read of your watchlist, saved to the workspace and sent as a notification (and to your phone if push is on). Starts switched off, like every template.
+
 ## Reliability fixes after first real use on the Mac
 - ✅ **Out-of-date background service.** After an update the new app could keep talking to the previous version's service, so new features silently failed ("Turn on Markets" did nothing). Now: the service reports the build it was started from; the installed app replaces a service from other code at launch (verified with the real app binary: old process stopped, fresh one started); the install script stops any old service; a banner with *Restart service* covers the remaining cases; and the Markets switch shows its error instead of swallowing it.
 - 🔴 **Yahoo Finance refuses automated requests** (answers "Too Many Requests" to programs that aren't a browser — seen on the first request on the Mac). NEXUS does not disguise itself to get around that. Consequences: with Yahoo refusing, the built-in chart, prices, practice trading, alerts and trade ideas have no data. Mitigations in place: one polite retry then a two-minute pause, last-known data shown as stale, symbols can still be added, and the message says what is happening.

@@ -395,6 +395,38 @@ class NseProvider:
             out["stale"] = True
         return out
 
+    # -- market overview ----------------------------------------------------------
+    OVERVIEW_INDICES = ("NIFTY 50", "NIFTY BANK", "NIFTY IT", "NIFTY MIDCAP 100", "INDIA VIX")
+
+    async def overview(self) -> dict[str, Any]:
+        """Headline indices and the day's biggest Nifty 50 movers, from NSE's live service."""
+        indices: list[dict[str, Any]] = []
+        for name in self.OVERVIEW_INDICES:
+            try:
+                d = await self.live.call("cm_get_index_quote", {"indexName": name})
+            except ProviderError:
+                continue
+            ix = d.get("index") or {}
+            if ix.get("last") is None:
+                continue
+            indices.append({"name": str(ix.get("indexName") or name), "last": float(ix["last"]), "change": float(ix.get("change") or 0),
+                            "change_percent": float(ix.get("percChange") or 0), "high": ix.get("high"), "low": ix.get("low"),
+                            "symbol": next((k for k, v in NSE_INDEX.items() if v == name), None), "time": ix.get("timeVal")})
+        movers = await self.live.call("nse_get_market_movers", {"indexName": "NIFTY", "limit": 5})
+
+        def rows(key: str) -> list[dict[str, Any]]:
+            out = []
+            for r in movers.get(key) or []:
+                if r.get("symbol") and r.get("ltp") is not None:
+                    out.append({"symbol": f"{r['symbol']}.NS", "name": str(r["symbol"]), "price": float(r["ltp"]),
+                                "change_percent": float(r.get("perChange") or 0), "turnover": r.get("turnover")})
+            return out
+
+        if not indices and not movers.get("gainers"):
+            raise ProviderError("NSE's live market service didn't return any data.")
+        return {"indices": indices, "gainers": rows("gainers"), "losers": rows("losers"), "market_open": market_open(),
+                "updated_at": movers.get("gainersUpdatedAt"), "source": NSE_SOURCE}
+
     # -- search -------------------------------------------------------------------
     async def search(self, query: str) -> list[dict[str, Any]]:
         raw = " ".join(query.upper().split())

@@ -483,6 +483,24 @@ class MarketService:
             except Exception:  # noqa: BLE001 - never let the loop die
                 log.exception("price alert check failed")
 
+    # -- market overview ----------------------------------------------------------
+    async def overview(self) -> dict[str, Any]:
+        """Indian market at a glance: headline indices plus the Nifty 50's top gainers and losers."""
+        self._require()
+        hit = self._cache.get(("__overview__", ""))
+        from .providers import market_open
+
+        if hit and time.time() - hit[0] < (60 if market_open() else 600):
+            return hit[1]
+        try:
+            out = await self.nse.overview()
+        except ProviderError as exc:
+            if hit:
+                return {**hit[1], "stale": True}
+            raise MarketError(str(exc), exc.kind) from exc
+        self._cache[("__overview__", "")] = (time.time(), out)
+        return out
+
     # -- trade ideas --------------------------------------------------------------
     async def analysis(self, symbol: str) -> dict[str, Any]:
         """A rule-based view of a symbol with levels and a back-test of the same rules (see markets/analysis.py)."""

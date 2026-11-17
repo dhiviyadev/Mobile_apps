@@ -223,6 +223,14 @@ async def markets_analysis(symbol: str, st: AppState = Depends(get_state)) -> di
         raise _market(exc) from exc
 
 
+@router.get("/markets/overview")
+async def markets_overview_today(st: AppState = Depends(get_state)) -> dict[str, Any]:
+    try:
+        return await st.markets.overview()
+    except MarketError as exc:
+        raise _market(exc) from exc
+
+
 @router.get("/markets/scan")
 async def markets_scan(st: AppState = Depends(get_state)) -> list[dict[str, Any]]:
     try:
