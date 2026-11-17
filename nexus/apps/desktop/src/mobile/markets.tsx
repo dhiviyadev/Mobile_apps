@@ -5,6 +5,7 @@ import { bus } from "@/lib/events";
 import { useCore } from "@/stores/core";
 import { ChartLegend, DOWN, PriceChart, UP, formatPrice, type Candle, type ChartRange } from "@/components/PriceChart";
 import { Sheet } from "./MobileApp";
+import { MarketPulse } from "@/components/MarketPulse";
 
 interface Quote {
   symbol: string;
@@ -80,10 +81,17 @@ export function MMarkets() {
   const p = ov.portfolio;
   const waiting = ov.alerts.filter((a) => !a.triggered_at).length;
   const symbols = [...ov.watchlist.map((w) => w.symbol), ...p.positions.map((x) => x.symbol).filter((s) => !ov.watchlist.some((w) => w.symbol === s))];
-  if (!symbols.length) return null;
+  if (!symbols.length)
+    return (
+      <>
+        <MarketPulse compact onSelect={setOpen} />
+        <ChartSheet symbol={open} onClose={() => setOpen(null)} />
+      </>
+    );
 
   return (
     <>
+    <MarketPulse compact onSelect={setOpen} />
     <section className="surface rise p-4">
       <div className="mb-2 flex items-center justify-between">
         <h2 className="text-[11.5px] font-semibold uppercase tracking-[0.1em] text-muted">Markets</h2>

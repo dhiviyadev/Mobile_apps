@@ -27,7 +27,11 @@ also in a real browser against the running core.
 - ✅ **First-run guide** — name → model → folder; skipped for existing installs
 - ✅ **Self-contained app** — core frozen with PyInstaller, starts by itself, and the native desktop binary was run here and found/started the bundled core with data in Application Support · 🟡 `scripts/build-standalone.sh` on macOS (bundling, helpers, dmg). The bundled core does not include MLX Whisper; voice uses whisper.cpp if installed. Updating a self-contained app = installing a newer build.
 
+## Getting the AI running
+- ✅ When Ollama isn't ready, Home and Chat show what's missing (install / start / choose a model) with a one-click fix: **Get Ollama** opens the official download page, **Start Ollama** opens the app and waits for it, **Choose a model** goes to model downloads. Chat errors are in plain words. 🟡 Starting Ollama.app is macOS-only and was tested with a stand-in.
+
 ## Market overview
+- ✅ Today's market on the phone app too (tap a stock for its chart)
 - ✅ "Today's market" on Markets and Home: Nifty 50, Bank Nifty, Nifty IT, Midcap 100, India VIX, and the Nifty 50's top gainers and losers, from NSE's free live service (checked against the real service); click anything to open its chart; "Add to watchlist" for symbols opened that way
 - ✅ `market_overview` agent tool (Market Analyst, Chief of Staff) and a "How's the market?" quick prompt
 - ✅ "Market close briefing" automation template: weekdays 15:50 — index moves, top movers and a read of your watchlist, saved to the workspace and sent as a notification (and to your phone if push is on). Starts switched off, like every template.
