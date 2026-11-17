@@ -309,7 +309,7 @@ export interface Bootstrap {
   update: { available: boolean; behind: number; applying: boolean; supported?: boolean; error?: string | null; checked_at?: number | null; current?: string | null };
   projects?: Project[];
   web?: { enabled: boolean };
-  markets?: { enabled: boolean; chart?: "builtin" | "tradingview" };
+  markets?: { enabled: boolean; chart?: "builtin" | "tradingview"; colors?: "classic" | "colorblind" };
   apple?: { available: boolean; calendar: boolean; reminders: boolean; mail: boolean };
   onboarding?: { completed: boolean };
   cloud: { enabled: boolean; provider: string; model: string; has_key: boolean; allow_documents: boolean; keychain_available: boolean };

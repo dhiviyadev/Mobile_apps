@@ -63,7 +63,8 @@ async def bootstrap(st: AppState = Depends(get_state)) -> dict[str, Any]:
         "cloud": st.cloud.status(),
         "projects": st.projects.list(),
         "web": {"enabled": st.web.enabled},
-        "markets": {"enabled": st.markets.enabled, "chart": st.prefs.get("markets.chart") or "builtin"},
+        "markets": {"enabled": st.markets.enabled, "chart": st.prefs.get("markets.chart") or "builtin",
+                    "colors": st.prefs.get("markets.colors") or "classic"},
         "apple": st.apple.status(),
         # People who already use NEXUS never see the first-run guide.
         "onboarding": {"completed": bool(st.prefs.get("onboarding.completed"))
@@ -184,7 +185,7 @@ class SettingsPatch(BaseModel):
 @router.patch("/settings")
 def patch_settings(body: SettingsPatch, st: AppState = Depends(get_state)) -> dict[str, Any]:
     enums = {"appearance.material": {"ambient", "desktop", "solid"}, "appearance.motion": {"full", "calm"},
-             "markets.chart": {"builtin", "tradingview"}}
+             "markets.chart": {"builtin", "tradingview"}, "markets.colors": {"classic", "colorblind"}}
     for k, allowed in enums.items():
         if k in body.values and body.values[k] not in allowed:
             raise HTTPException(400, f"{k} must be one of {sorted(allowed)}")

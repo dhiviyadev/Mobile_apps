@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { api, ApiError, connection } from "@/lib/api";
 import { bus, type ConnState } from "@/lib/events";
+import { setChartColors } from "@/components/PriceChart";
 import type { Approval, Bootstrap, Notification, Task, TaskEvent, Workspace } from "@/lib/types";
 
 type CoreStatus = "connecting" | "online" | "offline" | "unauthorized";
@@ -128,6 +129,7 @@ export const useCore = create<CoreState>((set, get) => ({
   refresh: async () => {
     try {
       const boot = await api.get<Bootstrap>("/api/bootstrap");
+      setChartColors(boot.markets?.colors);
       const tasks: Record<string, Task> = { ...get().tasks };
       for (const t of [...boot.tasks.recent, ...boot.tasks.active]) tasks[t.id] = t;
       // A project that was deleted elsewhere can no longer be the current one.

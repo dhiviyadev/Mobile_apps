@@ -446,13 +446,17 @@ _TV_PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>TradingVie
 {config}
 </script></div></body></html>"""
 _TV_WIDGETS = {"advanced-chart", "technical-analysis"}
+# The built-in chart's range buttons in TradingView's terms. TradingView picks the candle size from the range
+# (checked Nov 2026: 6M gives 2-hour candles, 12M daily, 60M weekly), so a range is only used where its candles
+# match the built-in chart's; 1M and 6M open on daily candles at TradingView's own zoom instead.
+_TV_RANGES = {"1d": ("1D", "5"), "5d": ("5D", "30"), "1mo": (None, "D"), "6mo": (None, "D"), "1y": ("12M", "D"), "5y": ("60M", "W")}
 _TV_CSP = ("default-src 'none'; script-src https://s3.tradingview.com; style-src 'unsafe-inline'; img-src https: data:; "
            "frame-src https://www.tradingview-widget.com https://s.tradingview.com https://www.tradingview.com; "
            "connect-src https://*.tradingview.com https://www.tradingview-widget.com")
 
 
 @router.get("/tradingview", response_class=HTMLResponse)
-def tradingview_frame(symbol: str, interval: str = "D", tz: str = "Etc/UTC", widget: str = "advanced-chart") -> HTMLResponse:
+def tradingview_frame(symbol: str, interval: str = "D", tz: str = "Etc/UTC", widget: str = "advanced-chart", range: str = "") -> HTMLResponse:  # noqa: A002
     """A page holding TradingView's own chart widget for one symbol. Public (a frame can't send the API token) and
     holds nothing private: the only thing sent to TradingView is the symbol being viewed."""
     import json
@@ -471,6 +475,11 @@ def tradingview_frame(symbol: str, interval: str = "D", tz: str = "Etc/UTC", wid
                   "timezone": tz if _TV_TZ.match(tz) else "Etc/UTC", "theme": "dark", "style": "1", "locale": "en",
                   "allow_symbol_change": True, "calendar": False, "withdateranges": True, "hide_side_toolbar": False,
                   "backgroundColor": "rgba(20, 22, 27, 1)", "support_host": "https://www.tradingview.com"}
+        if range in _TV_RANGES:
+            # Open on exactly the period the built-in chart shows, so the two can be compared directly.
+            tv_range, config["interval"] = _TV_RANGES[range]
+            if tv_range:
+                config["range"] = tv_range
     # "</" can't appear (the symbol pattern forbids "<"), so the JSON can't break out of the script element.
     return HTMLResponse(_TV_PAGE.format(config=json.dumps(config), widget=widget),
                         headers={"Content-Security-Policy": _TV_CSP, "Referrer-Policy": "no-referrer", "Cache-Control": "no-store"})

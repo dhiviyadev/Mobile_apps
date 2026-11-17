@@ -11,9 +11,24 @@ export interface Candle {
 
 export type ChartRange = "1d" | "5d" | "1mo" | "6mo" | "1y" | "5y";
 
-/** Up / down pair, validated for colour-blind separation on the dark surface (blue ↔ red, never green ↔ red). */
-export const UP = "#3987e5";
-export const DOWN = "#e66767";
+/**
+ * Up / down colours. "classic" matches TradingView (green ↔ red) so the two charts read the same;
+ * "colorblind" is a blue ↔ red pair validated for colour-blind separation. Direction is also shown by
+ * hollow (up) vs solid (down) candles and by ▲ / ▼, so colour is never the only cue.
+ * Live bindings: importers always see the current values; pages re-render when the setting changes.
+ */
+export const CHART_COLORS = {
+  classic: { up: "#089981", down: "#f23645" },
+  colorblind: { up: "#3987e5", down: "#e66767" },
+} as const;
+export type ChartColors = keyof typeof CHART_COLORS;
+export let UP: string = CHART_COLORS.classic.up;
+export let DOWN: string = CHART_COLORS.classic.down;
+export function setChartColors(scheme: string | undefined): void {
+  const c = CHART_COLORS[(scheme as ChartColors) in CHART_COLORS ? (scheme as ChartColors) : "classic"];
+  UP = c.up;
+  DOWN = c.down;
+}
 
 const PAD = { top: 10, right: 58, bottom: 22, left: 6 };
 const PRICE_H = 300;

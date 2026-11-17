@@ -108,7 +108,18 @@ def parse_chart(payload: dict[str, Any]) -> dict[str, Any]:
         price = candles[-1]["c"]
     if price is None:
         raise MarketError("No price is available for that symbol right now.")
-    prev = meta.get("chartPreviousClose") or meta.get("previousClose")
+    # The day's change. "chartPreviousClose" is the close before the CHART began (six months ago on a 6M chart),
+    # so it is only right for one-day charts. Yahoo also sends the day's own change, which is right for every range.
+    day_change = meta.get("fulldayChange")
+    if day_change is None and meta.get("regularMarketChangePercent") is not None and price:
+        pct = float(meta["regularMarketChangePercent"])
+        day_change = float(price) - float(price) / (1 + pct / 100) if pct > -100 else None
+    if meta.get("regularMarketPreviousClose") is not None:
+        prev = meta["regularMarketPreviousClose"]
+    elif day_change is not None:
+        prev = float(price) - float(day_change)
+    else:
+        prev = meta.get("previousClose") or meta.get("chartPreviousClose")
     return {
         "meta": {
             "symbol": str(meta.get("symbol") or "").upper(),
@@ -118,6 +129,7 @@ def parse_chart(payload: dict[str, Any]) -> dict[str, Any]:
             "kind": (meta.get("instrumentType") or "").lower(),
             "price": float(price),
             "previous_close": float(prev) if prev is not None else None,
+            "day_change_known": day_change is not None or meta.get("regularMarketPreviousClose") is not None or meta.get("previousClose") is not None,
             "market_time": int(meta["regularMarketTime"]) if meta.get("regularMarketTime") else None,
             "timezone": meta.get("exchangeTimezoneName") or "",
         },
@@ -214,7 +226,7 @@ class MarketService:
             raise
         parsed = parse_chart(payload)
         q = quote_from(parsed)
-        if range_ != "1d":
+        if range_ != "1d" and not parsed["meta"].get("day_change_known"):
             # On longer ranges the service's "previous close" is the close before the *range* began, so the
             # day's change has to come from the one-day view (cached for a minute).
             try:

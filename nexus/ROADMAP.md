@@ -27,6 +27,13 @@ also in a real browser against the running core.
 - ✅ **First-run guide** — name → model → folder; skipped for existing installs
 - ✅ **Self-contained app** — core frozen with PyInstaller, starts by itself, and the native desktop binary was run here and found/started the bundled core with data in Application Support · 🟡 `scripts/build-standalone.sh` on macOS (bundling, helpers, dmg). The bundled core does not include MLX Whisper; voice uses whisper.cpp if installed. Updating a self-contained app = installing a newer build.
 
+## Built-in chart vs TradingView (checked with real Tesla data, 17 Nov 2026)
+- ✅ Daily candles are identical to TradingView's to the cent (compared bar by bar)
+- ✅ Fixed: on 1M–5Y ranges the "change today" could be measured from the start of the chart (Tesla showed −10.17% instead of −0.12%); it now uses the day's change Yahoo sends, which also halves Yahoo requests
+- ✅ Candle colours: green/red like TradingView by default, with a one-click switch to the colour-blind-friendly blue/red
+- ✅ The range buttons drive TradingView too (1Y and 5Y open on the same window and candle size; 1M/6M open on daily candles, since TradingView's own 6M switches to 2-hour candles)
+- Explained beside the chart: TradingView's free US chart uses Cboe One (15 min delayed), so today's bar and volumes can differ slightly
+
 ## Language and watchlist polish
 - ✅ Chat and agents reply in the language you write in (Hindi, Tamil, English…, in its own script; mixed if you mix); tickers and numbers stay as they are
 - ✅ 30-day trend line on every watchlist entry (Mac and phone), drawn from prices already stored locally, adjusted for bonus issues and splits; missing history is fetched quietly in the background (checked with real NSE data)

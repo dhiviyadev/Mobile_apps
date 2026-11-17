@@ -371,6 +371,8 @@ function SymbolPanel({ symbol, portfolio, alerts, onChanged }: { symbol: string;
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const savedChart = useCore((s) => s.boot?.markets?.chart ?? "builtin");
+  const colors = useCore((s) => s.boot?.markets?.colors ?? "classic");
+  const refreshAll = useCore((s) => s.refresh);
   const [chart, setChartState] = useState<"builtin" | "tradingview">(savedChart);
   const setChart = (v: "builtin" | "tradingview") => {
     setChartState(v);
@@ -413,9 +415,9 @@ function SymbolPanel({ symbol, portfolio, alerts, onChanged }: { symbol: string;
           {/* one row of controls above the chart */}
           <div className="flex flex-wrap items-center gap-2">
             <Segmented value={chart} onChange={setChart} options={[{ value: "builtin", label: "Built-in chart" }, { value: "tradingview", label: "TradingView" }]} />
+            <Segmented value={range} onChange={setRange} options={RANGES} />
             {chart === "builtin" && (
               <>
-            <Segmented value={range} onChange={setRange} options={RANGES} />
             <Segmented value={mode} onChange={setMode} options={[{ value: "candles", label: "Candles" }, { value: "line", label: "Line" }]} />
             <label className="flex items-center gap-1.5 text-[11.5px] text-fg-2">
               <Toggle checked={sma20} onChange={setSma20} label="20-bar average" /> Avg 20
@@ -426,6 +428,15 @@ function SymbolPanel({ symbol, portfolio, alerts, onChanged }: { symbol: string;
             <label className="flex items-center gap-1.5 text-[11.5px] text-fg-2" title="Relative Strength Index: a 0–100 gauge of recent momentum">
               <Toggle checked={showRsi} onChange={setShowRsi} label="RSI momentum gauge" /> RSI
             </label>
+            <IconButton
+              label={colors === "classic" ? "Colours: green/red like TradingView (click for colour-blind friendly blue/red)" : "Colours: blue/red, colour-blind friendly (click for green/red like TradingView)"}
+              onClick={() => void api.patch("/api/settings", { values: { "markets.colors": colors === "classic" ? "colorblind" : "classic" } }).then(refreshAll)}
+            >
+              <span className="flex gap-0.5" aria-hidden>
+                <span className="h-3 w-1.5 rounded-[2px]" style={{ background: UP }} />
+                <span className="h-3 w-1.5 rounded-[2px]" style={{ background: DOWN }} />
+              </span>
+            </IconButton>
             <IconButton label={table ? "Show the chart" : "Show the numbers as a table"} active={table} onClick={() => setTable(!table)}>
               <Table2 size={14} />
             </IconButton>
@@ -436,10 +447,11 @@ function SymbolPanel({ symbol, portfolio, alerts, onChanged }: { symbol: string;
         <div className="mt-4">
           {chart === "tradingview" ? (
             <>
-              <TradingViewChart symbol={symbol} />
+              <TradingViewChart symbol={symbol} range={range} />
               <p className="mt-2 text-[11.5px] leading-snug text-muted">
                 Chart and data by TradingView, kept in its own frame: TradingView learns which symbol you view and nothing else.
-                {isIndianListing(symbol) && " TradingView doesn't allow NSE prices in embedded charts, so this is the same company's BSE listing — prices differ by a few paise."}{" "}
+                {isIndianListing(symbol) && " TradingView doesn't allow NSE prices in embedded charts, so this is the same company's BSE listing — prices differ by a few paise."}
+                {!isIndianListing(symbol) && !symbol.includes("-") && " For US shares TradingView's free chart uses Cboe One prices (one exchange group, 15 minutes delayed), so today's bar and the volumes can differ a little from the built-in chart, which uses all US exchanges. Past days match exactly."}{" "}
                 Trade-idea levels can't be drawn on it; they're listed in the card below.
               </p>
               <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]">

@@ -44,11 +44,11 @@ function useFrameBase(): string | null {
  * TradingView's own interactive chart (the embeddable version of Supercharts): indicators, drawing tools,
  * every timeframe, their data. TradingView learns which symbol you are viewing and nothing else.
  */
-export function TradingViewChart({ symbol, height = 580 }: { symbol: string; height?: number }) {
+export function TradingViewChart({ symbol, range, height = 580 }: { symbol: string; range?: string; height?: number }) {
   const base = useFrameBase();
   if (!base) return <div style={{ height }} />;
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "Etc/UTC";
-  const src = `${base}/api/tradingview?symbol=${encodeURIComponent(tradingViewSymbol(symbol))}&interval=D&tz=${encodeURIComponent(tz)}`;
+  const src = `${base}/api/tradingview?symbol=${encodeURIComponent(tradingViewSymbol(symbol))}&interval=D&tz=${encodeURIComponent(tz)}${range ? `&range=${range}` : ""}`;
   return (
     <iframe key={src} src={src} title={`TradingView chart for ${symbol}`} sandbox={SANDBOX} referrerPolicy="no-referrer" loading="lazy"
       className="block w-full rounded-xl border border-white/[0.07] bg-[#14161b]" style={{ height }} />

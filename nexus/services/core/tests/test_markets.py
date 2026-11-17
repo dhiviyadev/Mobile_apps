@@ -32,6 +32,7 @@ class FakeYahoo:
                        "SAP.DE": (250.0, 249.0, "EUR", "SAP SE")}
         self.calls = []
         self.status = 200
+        self.day_change_fields = False
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.calls.append(request)
@@ -49,6 +50,12 @@ class FakeYahoo:
             price, prev, cur, name = self.prices[sym]
             if dict(request.url.params).get("range") != "1d":
                 prev = price / 2  # like the real service: on long ranges this is the close before the range began
+            if self.day_change_fields:
+                body = chart(sym, price, prev, cur, name=name)
+                meta = body["chart"]["result"][0]["meta"]
+                meta.update({"regularMarketChangePercent": round((price / self.prices[sym][1] - 1) * 100, 3),
+                             "fulldayChange": round(price - self.prices[sym][1], 2)})
+                return httpx.Response(200, json=body)
             return httpx.Response(200, json=chart(sym, price, prev, cur, name=name))
         return httpx.Response(404)
 
@@ -254,6 +261,11 @@ def test_tradingview_frame_is_locked_down(client):
     assert "default-src 'none'" in csp and "script-src https://s3.tradingview.com;" in csp and "'unsafe-inline'" not in csp.split("script-src")[1].split(";")[0]
     for bad in ("</script><script>alert(1)</script>", "A\"B", "A B", ""):
         assert client.get("/api/tradingview", params={"symbol": bad}).status_code in (400, 422)
+    six = client.get("/api/tradingview?symbol=TSLA&range=6mo").text
+    assert '"range"' not in six and '"interval": "D"' in six  # TradingView's 6M would switch to 2-hour candles
+    year = client.get("/api/tradingview?symbol=TSLA&range=1y").text
+    assert '"range": "12M"' in year and '"interval": "D"' in year
+    assert '"range"' not in client.get("/api/tradingview?symbol=TSLA&range=bogus").text
     odd = client.get("/api/tradingview?symbol=AAPL&interval=evil&tz=<x>").text
     assert '"interval": "D"' in odd and '"timezone": "Etc/UTC"' in odd and "<x>" not in odd
     assert client.patch("/api/settings", json={"values": {"markets.chart": "tradingview"}}).status_code == 200
@@ -292,3 +304,21 @@ def test_core_reports_its_build_and_can_be_asked_to_stop(client, st, monkeypatch
     code = client.post("/api/devices/pair").json()["code"]
     tok = client.post("/api/devices/claim", json={"code": code}).json()["token"]
     assert client.post("/api/system/shutdown", headers={"Authorization": f"Bearer {tok}", "Host": "mac.tail1.ts.net"}).status_code == 403
+
+
+def test_day_change_is_from_yesterday_not_from_the_start_of_the_chart(client, st, yahoo):
+    """Real Tesla data (17 Nov 2026): chartPreviousClose on a 6M chart was 422.24 (six months earlier) while the
+    day's change was -0.45 (-0.118%). NEXUS once showed -10.17%."""
+    on(client)
+    yahoo.day_change_fields = True
+    calls = len(yahoo.calls)
+    q = client.get("/api/markets/history/AAPL?range=6mo").json()["quote"]
+    assert q["previous_close"] == 196.0 and round(q["change"], 2) == 4.0 and round(q["change_percent"], 2) == round(4 / 196 * 100, 2)
+    assert len(yahoo.calls) - calls == 1  # no extra one-day request needed any more (fewer refusals from Yahoo)
+    from nexus_core.markets.service import parse_chart, quote_from
+
+    real_meta = {"currency": "USD", "symbol": "TSLA", "regularMarketPrice": 379.29, "regularMarketChangePercent": -0.118,
+                 "fulldayChange": -0.45, "chartPreviousClose": 422.24}
+    body = {"chart": {"error": None, "result": [{"meta": real_meta, "timestamp": [1], "indicators": {"quote": [{"open": [1], "high": [1], "low": [1], "close": [1], "volume": [1]}]}}]}}
+    tq = quote_from(parse_chart(body))
+    assert round(tq["previous_close"], 2) == 379.74 and round(tq["change_percent"], 2) == -0.12
