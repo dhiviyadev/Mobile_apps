@@ -137,19 +137,11 @@ pub fn healthy() -> bool {
     health().is_some()
 }
 
-/// The build the running core reports. None = a core from before builds were reported (so: old).
-fn core_build(health: &str) -> Option<String> {
-    let start = health.find("\"build\":\"")? + 9;
-    let end = health[start..].find('"')? + start;
-    Some(health[start..end].to_string())
-}
-
-/// True when a core is running that was started from different code than this app.
+/// True when the running core is old code: it says so itself ("stale": the code on disk changed after it
+/// started, i.e. an update was installed under it), or it is too old to report a build at all.
 pub fn core_is_other_version() -> bool {
     match health() {
-        // A core that reports no build at all predates this check (so it is old); one that reports an
-        // empty build simply doesn't know (not a git checkout) and is left alone.
-        Some(h) => !APP_BUILD.is_empty() && !matches!(core_build(&h).as_deref(), Some("")) && core_build(&h).as_deref() != Some(APP_BUILD),
+        Some(h) => !h.contains("\"build\":") || h.contains("\"stale\":true"),
         None => false,
     }
 }

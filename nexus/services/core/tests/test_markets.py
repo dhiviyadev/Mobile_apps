@@ -266,7 +266,17 @@ def test_core_reports_its_build_and_can_be_asked_to_stop(client, st, monkeypatch
     import signal
 
     health = client.get("/health", headers={"Authorization": ""}).json()
-    assert "build" in health and health["build"] == client.get("/api/bootstrap").json()["build"]
+    assert "build" in health and health["build"] == client.get("/api/bootstrap").json()["build"] and health["stale"] is False
+    # "Stale" means: the code on disk has moved on since this core started (an update was pulled under it).
+    from nexus_core import util
+
+    root = str(st.settings.nexus_root)
+    monkeypatch.setattr(util, "_git_head", lambda r: "newer99")
+    util._head_now.clear()
+    assert util.is_stale(root) is (util.build_id(root) != "")
+    assert client.get("/api/bootstrap").json()["stale"] is (util.build_id(root) != "")
+    monkeypatch.undo()
+    util._head_now.clear()
     killed = []
     monkeypatch.setattr(os, "kill", lambda pid, sig: killed.append((pid, sig)))
     assert client.post("/api/system/shutdown").json() == {"stopping": True}

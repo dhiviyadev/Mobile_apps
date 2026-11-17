@@ -138,13 +138,13 @@ export function App() {
   );
 }
 
-const APP_BUILD = typeof __NEXUS_BUILD__ === "string" ? __NEXUS_BUILD__ : "";
-
-/** Is the background service running different code from this window? (A service that reports no build at all predates this check.) */
-export function serviceIsOtherVersion(appBuild: string, coreBuild: string | undefined): boolean {
-  if (!appBuild) return false;
-  if (coreBuild === undefined) return true;
-  return coreBuild !== "" && coreBuild !== appBuild;
+/**
+ * Is the background service running old code? It says so itself ("stale": the code on disk changed since it
+ * started). A service too old to report a build at all predates this check, so it is certainly old.
+ */
+export function serviceIsStale(boot: { build?: string; stale?: boolean } | null | undefined): boolean {
+  if (!boot) return false;
+  return boot.build === undefined || boot.stale === true;
 }
 
 /**
@@ -152,10 +152,10 @@ export function serviceIsOtherVersion(appBuild: string, coreBuild: string | unde
  * version, and new features then quietly fail. Say so, and offer to restart it.
  */
 function VersionBanner() {
-  const coreBuild = useCore((s) => (s.boot ? s.boot.build : ""));
+  const stale = useCore((s) => serviceIsStale(s.boot));
   const refresh = useCore((s) => s.refresh);
   const [state, setState] = useState<"idle" | "restarting" | "still" | "dismissed">("idle");
-  if (state === "dismissed" || !serviceIsOtherVersion(APP_BUILD, coreBuild)) return null;
+  if (state === "dismissed" || !stale) return null;
 
   const restart = async () => {
     setState("restarting");
@@ -170,11 +170,11 @@ function VersionBanner() {
         await new Promise((r) => setTimeout(r, 500));
         await refresh();
         const s = useCore.getState();
-        if (s.status === "online" && !serviceIsOtherVersion(APP_BUILD, s.boot?.build)) break;
+        if (s.status === "online" && !serviceIsStale(s.boot)) break;
       }
       bus.reconnectNow();
     } finally {
-      setState(serviceIsOtherVersion(APP_BUILD, useCore.getState().boot?.build) ? "still" : "idle");
+      setState(serviceIsStale(useCore.getState().boot) ? "still" : "idle");
     }
   };
 
@@ -182,8 +182,8 @@ function VersionBanner() {
     <div className="flex items-center gap-3 border-b border-warn/25 bg-warn/[0.08] px-5 py-2 text-[12.5px] text-fg">
       <span className="min-w-0 flex-1">
         {state === "still"
-          ? "The background service is still a different version from this app. Reinstall the app from Settings → Updates, or run ./scripts/install-app.sh."
-          : "NEXUS's background service is a different version from this app (usually left running from before an update), so newer features may not work."}
+          ? "The background service is still running old code. Quit NEXUS completely and open it again; if that doesn't help, run ./scripts/install-app.sh."
+          : "NEXUS was updated, but its background service is still running the old code, so newer features may not work until it restarts."}
       </span>
       {state !== "still" && (
         <Button size="sm" variant="primary" disabled={state === "restarting"} icon={state === "restarting" ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} onClick={() => void restart()}>

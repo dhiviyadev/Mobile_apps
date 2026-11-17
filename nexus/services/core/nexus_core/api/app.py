@@ -17,7 +17,7 @@ from starlette.types import Scope
 from .. import __version__
 from ..app_state import AppState
 from ..config import Settings
-from ..util import build_id
+from ..util import build_id, is_stale
 from ..remote.service import remote_denied
 from ..security import host_allowed, token_matches
 from . import routes_ai, routes_data, routes_devices, routes_extras, routes_system
@@ -107,7 +107,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
-        return {"status": "ok", "service": "nexus-core", "version": __version__, "build": build_id(str(settings.nexus_root))}
+        return {"status": "ok", "service": "nexus-core", "version": __version__, "build": build_id(str(settings.nexus_root)),
+                "stale": is_stale(str(settings.nexus_root))}
 
     app.include_router(routes_system.router)
     app.include_router(routes_ai.router)

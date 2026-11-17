@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { serviceIsOtherVersion } from "./App";
+import { serviceIsStale } from "./App";
 
-describe("background service version check", () => {
-  it("flags a service from other code, and one too old to report a build", () => {
-    expect(serviceIsOtherVersion("abc1234", "abc1234")).toBe(false);
-    expect(serviceIsOtherVersion("abc1234", "def5678")).toBe(true);
-    expect(serviceIsOtherVersion("abc1234", undefined)).toBe(true); // predates the check: certainly older
+describe("background service staleness", () => {
+  it("trusts the service's own report", () => {
+    expect(serviceIsStale({ build: "abc1234", stale: false })).toBe(false);
+    expect(serviceIsStale({ build: "abc1234", stale: true })).toBe(true);
+    expect(serviceIsStale({ build: "", stale: false })).toBe(false); // not a git checkout: nothing to compare
   });
-  it("stays quiet when either side doesn't know its build", () => {
-    expect(serviceIsOtherVersion("", "def5678")).toBe(false);
-    expect(serviceIsOtherVersion("abc1234", "")).toBe(false);
+  it("treats a service too old to report a build as old", () => {
+    expect(serviceIsStale({})).toBe(true);
+    expect(serviceIsStale(null)).toBe(false); // not connected yet: say nothing
   });
 });

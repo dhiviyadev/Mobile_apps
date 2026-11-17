@@ -289,6 +289,7 @@ export interface VoiceStatus {
 
 export interface Bootstrap {
   build?: string;
+  stale?: boolean;
   profile: { name: string };
   appearance: { material: "ambient" | "desktop" | "solid"; motion: "full" | "calm"; transparency: number };
   hardware: Record<string, unknown>;

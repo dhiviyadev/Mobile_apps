@@ -16,7 +16,7 @@ from ..app_state import AppState
 from ..models.ollama import OllamaError
 from ..system.macos_metrics import hardware
 from ..system.updates import UpdateError
-from ..util import build_id
+from ..util import build_id, is_stale
 from .deps import get_state, not_found
 
 router = APIRouter(prefix="/api")
@@ -40,6 +40,7 @@ async def bootstrap(st: AppState = Depends(get_state)) -> dict[str, Any]:
             default_model = None
     return {
         "build": build_id(str(st.settings.nexus_root)),
+        "stale": is_stale(str(st.settings.nexus_root)),
         "profile": {"name": st.prefs.get("profile.name") or ""},
         "appearance": {"material": st.prefs.get("appearance.material") or "ambient",
                        "motion": st.prefs.get("appearance.motion") or "full",
