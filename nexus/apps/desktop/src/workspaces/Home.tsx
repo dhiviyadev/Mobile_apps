@@ -6,6 +6,7 @@ import { useChat } from "@/stores/chat";
 import { Composer } from "@/components/Composer";
 import { TodayCard } from "@/components/TodayCard";
 import { MarketPulse } from "@/components/MarketPulse";
+import { OllamaHelper } from "@/components/OllamaHelper";
 import { Orb, useOrbState } from "@/components/Orb";
 import { Badge, Dot, Empty } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -89,6 +90,9 @@ export function Home() {
         </p>
       </motion.div>
 
+      <div className="mx-auto mt-6 w-full max-w-[720px] empty:hidden">
+        <OllamaHelper />
+      </div>
       <div className="rise mx-auto mt-8 w-full max-w-[720px]" style={{ ["--i" as string]: 3 }}>
         <Composer
           autoFocus

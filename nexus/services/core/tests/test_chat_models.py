@@ -11,12 +11,12 @@ def test_models_discovered_dynamically(client, fake_ollama):
 def test_ollama_offline_handled(client, fake_ollama):
     fake_ollama.online = False
     data = client.get("/api/models").json()
-    assert data["online"] is False and "not reachable" in data["error"]
+    assert data["online"] is False and "isn't running" in data["error"]
     boot = client.get("/api/bootstrap").json()
     assert boot["ollama"]["online"] is False
     conv = client.post("/api/conversations", json={}).json()
     events = read_sse(client.post(f"/api/conversations/{conv['id']}/messages", json={"content": "hi"}))
-    assert events[-1]["type"] == "error" and "not reachable" in events[-1]["error"]
+    assert events[-1]["type"] == "error" and "isn't running" in events[-1]["error"]
 
 
 def test_streaming_chat_persists_and_records_metrics(client, fake_ollama):
@@ -96,3 +96,44 @@ def test_cloud_disabled_by_default(st):
         st.cloud.check(allow_cloud=True, includes_documents=False)
     with pytest.raises(CloudNotAllowed):
         st.cloud.check(allow_cloud=False, includes_documents=False)
+
+
+def test_ollama_offline_is_explained_and_can_be_started(client, st, fake_ollama, monkeypatch):
+    from nexus_core.models import ollama_setup
+
+    fake_ollama.online = False
+    s = client.get("/api/ollama").json()
+    assert s["online"] is False and s["next_step"] in ("install", "start")
+    conv = client.post("/api/conversations", json={}).json()
+    from conftest import read_sse
+
+    ev = read_sse(client.post(f"/api/conversations/{conv['id']}/messages", json={"content": "hi"}))
+    assert ev[-1]["type"] == "error" and "Ollama isn't running" in ev[-1]["error"] and "Ollama box" in ev[-1]["error"]
+    # Starting: on a Mac with the app installed, NEXUS opens it and waits until it answers.
+    monkeypatch.setattr(ollama_setup, "IS_MACOS", True)
+    monkeypatch.setattr(ollama_setup, "find_app", lambda: ollama_setup.Path("/Applications/Ollama.app"))
+    opened = []
+
+    async def fake_exec(*argv, **kw):
+        opened.append(argv)
+        fake_ollama.online = True
+
+        class P:
+            async def wait(self):
+                return 0
+
+        return P()
+
+    monkeypatch.setattr(ollama_setup.asyncio, "create_subprocess_exec", fake_exec)
+    r = client.post("/api/ollama/start").json()
+    assert opened == [("/usr/bin/open", "-g", "-a", "/Applications/Ollama.app")]
+    assert r["online"] is True and r["next_step"] == "ready" and r["models"] == ["qwen3:8b"]
+    # Nothing installed at all: a clear pointer to the download, nothing installed behind the user's back.
+    fake_ollama.online = False
+    monkeypatch.setattr(ollama_setup, "find_app", lambda: None)
+    monkeypatch.setattr(ollama_setup, "find_binary", lambda: None)
+    assert client.get("/api/ollama").json()["next_step"] == "install"
+    assert "ollama.com/download" in client.post("/api/ollama/start").json()["detail"]
+    fake_ollama.online = True
+    fake_ollama.models = [m for m in fake_ollama.models if "embed" in m["name"]]
+    assert client.get("/api/ollama").json()["next_step"] == "model"

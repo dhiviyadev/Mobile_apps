@@ -22,6 +22,10 @@ class OllamaError(Exception):
     pass
 
 
+NOT_RUNNING = ("Ollama isn't running, so NEXUS has no AI model to answer with. Use the yellow Ollama box just above "
+               "(it can start or install it), then try again.")
+
+
 class OllamaUnavailable(OllamaError):
     pass
 
@@ -79,7 +83,7 @@ class OllamaClient:
         try:
             r = await self._client.get(path)
         except httpx.HTTPError as exc:
-            raise OllamaUnavailable(f"Ollama is not reachable at {self.base_url}: {exc.__class__.__name__}") from exc
+            raise OllamaUnavailable(NOT_RUNNING) from exc
         if r.status_code >= 400:
             raise OllamaError(f"Ollama {path} returned {r.status_code}: {r.text[:300]}")
         return r.json()
@@ -88,7 +92,7 @@ class OllamaClient:
         try:
             r = await self._client.post(path, json=body, timeout=timeout or httpx.USE_CLIENT_DEFAULT)
         except httpx.HTTPError as exc:
-            raise OllamaUnavailable(f"Ollama is not reachable at {self.base_url}: {exc.__class__.__name__}") from exc
+            raise OllamaUnavailable(NOT_RUNNING) from exc
         if r.status_code >= 400:
             raise OllamaError(_error_text(r))
         return r.json() if r.content else {}
@@ -134,13 +138,13 @@ class OllamaClient:
                         raise OllamaError(str(chunk["error"]))
                     yield chunk
         except httpx.HTTPError as exc:
-            raise OllamaUnavailable(f"Ollama is not reachable at {self.base_url}: {exc.__class__.__name__}") from exc
+            raise OllamaUnavailable(NOT_RUNNING) from exc
 
     async def delete(self, model: str) -> None:
         try:
             r = await self._client.request("DELETE", "/api/delete", json={"model": model}, timeout=60)
         except httpx.HTTPError as exc:
-            raise OllamaUnavailable(f"Ollama is not reachable at {self.base_url}: {exc.__class__.__name__}") from exc
+            raise OllamaUnavailable(NOT_RUNNING) from exc
         if r.status_code >= 400:
             raise OllamaError(_error_text(r))
 
@@ -199,7 +203,7 @@ class OllamaClient:
                     if chunk.get("done"):
                         apply_final_metrics(result, chunk)
         except httpx.HTTPError as exc:
-            raise OllamaUnavailable(f"Ollama is not reachable at {self.base_url}: {exc.__class__.__name__}") from exc
+            raise OllamaUnavailable(NOT_RUNNING) from exc
         yield "done", result
 
     async def chat(self, model: str, messages: list[dict[str, Any]], **kwargs: Any) -> ChatResult:

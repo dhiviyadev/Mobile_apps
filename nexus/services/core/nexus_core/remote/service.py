@@ -50,6 +50,7 @@ REMOTE_DENIED: list[tuple[str, str]] = [
     ("PATCH", "/api/models/routing"),
     ("POST", "/api/models/benchmark"),
     ("POST", "/api/models/pull"),
+    ("POST", "/api/ollama"),
     ("DELETE", "/api/models"),
     ("POST", "/api/screen"),
     ("POST", "/api/projects"),

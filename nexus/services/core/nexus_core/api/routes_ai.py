@@ -60,6 +60,36 @@ async def models(st: AppState = Depends(get_state)) -> dict[str, Any]:
             "single_model_mode": st.prefs.get("models.single_model_mode"), "stats": st.router.inference_stats()}
 
 
+@router.get("/ollama")
+async def ollama_status(st: AppState = Depends(get_state)) -> dict[str, Any]:
+    from ..models import ollama_setup
+
+    return await ollama_setup.status(st)
+
+
+@router.post("/ollama/start")
+async def ollama_start(st: AppState = Depends(get_state)) -> dict[str, Any]:
+    from ..models import ollama_setup
+
+    try:
+        return await ollama_setup.start(st)
+    except OllamaError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/ollama/download")
+async def ollama_download(st: AppState = Depends(get_state)) -> dict[str, Any]:
+    """Open Ollama's official download page in the default browser (the app's own window can't open web pages)."""
+    from ..config import IS_MACOS
+    from ..models import ollama_setup
+
+    if IS_MACOS:
+        proc = await asyncio.create_subprocess_exec("/usr/bin/open", ollama_setup.DOWNLOAD_URL)
+        await proc.wait()
+        return {"opened": True, "url": ollama_setup.DOWNLOAD_URL}
+    return {"opened": False, "url": ollama_setup.DOWNLOAD_URL}
+
+
 @router.get("/models/catalog")
 async def model_catalog(st: AppState = Depends(get_state)) -> dict[str, Any]:
     import psutil

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { OllamaHelper } from "@/components/OllamaHelper";
 import { motion } from "framer-motion";
 import { Brain, Check, Copy, Download, FileText, MessageSquarePlus, RotateCcw, Search, Trash2, Volume2, VolumeX } from "lucide-react";
 import { useChat } from "@/stores/chat";
@@ -177,6 +178,9 @@ export function Chat() {
         </div>
 
         <div className="mx-auto w-full max-w-[820px] px-6 pb-5">
+          <div className="mb-2 empty:hidden">
+            <OllamaHelper compact />
+          </div>
           <Composer onSend={(t, o) => send(t, { ...o, model: model || null })} busy={Boolean(live || pending)} onStop={() => void stop()} autoSendVoice={false} />
           <p className="mt-1.5 text-center text-[10.5px] text-muted">Runs locally on your Mac · Enter to send, Shift+Enter for a new line</p>
         </div>
