@@ -45,7 +45,7 @@ CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/"
 SEARCH_URL = "https://query2.finance.yahoo.com/v1/finance/search"
 # range -> (bar size, seconds a cached answer stays fresh)
 RANGES: dict[str, tuple[str, int]] = {
-    "1d": ("5m", 60), "5d": ("30m", 120), "1mo": ("1d", 600), "6mo": ("1d", 900),
+    "1d": ("5m", 20), "5d": ("30m", 120), "1mo": ("1d", 600), "6mo": ("1d", 900),
     "1y": ("1d", 900), "5y": ("1wk", 3600),
     "5yd": ("1d", 3600),  # five years of daily bars: used for analysis and back-tests, not offered as a chart range
 }
@@ -54,6 +54,49 @@ _SYMBOL = re.compile(r"^[A-Za-z0-9.\-=^&]{1,15}$")  # "&" appears in NSE tickers
 DEFAULT_CASH = 100_000.0
 MAX_WATCHLIST = 40
 ALERT_INTERVAL_S = 180
+
+
+INTERVAL_S = {"5m": 300, "30m": 1800, "1h": 3600}
+DELAY = {"nse": "NSE's free feed runs about 1–3 minutes behind the exchange", "coinbase": "Live from Coinbase",
+         "yahoo": "Yahoo's free feed can lag the exchange by a few minutes"}
+
+
+def merge_live(candles: list[dict[str, Any]], quote: dict[str, Any], interval: str) -> list[dict[str, Any]]:
+    """Lay the latest price onto the chart's last candle (or start a new one), so the chart moves with the price.
+
+    Daily/weekly candles are matched by calendar day/week in the exchange's own time zone; intraday candles by time.
+    The candle list is copied, never changed in place (it may be a cached object)."""
+    price, when = quote.get("price"), quote.get("market_time")
+    if not candles or not price or not when:
+        return candles
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo
+
+    try:
+        tz = ZoneInfo(quote.get("timezone") or "UTC")
+    except Exception:  # noqa: BLE001 - unknown zone name: fall back to UTC
+        tz = ZoneInfo("UTC")
+    last = candles[-1]
+    price = float(price)
+    if interval in INTERVAL_S:
+        span = INTERVAL_S[interval]
+        if when < last["t"]:
+            return candles
+        if when < last["t"] + span:
+            return candles[:-1] + [{**last, "h": max(last["h"], price), "l": min(last["l"], price), "c": price}]
+        start = when - (when - last["t"]) % span
+        return candles + [{"t": start, "o": price, "h": price, "l": price, "c": price, "v": 0.0}]
+    qd = _dt.fromtimestamp(when, tz).date()
+    ld = _dt.fromtimestamp(last["t"], tz).date()
+    same = qd.isocalendar()[:2] == ld.isocalendar()[:2] if interval == "1wk" else qd == ld
+    if same:
+        return candles[:-1] + [{**last, "h": max(last["h"], price), "l": min(last["l"], price), "c": price}]
+    if qd > ld and interval == "1d" and quote.get("day_open") and quote.get("day_high") and quote.get("day_low"):
+        from .providers import day_stamp
+
+        return candles + [{"t": day_stamp(qd.isoformat()), "o": float(quote["day_open"]), "h": max(float(quote["day_high"]), price),
+                           "l": min(float(quote["day_low"]), price), "c": price, "v": float(quote.get("volume") or 0)}]
+    return candles
 
 
 class MarketError(Exception):
@@ -203,6 +246,32 @@ class MarketService:
         await self.nse.close()
 
     async def history(self, symbol: str, range_: str = "6mo", fresh: bool = False) -> dict[str, Any]:
+        """Chart data whose last candle always reflects the latest price (see merge_live)."""
+        out = await self._history(symbol, range_, fresh)
+        provider = self._provider(clean_symbol(symbol))
+        if not provider:
+            if range_ == "1d":
+                return out  # Yahoo's one-day chart and its quote arrive together: already in step
+            hit = self._cache.get((clean_symbol(symbol), range_))
+            if hit and time.time() - hit[0] < RANGES["1d"][1]:
+                # Just downloaded: its quote is as fresh as a separate one-day request would be (and Yahoo is spared a call).
+                q = {**out["quote"], "delay": DELAY["yahoo"]}
+                return {**out, "quote": q, "candles": merge_live(out["candles"], q, out["interval"])}
+        try:
+            q = await self.quote(symbol, fresh=fresh) if provider else (await self._history(symbol, "1d", fresh))["quote"]
+        except MarketError:
+            return out
+        source = provider.name if provider else "yahoo"
+        q = {**q, "delay": DELAY.get(source, "")}
+        return {**out, "quote": q, "candles": merge_live(out["candles"], q, out["interval"])}
+
+    async def live(self, symbol: str, range_: str = "6mo") -> dict[str, Any]:
+        """A small update for a chart that is open: the latest quote and the last two candles."""
+        h = await self.history(symbol, range_)
+        return {"symbol": h["symbol"], "range": range_, "quote": h["quote"], "last": h["candles"][-2:], "stale": bool(h.get("stale")),
+                "server_time": time.time()}
+
+    async def _history(self, symbol: str, range_: str = "6mo", fresh: bool = False) -> dict[str, Any]:
         self._require()
         symbol = clean_symbol(symbol)
         if range_ not in RANGES:
@@ -230,7 +299,7 @@ class MarketService:
             # On longer ranges the service's "previous close" is the close before the *range* began, so the
             # day's change has to come from the one-day view (cached for a minute).
             try:
-                q = (await self.history(symbol, "1d", fresh=fresh))["quote"]
+                q = (await self._history(symbol, "1d", fresh=fresh))["quote"]
             except MarketError:
                 q = {**q, "previous_close": None, "change": None, "change_percent": None}
         out = {"symbol": symbol, "range": range_, "interval": interval, "quote": q, "candles": parsed["candles"],
@@ -250,7 +319,8 @@ class MarketService:
                 return await provider.quote(symbol, fresh)
             except ProviderError as exc:
                 raise MarketError(str(exc), exc.kind) from exc
-        return (await self.history(symbol, "1d", fresh=fresh))["quote"]
+        q = (await self._history(symbol, "1d", fresh=fresh))["quote"]
+        return {**q, "delay": DELAY["yahoo"]}
 
     async def quotes(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
         """Latest quotes for several symbols; a symbol that fails is reported with an error instead of failing all."""

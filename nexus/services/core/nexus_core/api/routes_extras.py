@@ -224,6 +224,15 @@ async def markets_analysis(symbol: str, st: AppState = Depends(get_state)) -> di
         raise _market(exc) from exc
 
 
+@router.get("/markets/live/{symbol}")
+async def markets_live(symbol: str, range: str = "6mo", st: AppState = Depends(get_state)) -> dict[str, Any]:  # noqa: A002
+    """Latest price and last candles for an open chart; cheap to call every few seconds (answers come from short caches)."""
+    try:
+        return await st.markets.live(symbol, range)
+    except MarketError as exc:
+        raise _market(exc) from exc
+
+
 @router.get("/markets/overview")
 async def markets_overview_today(st: AppState = Depends(get_state)) -> dict[str, Any]:
     try:

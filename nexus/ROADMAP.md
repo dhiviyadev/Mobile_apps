@@ -27,6 +27,12 @@ also in a real browser against the running core.
 - ✅ **First-run guide** — name → model → folder; skipped for existing installs
 - ✅ **Self-contained app** — core frozen with PyInstaller, starts by itself, and the native desktop binary was run here and found/started the bundled core with data in Application Support · 🟡 `scripts/build-standalone.sh` on macOS (bundling, helpers, dmg). The bundled core does not include MLX Whisper; voice uses whisper.cpp if installed. Updating a self-contained app = installing a newer build.
 
+## Live prices
+- ✅ An open chart now updates every 5 seconds: headline price, day change and the last candle move together (the price flashes green/red when it changes), with "Live · checked Ns ago" and an honest note on how far behind each free feed is. Verified with real Coinbase data: four different prices in 24 seconds, no reload
+- ✅ Server lays the latest quote onto the cached chart's last candle (never edits the cache), and starts a new candle when a new day/bar begins where it has the data to do so
+- ✅ Shorter quote caches: crypto 5 s, NSE 20 s in market hours (NSE's feed itself updates about once a minute, 1–3 min behind), Yahoo 20 s; watchlist every 15 s, Today's market every 30 s, phone chart every 8 s
+- 🟡 Not watched live for Indian shares (the market was closed during testing); same code path, covered by tests
+
 ## Built-in chart vs TradingView (checked with real Tesla data, 17 Nov 2026)
 - ✅ Daily candles are identical to TradingView's to the cent (compared bar by bar)
 - ✅ Fixed: on 1M–5Y ranges the "change today" could be measured from the start of the chart (Tesla showed −10.17% instead of −0.12%); it now uses the day's change Yahoo sends, which also halves Yahoo requests

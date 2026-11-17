@@ -71,7 +71,7 @@ export function MMarkets() {
     if (!enabled) return;
     load();
     const off = bus.on("markets", load);
-    const t = window.setInterval(() => document.visibilityState === "visible" && load(), 60_000);
+    const t = window.setInterval(() => document.visibilityState === "visible" && load(), 15_000);
     return () => {
       off();
       window.clearInterval(t);
@@ -162,6 +162,28 @@ function ChartSheet({ symbol, onClose }: { symbol: string | null; onClose: () =>
   useEffect(() => {
     if (!symbol) setData(null);
   }, [symbol]);
+  useEffect(() => {
+    if (!symbol) return;
+    const t = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void api
+        .get<{ quote: Quote; last: Candle[] }>(`/api/markets/live/${encodeURIComponent(symbol)}?range=${range}`)
+        .then((u) =>
+          setData((cur) => {
+            if (!cur) return cur;
+            const candles = [...cur.candles];
+            for (const c of u.last) {
+              const i = candles.findIndex((x) => x.t === c.t);
+              if (i >= 0) candles[i] = c;
+              else if (!candles.length || c.t > candles[candles.length - 1]!.t) candles.push(c);
+            }
+            return { quote: u.quote, candles };
+          }),
+        )
+        .catch(() => undefined);
+    }, 8_000);
+    return () => window.clearInterval(t);
+  }, [symbol, range]);
 
   const q = data?.quote.symbol === symbol ? data?.quote : null;
   return (

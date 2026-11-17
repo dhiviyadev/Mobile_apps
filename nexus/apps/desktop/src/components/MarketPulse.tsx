@@ -50,7 +50,7 @@ export function useOverview(enabled: boolean): { data: Overview | null; error: s
         .then((d) => live && (setData(d), setError(null)))
         .catch((e: Error) => live && setError(e.message));
     load();
-    const t = window.setInterval(() => document.visibilityState === "visible" && load(), 90_000);
+    const t = window.setInterval(() => document.visibilityState === "visible" && load(), 30_000);
     return () => {
       live = false;
       window.clearInterval(t);

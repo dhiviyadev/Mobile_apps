@@ -17,7 +17,7 @@ def chart(symbol="AAPL", price=200.0, prev=196.0, currency="USD", closes=(190.0,
     return {"chart": {"result": [{
         "meta": {"currency": currency, "symbol": symbol, "exchangeName": "NMS", "fullExchangeName": "NasdaqGS",
                  "instrumentType": "EQUITY", "regularMarketPrice": price, "chartPreviousClose": prev,
-                 "regularMarketTime": 1_760_000_000, "exchangeTimezoneName": "America/New_York", "longName": name},
+                 "regularMarketTime": 1_759_500_000 + (n - 1) * DAY + 3600, "exchangeTimezoneName": "America/New_York", "longName": name},
         "timestamp": [1_759_500_000 + i * DAY for i in range(n)],
         "indicators": {"quote": [{
             "open": [None if c is None else c - 1 for c in closes], "high": [None if c is None else c + 2 for c in closes],
@@ -322,3 +322,39 @@ def test_day_change_is_from_yesterday_not_from_the_start_of_the_chart(client, st
     body = {"chart": {"error": None, "result": [{"meta": real_meta, "timestamp": [1], "indicators": {"quote": [{"open": [1], "high": [1], "low": [1], "close": [1], "volume": [1]}]}}]}}
     tq = quote_from(parse_chart(body))
     assert round(tq["previous_close"], 2) == 379.74 and round(tq["change_percent"], 2) == -0.12
+
+
+def test_charts_follow_the_live_price(client, st, yahoo):
+    """The last candle and the headline price move with the latest quote, even while the chart history is cached."""
+    on(client)
+    yahoo.day_change_fields = True
+    first = client.get("/api/markets/history/AAPL?range=6mo").json()
+    assert first["candles"][-1]["c"] == 200.0 == first["quote"]["price"]
+    # Two minutes later the price has moved; the six-month history is still cached, the quote is not.
+    yahoo.prices["AAPL"] = (205.5, 196.0, "USD", "Apple Inc.")
+    for k in list(st.markets._cache):
+        t, v = st.markets._cache[k]
+        st.markets._cache[k] = (t - 120, v)
+    live = client.get("/api/markets/live/AAPL?range=6mo").json()
+    assert live["quote"]["price"] == 205.5 and live["last"][-1]["c"] == 205.5 and live["last"][-1]["h"] >= 205.5
+    assert len(live["last"]) == 2 and "lag" in live["quote"]["delay"]
+    # The cached history itself was not changed in place.
+    assert st.markets._cache[("AAPL", "6mo")][1]["candles"][-1]["c"] == 200.0
+
+
+def test_merge_live_rules():
+    from nexus_core.markets.service import merge_live
+
+    day = [{"t": 1_794_816_000 + 14 * 3600 + 1800, "o": 10, "h": 11, "l": 9, "c": 10, "v": 5}]  # a US daily bar (14:30 UTC)
+    same_day = merge_live(day, {"price": 12, "market_time": day[0]["t"] + 6 * 3600, "timezone": "America/New_York"}, "1d")
+    assert same_day[-1] == {**day[0], "h": 12, "c": 12} and day[0]["c"] == 10
+    next_day_no_open = merge_live(day, {"price": 12, "market_time": day[0]["t"] + 86400, "timezone": "America/New_York"}, "1d")
+    assert next_day_no_open == day  # can't invent an open/high/low for a new day
+    next_day = merge_live(day, {"price": 12, "market_time": day[0]["t"] + 86400, "timezone": "America/New_York",
+                                "day_open": 10.5, "day_high": 12.5, "day_low": 10.2}, "1d")
+    assert len(next_day) == 2 and next_day[-1]["o"] == 10.5 and next_day[-1]["h"] == 12.5 and next_day[-1]["c"] == 12
+    bars = [{"t": 1000, "o": 1, "h": 1, "l": 1, "c": 1, "v": 0}]
+    assert merge_live(bars, {"price": 2, "market_time": 1100}, "5m")[-1]["c"] == 2
+    new_bar = merge_live(bars, {"price": 3, "market_time": 1000 + 300 * 2 + 20}, "5m")
+    assert new_bar[-1] == {"t": 1600, "o": 3, "h": 3, "l": 3, "c": 3, "v": 0.0}
+    assert merge_live(bars, {"price": None, "market_time": 1100}, "5m") == bars

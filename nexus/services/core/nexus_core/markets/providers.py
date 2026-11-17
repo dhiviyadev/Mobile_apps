@@ -275,7 +275,7 @@ class NseProvider:
     # -- quotes -------------------------------------------------------------------
     async def quote(self, symbol: str, fresh: bool = False) -> dict[str, Any]:
         hit = self._quotes.get(symbol)
-        ttl = 60 if market_open() else 900
+        ttl = 20 if market_open() else 300  # NSE's own feed updates about once a minute
         if hit and not fresh and time.time() - hit[0] < ttl:
             return hit[1]
         if symbol in NSE_INDEX:
@@ -500,7 +500,7 @@ class CoinbaseProvider:
 
     async def quote(self, symbol: str, fresh: bool = False) -> dict[str, Any]:
         hit = self._cache.get((symbol, "quote"))
-        if hit and not fresh and time.time() - hit[0] < 30:
+        if hit and not fresh and time.time() - hit[0] < 5:
             return hit[1]
         ticker = await self._get(f"/products/{symbol}/ticker")
         stats = await self._get(f"/products/{symbol}/stats")
@@ -557,7 +557,7 @@ class CoinbaseProvider:
     async def history(self, symbol: str, range_: str, fresh: bool = False) -> dict[str, Any]:
         stale = False
         if range_ in ("1d", "5d"):
-            gran, span, ttl = (300, timedelta(hours=24), 60) if range_ == "1d" else (3600, timedelta(days=5), 300)
+            gran, span, ttl = (300, timedelta(hours=24), 30) if range_ == "1d" else (3600, timedelta(days=5), 120)
             hit = self._cache.get((symbol, range_))
             if hit and not fresh and time.time() - hit[0] < ttl:
                 candles = hit[1]

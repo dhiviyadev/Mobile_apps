@@ -23,6 +23,7 @@ interface Quote {
   change_percent: number | null;
   market_time: number | null;
   error?: string;
+  delay?: string;
 }
 interface WatchItem {
   symbol: string;
@@ -148,7 +149,7 @@ export function Markets() {
   useEffect(() => {
     void load();
     const off = bus.on("markets", () => void load());
-    const t = window.setInterval(() => document.visibilityState === "visible" && void load(), 60_000);
+    const t = window.setInterval(() => document.visibilityState === "visible" && void load(), 15_000);
     return () => {
       off();
       window.clearInterval(t);
@@ -390,12 +391,54 @@ function SymbolPanel({ symbol, portfolio, alerts, onChanged }: { symbol: string;
     }
   }, [symbol, range]);
 
+  // Full chart reload now and then; in between, a small live update every few seconds moves the price and last candle.
+  const [checkedAt, setCheckedAt] = useState<number>(0);
+  const [flash, setFlash] = useState<"up" | "down" | null>(null);
+  const [, tick] = useState(0);
   useEffect(() => {
     setLoading(true);
-    void load();
-    const t = window.setInterval(() => document.visibilityState === "visible" && void load(), range === "1d" ? 60_000 : 300_000);
+    void load().then(() => setCheckedAt(Date.now()));
+    const t = window.setInterval(() => document.visibilityState === "visible" && void load(), 5 * 60_000);
     return () => window.clearInterval(t);
   }, [load, range]);
+  useEffect(() => {
+    let live = true;
+    const pull = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const u = await api.get<{ quote: Quote; last: Candle[]; stale: boolean }>(`/api/markets/live/${encodeURIComponent(symbol)}?range=${range}`);
+        if (!live) return;
+        setCheckedAt(Date.now());
+        setH((cur) => {
+          if (!cur || cur.symbol !== u.quote.symbol && cur.symbol !== symbol) return cur;
+          const before = cur.quote.price;
+          if (u.quote.price !== before) setFlash(u.quote.price > before ? "up" : "down");
+          const candles = [...cur.candles];
+          for (const c of u.last) {
+            const i = candles.findIndex((x) => x.t === c.t);
+            if (i >= 0) candles[i] = c;
+            else if (!candles.length || c.t > candles[candles.length - 1]!.t) candles.push(c);
+          }
+          return { ...cur, quote: u.quote, candles, stale: u.stale };
+        });
+      } catch {
+        /* keep showing the last good data; the next pull tries again */
+      }
+    };
+    const t = window.setInterval(() => void pull(), 5_000);
+    const clock = window.setInterval(() => tick((n) => n + 1), 1_000);
+    return () => {
+      live = false;
+      window.clearInterval(t);
+      window.clearInterval(clock);
+    };
+  }, [symbol, range]);
+  useEffect(() => {
+    if (!flash) return;
+    const t = window.setTimeout(() => setFlash(null), 900);
+    return () => window.clearTimeout(t);
+  }, [flash]);
+  const ago = checkedAt ? Math.max(0, Math.round((Date.now() - checkedAt) / 1000)) : null;
 
   const q = h?.quote;
   return (
@@ -407,10 +450,15 @@ function SymbolPanel({ symbol, portfolio, alerts, onChanged }: { symbol: string;
               {q?.name ?? symbol} <span className="text-muted">· {q?.exchange} {q?.currency && `· ${q.currency}`}</span>
             </p>
             <div className="mt-1 flex items-baseline gap-3">
-              <span className="font-[family-name:var(--font-display)] text-[34px] font-semibold leading-none tracking-tight text-fg">{q ? formatPrice(q.price) : "—"}</span>
+              <span className="font-[family-name:var(--font-display)] text-[34px] font-semibold leading-none tracking-tight text-fg transition-colors duration-700" style={flash ? { color: flash === "up" ? UP : DOWN } : undefined}>{q ? formatPrice(q.price) : "—"}</span>
               {q && <Change pct={q.change_percent} abs={q.change} currency={q.currency} />}
-              <span className="text-[11.5px] text-muted">{q?.market_time ? `as of ${new Date(q.market_time * 1000).toLocaleString(undefined, { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}` : ""}</span>
+              <span className="text-[11.5px] text-muted">{q?.market_time ? `price from ${new Date(q.market_time * 1000).toLocaleString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", day: "numeric", month: "short" })}` : ""}</span>
             </div>
+            <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted" title={q?.delay ?? ""}>
+              <span className={cls("h-1.5 w-1.5 rounded-full", h?.stale ? "bg-warn" : ago != null && ago < 20 ? "bg-ok animate-pulse" : "bg-white/30")} />
+              {h?.stale ? "Showing last known prices — the price service isn't answering" : ago == null ? "Connecting…" : `Live · checked ${ago}s ago`}
+              {q?.delay && <span>· {q.delay}</span>}
+            </p>
           </div>
           {/* one row of controls above the chart */}
           <div className="flex flex-wrap items-center gap-2">
