@@ -8,6 +8,7 @@ import { Badge, Button, Card, Empty, IconButton, Input, SectionTitle, Segmented,
 import { ChartLegend, DOWN, PriceChart, UP, formatPrice, formatVolume, type Candle, type ChartRange, type PriceLevel } from "@/components/PriceChart";
 import { Ideas, LiveTrading, Scan } from "./Trading";
 import { MarketPulse } from "@/components/MarketPulse";
+import { TrendLine } from "@/components/TrendLine";
 import { TradingViewChart, TradingViewRating, isIndianListing } from "@/components/TradingViewChart";
 
 interface Quote {
@@ -28,6 +29,7 @@ interface WatchItem {
   name: string;
   currency: string;
   quote?: Quote | null;
+  spark?: number[];
 }
 interface Position {
   symbol: string;
@@ -335,6 +337,7 @@ function Watchlist({ items, selected, onSelect, onChanged }: { items: WatchItem[
             <p className="font-mono text-[12.5px] font-semibold text-fg">{w.symbol}</p>
             <p className="truncate text-[11.5px] text-muted">{w.name}</p>
           </div>
+          <TrendLine values={w.spark ?? []} label={w.symbol} />
           <div className="text-right">
             <p className="font-mono text-[12.5px] text-fg">{w.quote && !w.quote.error ? formatPrice(w.quote.price) : "—"}</p>
             <Change pct={w.quote?.change_percent} />

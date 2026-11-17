@@ -139,6 +139,7 @@ class MarketService:
         self.nse = NseProvider(state.db)
         self.crypto = CoinbaseProvider(state.db, state.web)
         self.retry_delay = 1.5
+        self._warming: set[str] = set()
         self._refused_until = 0.0  # after a refusal, stop asking for a while instead of knocking repeatedly
 
     # -- switches -----------------------------------------------------------------
@@ -276,6 +277,33 @@ class MarketService:
                 if not out:
                     raise
         return out[:10]
+
+    def warm(self, symbols: list[str]) -> None:
+        """Download daily history in the background for symbols that have none yet (so trend lines appear)."""
+        for sym in symbols:
+            if sym in self._warming or not self._provider(sym) or self.sparkline(sym, 2):
+                continue
+            self._warming.add(sym)
+
+            async def run(s: str = sym) -> None:
+                try:
+                    await self.history(s, "1mo")
+                    self.state.bus.publish("markets.changed", {"what": "watchlist"})
+                except MarketError:
+                    pass
+                finally:
+                    self._warming.discard(s)
+
+            asyncio.get_running_loop().create_task(run())
+
+    def sparkline(self, symbol: str, days: int = 30) -> list[float]:
+        """Recent daily closes already stored on this Mac (no network call): for small trend lines in lists."""
+        from .providers import adjust
+
+        rows = self.state.db.query("SELECT date, o, h, l, c, v FROM market_candles WHERE symbol = ? ORDER BY date DESC LIMIT ?", (symbol, days))
+        rows.reverse()
+        actions = self.nse.store.meta(symbol)["actions"]  # bonus issues and splits, so they don't look like crashes
+        return [round(c["c"], 4) for c in adjust(rows, actions)]
 
     # -- watchlist ----------------------------------------------------------------
     def watchlist(self) -> list[dict[str, Any]]:

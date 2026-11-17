@@ -35,7 +35,8 @@ async def run_native(state: "AppState", task_id: str, agent: dict[str, Any], pro
     system = agent["system_prompt"] + (
         "\n\nYou are running inside NEXUS on the user's Mac. Use the provided tools to inspect approved folders, "
         "documents and memory. Do not guess file contents. Tools that change things may require the user's approval; "
-        "if a tool is denied, explain what you were unable to do. Finish with a clear answer for the user."
+        "if a tool is denied, explain what you were unable to do. Finish with a clear answer for the user. "
+        "Always reply in the language the user writes in (for example Hindi, Tamil or English), using its own script; if they mix languages, mirror their mix. Keep technical terms, ticker symbols and numbers as they are."
     )
     mems = state.memory.recall(prompt, limit=5, project_id=agent.get("project_id"))
     if mems:

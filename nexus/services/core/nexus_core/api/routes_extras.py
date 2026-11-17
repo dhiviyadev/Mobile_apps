@@ -194,7 +194,8 @@ async def markets_overview(st: AppState = Depends(get_state)) -> dict[str, Any]:
     quotes: dict[str, Any] = {}
     if st.markets.enabled and watch:
         quotes = await st.markets.quotes([w["symbol"] for w in watch])
-    return {"enabled": st.markets.enabled, "watchlist": [{**w, "quote": quotes.get(w["symbol"])} for w in watch],
+        st.markets.warm([w["symbol"] for w in watch])
+    return {"enabled": st.markets.enabled, "watchlist": [{**w, "quote": quotes.get(w["symbol"]), "spark": st.markets.sparkline(w["symbol"])} for w in watch],
             "portfolio": await st.markets.portfolio(), "alerts": st.markets.alerts(),
             "source": SOURCES}
 

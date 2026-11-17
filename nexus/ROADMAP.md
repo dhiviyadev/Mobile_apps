@@ -27,6 +27,10 @@ also in a real browser against the running core.
 - ✅ **First-run guide** — name → model → folder; skipped for existing installs
 - ✅ **Self-contained app** — core frozen with PyInstaller, starts by itself, and the native desktop binary was run here and found/started the bundled core with data in Application Support · 🟡 `scripts/build-standalone.sh` on macOS (bundling, helpers, dmg). The bundled core does not include MLX Whisper; voice uses whisper.cpp if installed. Updating a self-contained app = installing a newer build.
 
+## Language and watchlist polish
+- ✅ Chat and agents reply in the language you write in (Hindi, Tamil, English…, in its own script; mixed if you mix); tickers and numbers stay as they are
+- ✅ 30-day trend line on every watchlist entry (Mac and phone), drawn from prices already stored locally, adjusted for bonus issues and splits; missing history is fetched quietly in the background (checked with real NSE data)
+
 ## Getting the AI running
 - ✅ When Ollama isn't ready, Home and Chat show what's missing (install / start / choose a model) with a one-click fix: **Get Ollama** opens the official download page, **Start Ollama** opens the app and waits for it, **Choose a model** goes to model downloads. Chat errors are in plain words. 🟡 Starting Ollama.app is macOS-only and was tested with a stand-in.
 

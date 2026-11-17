@@ -286,3 +286,42 @@ def test_market_overview(client, st, nse):
     tpl = next(t for t in TEMPLATES if t["template"] == "market_close_briefing")
     assert tpl["actions"][0]["agent_id"] == "trader" and "market_overview" in tpl["actions"][0]["prompt"]
     assert "market_overview" in st.agents.get("trader")["tools"]
+
+
+def test_watchlist_carries_a_local_sparkline(client, st, nse):
+    client.post("/api/markets/watchlist", json={"symbol": "INFY.NS"})
+    assert client.get("/api/markets").json()["watchlist"][0]["spark"] == []  # nothing downloaded yet: no extra fetch
+    client.get("/api/markets/history/INFY.NS?range=1mo")
+    spark = client.get("/api/markets").json()["watchlist"][0]["spark"]
+    assert len(spark) == 30 and spark == sorted(spark, key=lambda _: 0)  # 30 most recent closes, oldest first
+    last = st.db.query_one("SELECT c FROM market_candles WHERE symbol='INFY.NS' ORDER BY date DESC LIMIT 1")["c"]
+    assert spark[-1] == last
+
+
+def test_replies_follow_the_users_language(client, fake_ollama):
+    from conftest import read_sse
+
+    conv = client.post("/api/conversations", json={}).json()
+    read_sse(client.post(f"/api/conversations/{conv['id']}/messages", json={"content": "निबंध लेखन क्या है?"}))
+    system = [r for r in fake_ollama.requests if r["path"] == "/api/chat"][-1]["body"]["messages"][0]["content"]
+    assert "reply in the language the user writes in" in system
+
+
+def test_trend_lines_fill_in_by_themselves(client, st, nse):
+    import time
+
+    client.post("/api/markets/watchlist", json={"symbol": "RELIANCE.NS"})
+    client.get("/api/markets")  # starts a background download of the missing history
+    for _ in range(100):
+        if client.get("/api/markets").json()["watchlist"][0]["spark"]:
+            break
+        time.sleep(0.05)
+    assert len(client.get("/api/markets").json()["watchlist"][0]["spark"]) == 30
+
+
+def test_sparkline_is_bonus_adjusted(client, st, nse):
+    nse.bonus_on = next(d for d in business_days(nse.today - timedelta(days=20), nse.today))
+    client.post("/api/markets/watchlist", json={"symbol": "INFY.NS"})
+    client.get("/api/markets/history/INFY.NS?range=1mo")
+    spark = client.get("/api/markets").json()["watchlist"][0]["spark"]
+    assert min(b / a - 1 for a, b in zip(spark, spark[1:])) > -0.05  # the 1:1 bonus doesn't show as a 50% fall

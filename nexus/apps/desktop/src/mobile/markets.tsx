@@ -6,6 +6,7 @@ import { useCore } from "@/stores/core";
 import { ChartLegend, DOWN, PriceChart, UP, formatPrice, type Candle, type ChartRange } from "@/components/PriceChart";
 import { Sheet } from "./MobileApp";
 import { MarketPulse } from "@/components/MarketPulse";
+import { TrendLine } from "@/components/TrendLine";
 
 interface Quote {
   symbol: string;
@@ -19,7 +20,7 @@ interface Quote {
 }
 interface Overview {
   enabled: boolean;
-  watchlist: { symbol: string; name: string; quote?: Quote | null }[];
+  watchlist: { symbol: string; name: string; quote?: Quote | null; spark?: number[] }[];
   portfolio: {
     currency: string;
     equity: number;
@@ -103,6 +104,7 @@ export function MMarkets() {
             <span className="block font-mono text-[14px] font-semibold text-fg">{w.symbol}</span>
             <span className="block truncate text-[12.5px] text-muted">{w.name}</span>
           </span>
+          <TrendLine values={w.spark ?? []} label={w.symbol} />
           <span className="text-right">
             <span className="block font-mono text-[14px] text-fg">{w.quote && !w.quote.error ? formatPrice(w.quote.price) : "—"}</span>
             <Change pct={w.quote?.change_percent} />
